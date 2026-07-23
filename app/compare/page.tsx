@@ -55,13 +55,13 @@ export default function ComparePage() {
         </div>
 
         {/* Scrip Selectors */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs">
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+          <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xs">
             <span className="text-xs font-bold text-slate-500 px-2">Scrip A:</span>
             <select
               value={scrip1Symbol}
               onChange={(e) => setScrip1Symbol(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-900 outline-none"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-900 outline-none sm:w-48"
             >
               {allScrips.map((s) => (
                 <option key={s.symbol} value={s.symbol}>{s.symbol} - {s.company}</option>
@@ -69,14 +69,14 @@ export default function ComparePage() {
             </select>
           </div>
 
-          <span className="text-xs font-bold text-slate-400">VS</span>
+          <span className="hidden text-center text-xs font-bold text-slate-400 sm:inline">VS</span>
 
-          <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-1.5 shadow-xs">
+          <div className="flex min-w-0 items-center gap-2 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xs">
             <span className="text-xs font-bold text-slate-500 px-2">Scrip B:</span>
             <select
               value={scrip2Symbol}
               onChange={(e) => setScrip2Symbol(e.target.value)}
-              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-900 outline-none"
+              className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-bold text-slate-900 outline-none sm:w-48"
             >
               {allScrips.map((s) => (
                 <option key={s.symbol} value={s.symbol}>{s.symbol} - {s.company}</option>

@@ -80,7 +80,7 @@ export function AlertsTable({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex max-w-full items-center gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible sm:pb-0">
           {/* Status Filter Pills */}
           <div className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-1 text-xs">
             {["All", "Open", "Under review", "Closed"].map((st) => (
@@ -116,8 +116,48 @@ export function AlertsTable({
       </div>
 
       {/* Main Table */}
-      <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm min-w-[700px]">
+      <div className="space-y-3 md:hidden">
+        {sorted.length === 0 ? (
+          <div className="rounded-2xl border border-slate-200 bg-white px-5 py-8 text-center text-sm text-slate-500 shadow-sm">
+            No surveillance alerts matched your search and filter criteria.
+          </div>
+        ) : (
+          sorted.map((alert) => (
+            <article key={alert.symbol} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <Link href={`/investigations/${alert.symbol}`} className="text-base font-bold text-slate-900 transition-colors hover:text-blue-600">
+                    {alert.symbol}
+                  </Link>
+                  <p className="mt-0.5 truncate text-xs text-slate-500">{alert.company || "Listed Scrip"}</p>
+                </div>
+                <RiskBadge risk={alert.risk} />
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 font-mono text-xs">
+                <div><div className="text-[10px] font-sans font-semibold text-slate-500">Score</div><div className="mt-1 text-base font-extrabold text-slate-900">{alert.score}<span className="text-[10px] text-slate-400">/100</span></div></div>
+                <div><div className="text-[10px] font-sans font-semibold text-slate-500">Price rise</div><div className="mt-1 text-base font-bold text-rose-600">↑ {alert.price_rise_pct}%</div></div>
+                <div><div className="text-[10px] font-sans font-semibold text-slate-500">Volume Z</div><div className="mt-1 text-base font-bold text-amber-700">{alert.volume_z}σ</div></div>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <select
+                  value={alert.status}
+                  onChange={(e) => onStatusChange?.(alert.symbol, e.target.value as "Open" | "Under review" | "Closed")}
+                  className={cn("min-w-0 rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none", alert.status === "Open" ? "border-rose-200 bg-rose-50 text-rose-700" : alert.status === "Under review" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700")}
+                >
+                  <option value="Open">Open</option><option value="Under review">Under review</option><option value="Closed">Closed</option>
+                </select>
+                <div className="flex items-center gap-1.5">
+                  <Button asChild variant="outline" className="h-8 px-2.5 text-xs"><Link href={`/investigations/${alert.symbol}`}><Eye className="mr-1 h-3.5 w-3.5 text-blue-600" />Analyse</Link></Button>
+                  <Button asChild variant="ghost" className="h-8 px-2"><Link href="/compare" aria-label={`Compare ${alert.symbol}`}><GitCompare className="h-3.5 w-3.5" /></Link></Button>
+                </div>
+              </div>
+            </article>
+          ))
+        )}
+      </div>
+
+      <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm md:block">
+        <table className="min-w-[700px] w-full text-left text-sm">
           <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
             <tr>
               <th className="px-4 py-4 cursor-pointer hover:text-slate-900" onClick={() => handleSort("symbol")}>

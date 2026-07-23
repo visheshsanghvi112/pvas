@@ -130,22 +130,22 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 antialiased font-sans flex flex-col">
       {/* Top Banner */}
-      <div className="bg-slate-900 px-4 py-1.5 text-xs text-slate-300 border-b border-slate-800 flex items-center justify-between">
+      <div className="relative z-[60] flex min-h-8 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 py-1.5 text-xs text-slate-300 sm:px-4">
         <div className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
           <span className="font-semibold text-white">PVASF ENGINE ONLINE</span>
           <span className="hidden md:inline text-slate-400">| Price-Volume Alert Surveillance Framework v2.4</span>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button
             onClick={() => setUploadModalOpen(true)}
-            className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors"
+            className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 transition-colors hover:text-blue-300"
           >
             <Upload className="h-3.5 w-3.5" />
-            Upload EOD File
+            <span className="hidden sm:inline">Upload EOD File</span>
           </button>
-          <span className="text-slate-600">|</span>
-          <span className="text-slate-400">Role: <strong className="text-white">{currentUser.role}</strong></span>
+          <span className="hidden text-slate-600 sm:inline">|</span>
+          <span className="hidden text-slate-400 sm:inline">Role: <strong className="text-white">{currentUser.role}</strong></span>
         </div>
       </div>
 
@@ -161,7 +161,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         {/* Sidebar (Mobile sliding drawer + Desktop fixed sidebar) */}
         <aside
           className={cn(
-            "fixed inset-y-0 left-0 z-50 bg-white text-slate-900 border-r border-slate-200 shadow-lg lg:shadow-none transition-all duration-300 flex flex-col",
+            "fixed bottom-0 left-0 top-8 z-50 flex flex-col border-r border-slate-200 bg-white text-slate-900 shadow-lg transition-all duration-300 lg:shadow-none",
             // Mobile styling
             mobileSidebarOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0",
             // Desktop styling
@@ -250,7 +250,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           )}
         >
           {/* Header */}
-          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 backdrop-blur-md px-4 py-3 md:px-6">
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-md md:px-6">
             <div className="flex items-center justify-between gap-3">
               {/* Mobile Drawer Trigger */}
               <button
@@ -263,7 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </button>
 
               {/* Search Bar */}
-              <div className="relative max-w-lg flex-1" ref={searchRef}>
+              <div className="relative min-w-0 max-w-lg flex-1" ref={searchRef}>
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <Input
                   value={searchQuery}
@@ -403,7 +403,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </header>
 
           {/* Main Content Page Container */}
-          <main className="flex-1 p-4 md:p-6 lg:p-8 bg-slate-50 max-w-full overflow-x-hidden">{children}</main>
+          <main className="flex-1 overflow-x-hidden bg-slate-50 p-4 md:p-6 lg:p-8">{children}</main>
         </div>
       </div>
 

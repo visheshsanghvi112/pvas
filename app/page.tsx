@@ -36,9 +36,10 @@ export default function DashboardPage() {
   const lowRiskCount = scrips.filter((s) => s.risk === "Low").length;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-5 md:space-y-6">
       {/* Dashboard Banner */}
-      <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-6 md:p-8 shadow-sm">
+      <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-br from-white via-white to-blue-50/70 p-5 shadow-sm md:p-8">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-blue-200/30 blur-3xl" />
         <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between relative z-10">
           <div>
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-blue-600">
@@ -57,7 +58,7 @@ export default function DashboardPage() {
               onClick={loadData}
               variant="outline"
               disabled={loading}
-              className="gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+              className="w-full gap-2 border-slate-200 bg-white text-slate-700 hover:bg-slate-50 sm:w-auto"
             >
               <RefreshCw className={`h-4 w-4 text-blue-600 ${loading ? "animate-spin" : ""}`} />
               Refresh Feed
@@ -107,7 +108,7 @@ export default function DashboardPage() {
       <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
         {/* Left Column: Alerts Table */}
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-5 w-5 text-rose-600" />
               <h2 className="text-xl font-bold tracking-tight text-slate-900">
