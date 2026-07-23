@@ -1,17 +1,20 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AppShell } from "@/components/layout/app-shell";
+import { UserProvider } from "@/lib/user-context";
 
 export const metadata: Metadata = {
-  title: "PVASF Surveillance Dashboard",
-  description: "Frontend-only securities market surveillance dashboard"
+  title: "PVASF Market Surveillance & Scrip Analysis Suite",
+  description: "Institutional Conduct, Compliance & Price-Volume Surveillance Suite"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body>
-        <AppShell>{children}</AppShell>
+        <UserProvider>
+          <AppShell>{children}</AppShell>
+        </UserProvider>
       </body>
     </html>
   );

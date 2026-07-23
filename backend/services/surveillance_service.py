@@ -73,7 +73,7 @@ class EODSurveillanceService:
         df = pd.DataFrame(all_rows)
         return clean_historical_data(df)
 
-    def _generate_sample_trades_df(() -> pd.DataFrame:
+    def _generate_sample_trades_df(self) -> pd.DataFrame:
         """Generates sample participant trades data for auditing LTP and counterparty concentration."""
         pans = ["PAN A", "PAN B", "PAN C", "PAN D", "PAN E", "PAN F"]
         rows = []
