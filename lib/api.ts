@@ -64,18 +64,18 @@ export interface ScripDetail {
 export interface ParticipantAudit {
   ticker: string;
   ltp_contributors: Array<{ participant: string; contribution: number }>;
-  volume_share: Array<{ participant: string; buy_volume: number; share_pct: number }>;
+  volume_share: Array<{ participant: string; volume: number; share_pct: number }>;
   counterparty_pairs: Array<{ pair: string; volume: number; share_pct: number }>;
-  reversal_pairs: Array<{ pair: string; buy_vol: number; sell_vol: number }>;
-  circular_loops: Array<{ loop: string; volume: number }>;
-  profit_makers: Array<{ entity: string; realized: string; unrealized: string; relation: string }>;
+  reversal_pairs: Array<{ pair: string; volume: number; reversal_ratio: number }>;
+  circular_loops: Array<{ loop: string; volume: number; gross_volume: number }>;
+  profit_makers: Array<{ participant: string; net_pnl: number; buy_volume: number; sell_volume: number }>;
 }
 
 const API_BASE = "http://127.0.0.1:8000/api/v1/surveillance";
 
 export async function fetchWatchlist(search?: string): Promise<ScripSummary[]> {
   try {
-    const url = new URL(`${API_BASE}/watchlist`);
+    const url = new URL(`${API_BASE}/scrips`);
     if (search) url.searchParams.set("search", search);
     const res = await fetch(url.toString(), { cache: "no-store" });
     if (res.ok) {
@@ -129,7 +129,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
       const final_score: number    = m["final_score"]    ?? m["Final Score"]    ?? 0;
 
       const risk =
-        final_score >= 75 ? "High" : final_score >= 50 ? "Medium" : "Low";
+        final_score >= 75 ? "High" : final_score >= 60 ? "Medium" : "Low";
 
       return {
         ticker: data.ticker ?? cleanId,
@@ -138,7 +138,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
         isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
         risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
         status: (data.status as "Open" | "Under review" | "Closed") ??
-                (final_score >= 60 ? "Open" : "Closed"),
+                (final_score >= 75 ? "Open" : final_score >= 60 ? "Under review" : "Closed"),
         metrics: { price_rise_pct, price_z, volume_z, band_hit_days, new_high_days, final_score },
         score_breakdown: data.score_breakdown ?? [],
         history: data.history ?? [],
@@ -179,10 +179,10 @@ export async function fetchScripParticipants(scripId: string): Promise<Participa
       { participant: "Others", contribution: 15.1 }
     ],
     volume_share: [
-      { participant: "Kaveri Securities", buy_volume: 1820000, share_pct: 22.4 },
-      { participant: "Metro Broking", buy_volume: 1270000, share_pct: 16.8 },
-      { participant: "Northline Capital", buy_volume: 1040000, share_pct: 13.5 },
-      { participant: "Veda Wealth", buy_volume: 890000, share_pct: 10.1 }
+      { participant: "Kaveri Securities", volume: 1820000, share_pct: 22.4 },
+      { participant: "Metro Broking", volume: 1270000, share_pct: 16.8 },
+      { participant: "Northline Capital", volume: 1040000, share_pct: 13.5 },
+      { participant: "Veda Wealth", volume: 890000, share_pct: 10.1 }
     ],
     counterparty_pairs: [
       { pair: "PAN A ↔ PAN B", volume: 1480000, share_pct: 18.4 },
@@ -190,17 +190,17 @@ export async function fetchScripParticipants(scripId: string): Promise<Participa
       { pair: "PAN B ↔ PAN D", volume: 710000, share_pct: 8.9 }
     ],
     reversal_pairs: [
-      { pair: "PAN A ↔ PAN B", buy_vol: 850000, sell_vol: 820000 }
+      { pair: "PAN A ↔ PAN B", volume: 1670000, reversal_ratio: 96.5 }
     ],
     circular_loops: [
-      { loop: "PAN A → PAN B → PAN C → PAN A", volume: 450000 }
+      { loop: "PAN A → PAN B → PAN C → PAN A", volume: 450000, gross_volume: 1350000 }
     ],
     profit_makers: [
-      { entity: "Aarav Trading LLP", realized: "₹2.84 Cr", unrealized: "₹1.12 Cr", relation: "Common address cluster" },
-      { entity: "Bluepeak Investments", realized: "₹1.96 Cr", unrealized: "₹0.74 Cr", relation: "Funding trail overlap" },
-      { entity: "M K Holdings", realized: "₹1.42 Cr", unrealized: "₹0.51 Cr", relation: "Connected mobile number" },
-      { entity: "Shivam HUF", realized: "₹0.88 Cr", unrealized: "₹0.33 Cr", relation: "Introducer match" },
-      { entity: "Ridgeway Capital", realized: "₹0.71 Cr", unrealized: "₹0.18 Cr", relation: "Trade timing correlation" }
+      { participant: "PAN A", net_pnl: 28400000, buy_volume: 1820000, sell_volume: 1790000 },
+      { participant: "PAN B", net_pnl: 19600000, buy_volume: 1270000, sell_volume: 1240000 },
+      { participant: "PAN C", net_pnl: 14200000, buy_volume: 1040000, sell_volume: 990000 },
+      { participant: "PAN D", net_pnl: 8800000, buy_volume: 890000, sell_volume: 860000 },
+      { participant: "PAN E", net_pnl: 7100000, buy_volume: 710000, sell_volume: 680000 }
     ]
   };
 }

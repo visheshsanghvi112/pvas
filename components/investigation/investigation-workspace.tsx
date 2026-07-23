@@ -439,8 +439,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </CardHeader>
               <CardContent>
                 <DataTable
-                  headers={["Broker / Client PAN", "Buy Volume", "Volume Share %"]}
-                  rows={participants.volume_share.map(p => [p.participant, `${(p.buy_volume / 100000).toFixed(1)}L`, `${p.share_pct}%`])}
+                  headers={["Broker / Client PAN", "Traded Volume", "Volume Share %"]}
+                  rows={participants.volume_share.map(p => [p.participant, `${(p.volume / 100000).toFixed(1)}L`, `${p.share_pct}%`])}
                 />
               </CardContent>
             </Card>
@@ -469,16 +469,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle helpKey="profitMakers">
-                  Top 5 Profit Makers & Connection Trail (§5)
+                  Top 5 Net P&L Contributors (§5)
                 </CardTitle>
                 <p className="text-[11px] text-slate-500">
-                  Entities with highest realized/unrealized gains. Connection trail maps beneficial ownership linkage.
+                  Participants ranked by mark-to-market net P&L using the latest close and executed trades.
                 </p>
               </CardHeader>
               <CardContent>
                 <DataTable
-                  headers={["Entity Name", "Realized P&L", "Unrealized P&L", "Connection Trail"]}
-                  rows={participants.profit_makers.map(p => [p.entity, p.realized, p.unrealized, p.relation])}
+                  headers={["Client PAN", "Net P&L", "Buy Volume", "Sell Volume"]}
+                  rows={participants.profit_makers.map(p => [p.participant, `₹${p.net_pnl.toLocaleString("en-IN")}`, p.buy_volume.toLocaleString("en-IN"), p.sell_volume.toLocaleString("en-IN")])}
                 />
               </CardContent>
             </Card>

@@ -20,7 +20,7 @@ from pv_alert_surveillance import (
 
 class EODSurveillanceService:
     def __init__(self):
-        self.config = SurveillanceConfig(threshold=10.0)
+        self.config = SurveillanceConfig()
         self.engine = SurveillanceEngine(self.config)
         self.current_df = self._generate_sample_teradata_eod()
         self.current_trades_df = self._generate_sample_trades_df()
@@ -125,6 +125,13 @@ class EODSurveillanceService:
         scrips = self.get_scrips_summary()
         return [s for s in scrips if s["watchlist"]]
 
+    def _risk_and_status(self, score: float) -> tuple[str, str]:
+        if score >= 75:
+            return "High", "Open"
+        if score >= self.config.threshold:
+            return "Medium", "Under review"
+        return "Low", "Normal"
+
     def get_scrips_summary(self) -> List[Dict[str, Any]]:
         """Calculates surveillance metrics for all scrips in the current EOD dataset."""
         tickers = self.current_df["Ticker"].unique().tolist()
@@ -141,6 +148,7 @@ class EODSurveillanceService:
                 end_p = float(df_t["Close"].iloc[-1])
                 change_pct = float(((end_p - start_p) / start_p) * 100)
                 
+                risk, status = self._risk_and_status(metrics.final_score)
                 results.append({
                     "ticker": ticker,
                     "symbol": ticker,
@@ -154,8 +162,8 @@ class EODSurveillanceService:
                     "band_hit_days": metrics.band_hit_days,
                     "new_high_days": metrics.new_high_days,
                     "watchlist": metrics.final_score >= self.config.threshold,
-                    "risk": "High" if metrics.final_score >= 15.0 else ("Medium" if metrics.final_score >= 10.0 else "Low"),
-                    "status": "Open" if metrics.final_score >= 10.0 else "Normal"
+                    "risk": risk,
+                    "status": status
                 })
             except Exception as e:
                 print(f"[skip] {ticker}: {e}")
@@ -182,16 +190,19 @@ class EODSurveillanceService:
                 "volume": int(row["Volume"])
             })
             
+        risk, status = self._risk_and_status(metrics.final_score)
         return {
             "ticker": ticker,
             "symbol": ticker,
+            "risk": risk,
+            "status": status,
             "metrics": metrics.as_dict(),
             "score_breakdown": [
-                {"label": "Price Rise", "score": metrics.price_rise_score, "weight": self.config.weights.get("price_rise", 1.0), "contribution": metrics.price_rise_score * self.config.weights.get("price_rise", 1.0)},
-                {"label": "Price Z", "score": metrics.price_z_score, "weight": self.config.weights.get("price_z", 1.0), "contribution": metrics.price_z_score * self.config.weights.get("price_z", 1.0)},
-                {"label": "Volume Z", "score": metrics.volume_z_score, "weight": self.config.weights.get("volume_z", 1.0), "contribution": metrics.volume_z_score * self.config.weights.get("volume_z", 1.0)},
-                {"label": "Band Persistence", "score": metrics.band_score, "weight": self.config.weights.get("band_persistence", 1.0), "contribution": metrics.band_score * self.config.weights.get("band_persistence", 1.0)},
-                {"label": "180 Day New High", "score": metrics.new_high_score, "weight": self.config.weights.get("new_high", 1.0), "contribution": metrics.new_high_score * self.config.weights.get("new_high", 1.0)}
+                {"label": "Price Rise", "score": metrics.price_rise_score, "weight": self.config.weights.get("price_rise", 0.0), "contribution": metrics.price_rise_score * self.config.weights.get("price_rise", 0.0) / 5},
+                {"label": "Price Z", "score": metrics.price_z_score, "weight": self.config.weights.get("price_z", 0.0), "contribution": metrics.price_z_score * self.config.weights.get("price_z", 0.0) / 5},
+                {"label": "Volume Z", "score": metrics.volume_z_score, "weight": self.config.weights.get("volume_z", 0.0), "contribution": metrics.volume_z_score * self.config.weights.get("volume_z", 0.0) / 5},
+                {"label": "Band Persistence", "score": metrics.band_score, "weight": self.config.weights.get("band_persistence", 0.0), "contribution": metrics.band_score * self.config.weights.get("band_persistence", 0.0) / 5},
+                {"label": "180 Day New High", "score": metrics.new_high_score, "weight": self.config.weights.get("new_high", 0.0), "contribution": metrics.new_high_score * self.config.weights.get("new_high", 0.0) / 5}
             ],
             "history": history,
             "summary": {
@@ -212,14 +223,33 @@ class EODSurveillanceService:
             ticker, self.current_trades_df, final_close, total_vol
         )
         
+        ltp_total = sum(abs(row["LTPContribution"]) for row in part_res.ltp_contributors) or 1.0
         return {
             "ticker": ticker,
-            "ltp_contributors": part_res.ltp_contributors,
-            "volume_share": part_res.volume_share,
-            "counterparty_pairs": part_res.counterparty_pairs,
-            "reversal_pairs": part_res.reversal_pairs,
-            "circular_loops": part_res.circular_loops,
-            "profit_makers": part_res.profit_makers
+            "ltp_contributors": [
+                {"participant": row["PAN"], "contribution": round(abs(row["LTPContribution"]) * 100 / ltp_total, 2)}
+                for row in part_res.ltp_contributors
+            ],
+            "volume_share": [
+                {"participant": row["PAN"], "volume": row["PANVolume"], "share_pct": round(row["VolumeSharePercent"], 2)}
+                for row in part_res.volume_share
+            ],
+            "counterparty_pairs": [
+                {"pair": row["Pair"], "volume": row["Volume"], "share_pct": round(row["SharePercent"], 2)}
+                for row in part_res.counterparty_pairs
+            ],
+            "reversal_pairs": [
+                {"pair": row["Pair"], "volume": row["GrossVolume"], "reversal_ratio": row["ReversalRatio"]}
+                for row in part_res.reversal_pairs
+            ],
+            "circular_loops": [
+                {"loop": row["Cycle"], "volume": row["RotatedVolume"], "gross_volume": row["GrossVolume"]}
+                for row in part_res.circular_loops
+            ],
+            "profit_makers": [
+                {"participant": row["PAN"], "net_pnl": row["NetPnL"], "buy_volume": row["BuyVolume"], "sell_volume": row["SellVolume"]}
+                for row in part_res.profit_makers
+            ]
         }
 
     def load_eod_csv(self, file_contents: bytes, filename: str) -> Dict[str, Any]:

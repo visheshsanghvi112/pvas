@@ -170,16 +170,16 @@ def clean_announcements_data(df: pd.DataFrame) -> pd.DataFrame:
 class SurveillanceConfig:
     """Configuration weights and lookup parameters for the Surveillance Engine."""
     weights: Dict[str, float] = field(default_factory=lambda: {
-        "price_rise": 1.0,      # w1
-        "price_z": 1.0,         # w2
-        "volume_z": 1.0,        # w3
-        "band_persistence": 1.0,  # w4
-        "new_high": 1.0,        # w5
+        "price_rise": 25.0,
+        "price_z": 20.0,
+        "volume_z": 25.0,
+        "band_persistence": 15.0,
+        "new_high": 15.0,
     })
     default_band_percent: float = 0.20
     lookback_days: int = 180
     recent_days: int = 15
-    threshold: float = 10.0
+    threshold: float = 60.0
 
 
 @dataclass
@@ -434,13 +434,13 @@ class SurveillanceEngine:
 
         # --- Section 3: Weighted Final Score ---
         w = self.config.weights
-        final_score = (
-            w.get("price_rise", 1.0) * price_rise_score
-            + w.get("price_z", 1.0) * price_z_score
-            + w.get("volume_z", 1.0) * volume_z_score
-            + w.get("band_persistence", 1.0) * band_score
-            + w.get("new_high", 1.0) * new_high_score
-        )
+        final_score = sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
+            "price_rise": price_rise_score,
+            "price_z": price_z_score,
+            "volume_z": volume_z_score,
+            "band_persistence": band_score,
+            "new_high": new_high_score,
+        }.items())
 
         return MarketMetricsResult(
             ticker=ticker,

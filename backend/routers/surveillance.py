@@ -18,8 +18,16 @@ def health_check():
 
 
 @router.get("/watchlist")
-@legacy_router.get("/scrips")
 def get_watchlist(search: str = Query("", description="Search ticker symbol")):
+    scrips = service.get_watchlist()
+    if search:
+        scrips = [s for s in scrips if search.lower() in s["ticker"].lower()]
+    return scrips
+
+
+@router.get("/scrips")
+@legacy_router.get("/scrips")
+def get_scrips(search: str = Query("", description="Search ticker symbol")):
     scrips = service.get_scrips_summary()
     if search:
         scrips = [s for s in scrips if search.lower() in s["ticker"].lower()]
