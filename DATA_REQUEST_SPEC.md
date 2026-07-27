@@ -168,3 +168,19 @@ JOIN DIM_EXCH_CLNT_DTLS s ON f.Ftrd_Sell_Exch_Clnt_Token = s.Decl_Exch_Clnt_Toke
 WHERE f.Ftrd_Trd_Date BETWEEN :DateFrom AND :DateTo
   AND f.Ftrd_Symbol = :TargetSymbol;
 ```
+
+---
+
+## 6. Table-to-Module Mapping Reference
+
+This table provides a direct cross-reference of the required tables and columns to their specific consuming UI and backend modules, as requested by the data engineering team.
+
+| Source Table | Required Columns | Consuming Module | Purpose / Justification |
+| :--- | :--- | :--- | :--- |
+| `FACT_TRADES` (`FTRD`) | `Ftrd_Symbol`, `Ftrd_Trd_Date`, `Ftrd_Trd_Price`, `Ftrd_Last_Trd_Price`, `Ftrd_Trd_Qty`, `Ftrd_Sess_Type`, `Ftrd_LTP_Chng_Indc`, `Ftrd_Last_Estd_Hi_Price` | **Module 1**: PVASF Alert Scoring & Watchlist Engine | Feeds the 5 core anomaly algorithms (Price Z, Volume Z, Band Persistence, New High, Price Rise). |
+| `FACT_TRADES` (`FTRD`) | `Ftrd_Symbol`, `Ftrd_Trd_Date`, `Ftrd_Trd_Price`, `Ftrd_Trd_Qty`, `Ftrd_Sess_Type` | **Module 2**: 180-Day Price & Volume Trend Chart | Populates the dual-axis candlestick and volume chart on the Security Workspace. |
+| `FACT_TRADES` (`FTRD`) | `Ftrd_Trd_Tmst`, `Ftrd_Buy_Exch_Clnt_Token`, `Ftrd_Sell_Exch_Clnt_Token`, `Ftrd_Init_Side_Type`, `Ftrd_LTP_Chng_Indc`, `Ftrd_Trd_Qty`, `Ftrd_Trd_Val` | **Module 3**: Participant Conduct Audit & LTP Contribution | Used to identify which buyers/sellers pushed the price (LTP tick analysis) and volume concentration. |
+| `DIM_EXCH_CLNT_DTLS` (`DECL`) | `Decl_Exch_Clnt_Token`, `Decl_Clnt_Pan`, `Decl_Clnt_Name` | **Module 3**: Participant Conduct Audit & LTP Contribution | Translates raw exchange tokens from `FTRD` into actionable Client PANs and Names. |
+| `FACT_TRADES` (`FTRD`) | `Ftrd_Buy_Exch_Clnt_Token`, `Ftrd_Sell_Exch_Clnt_Token`, `Ftrd_Buy_Exch_TM_Token`, `Ftrd_Sell_Exch_TM_Token`, `Ftrd_Same_Broker_Wash_Flag`, `Ftrd_Diff_Broker_Wash_Flag` | **Module 4**: Counterparty Concentration & Wash Trade Explorer | Detects circular trading loops, synchronized counterparty pairs, and matched wash trades. |
+| `DIM_EXCH_CLNT_DTLS` (`DECL`) | `Decl_Clnt_Pan`, `Decl_TM_Id`, `Decl_Clnt_Stat`, `Decl_City`, `Decl_State` | **Module 5**: Client 360° Identity Resolution | Provides client demographic data, active/suspended status, and geographic location for audits. |
+| `DIM_DEP_CLNT_DTLS` (`DDCL`) | `Ddcl_Dp_Id`, `Ddcl_Clnt_Id`, `Ddcl_Jnt_Hldr1_Pan`, `Ddcl_Poa_Hldr_Pan` | **Module 5**: Client 360° Identity Resolution | Cross-references Demat accounts and connected entity networks (Joint Holders, POA). |
