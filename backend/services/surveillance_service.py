@@ -22,8 +22,74 @@ class EODSurveillanceService:
     def __init__(self):
         self.config = SurveillanceConfig()
         self.engine = SurveillanceEngine(self.config)
-        self.current_df = self._generate_sample_teradata_eod()
-        self.current_trades_df = self._generate_sample_trades_df()
+        
+        db_df = self._load_db_eod()
+        self.current_df = db_df if db_df is not None else self._generate_sample_teradata_eod()
+
+        db_trades = self._load_db_trades()
+        self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
+
+    def _load_db_eod(self) -> Optional[pd.DataFrame]:
+        """Loads EOD OHLCV data directly from FACT_TRADES in the database."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactTrades
+            from sqlalchemy import func
+
+            db = SessionLocal()
+            q = db.query(
+                FactTrades.Ftrd_Symbol.label("Ticker"),
+                FactTrades.Ftrd_Trd_Date.label("Date"),
+                func.min(FactTrades.Ftrd_Trd_Price).label("Low"),
+                func.max(FactTrades.Ftrd_Trd_Price).label("High"),
+                func.sum(FactTrades.Ftrd_Trd_Qty).label("Volume"),
+                func.avg(FactTrades.Ftrd_Trd_Price).label("Close")
+            ).group_by(FactTrades.Ftrd_Symbol, FactTrades.Ftrd_Trd_Date).order_by(FactTrades.Ftrd_Symbol, FactTrades.Ftrd_Trd_Date)
+
+            df = pd.read_sql(q.statement, db.bind)
+            db.close()
+            if not df.empty and len(df) > 100:
+                df["Open"] = df["Low"]
+                return clean_historical_data(df)
+        except Exception as e:
+            print(f"[surveillance_service] DB EOD load fallback: {e}")
+        return None
+
+    def _load_db_trades(self) -> Optional[pd.DataFrame]:
+        """Loads participant trade logs directly from FACT_TRADES + DECL in the database."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactTrades, DimExchClntDtls
+            from sqlalchemy.orm import aliased
+
+            db = SessionLocal()
+            BuyClnt = aliased(DimExchClntDtls, name="buy_clnt")
+            SellClnt = aliased(DimExchClntDtls, name="sell_clnt")
+
+            q = db.query(
+                FactTrades.Ftrd_Symbol.label("Ticker"),
+                FactTrades.Ftrd_Trd_Date.label("Date"),
+                BuyClnt.Decl_Clnt_Pan.label("PAN"),
+                SellClnt.Decl_Clnt_Pan.label("CounterpartyPAN"),
+                FactTrades.Ftrd_Trd_Qty.label("BuyVolume"),
+                FactTrades.Ftrd_Trd_Qty.label("SellVolume"),
+                FactTrades.Ftrd_Trd_Val.label("BuyValue"),
+                FactTrades.Ftrd_Trd_Val.label("SellValue"),
+                FactTrades.Ftrd_LTP_Chng_Indc.label("LTPIndc"),
+                FactTrades.Ftrd_Same_Broker_Wash_Flag.label("WashFlag")
+            ).join(BuyClnt, FactTrades.Ftrd_Buy_Exch_Clnt_Token == BuyClnt.Decl_Exch_Clnt_Token)\
+             .join(SellClnt, FactTrades.Ftrd_Sell_Exch_Clnt_Token == SellClnt.Decl_Exch_Clnt_Token)
+
+            df = pd.read_sql(q.statement, db.bind)
+            db.close()
+            if not df.empty and len(df) > 100:
+                df["LTPContribution"] = df["LTPIndc"].apply(
+                    lambda x: 1.0 if x == "U" else (-1.0 if x == "D" else 0.0)
+                )
+                return df
+        except Exception as e:
+            print(f"[surveillance_service] DB trades load fallback: {e}")
+        return None
 
     def _generate_sample_teradata_eod(self, days: int = 260) -> pd.DataFrame:
         """Generates sample structured Teradata EOD price-volume extract for standard scrips."""

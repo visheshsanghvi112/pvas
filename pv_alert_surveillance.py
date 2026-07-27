@@ -339,14 +339,12 @@ class SurveillanceEngine:
 
         # Impute or estimate band_percent
         if band_percent is None:
-            # Dynamic price band inference: find 99th percentile of historical daily moves
+            # Dynamic upper price band inference: 99th percentile of historical upward daily moves
             prev_close_all = df["Close"].shift(1)
             high_pct_all = (df["High"] - prev_close_all) / prev_close_all
-            low_pct_all = (prev_close_all - df["Low"]) / prev_close_all
-            max_move_ratio_all = pd.concat([high_pct_all, low_pct_all], axis=1).max(axis=1)
-            p99 = max_move_ratio_all.dropna().quantile(0.99)
+            p99 = high_pct_all.dropna().quantile(0.99)
             
-            # Map to standard circuit bands: 2%, 5%, 10%, 20%
+            # Map to standard upper circuit bands: 2%, 5%, 10%, 20%
             if p99 <= 0.03:
                 band_percent = 0.02
             elif p99 <= 0.075:
@@ -417,13 +415,12 @@ class SurveillanceEngine:
         volume_mod_z = modified_zscore_latest(vol_roll)
         volume_z_score = self.score_zscore(volume_z)
 
-        # --- 2.4 Price Band Persistence ---
+        # --- 2.4 Price Band Persistence (Upper Circuit Only) ---
+        # Checks if the daily High reached >= 90% of the upper circuit limit.
+        # Per PVASF spec (confirmed): only upper circuit hits are counted.
         prev_close = close.shift(1)
         high_pct = (high - prev_close) / prev_close
-        low_pct = (prev_close - low) / prev_close
-        max_move_ratio = pd.concat([high_pct, low_pct], axis=1).max(axis=1)
-        
-        band_hit_days = int((max_move_ratio.iloc[-recent:] >= 0.90 * band_percent).sum())
+        band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
         band_score = self.score_band_persistence(band_hit_days)
 
         # --- 2.5 180-Day New High Breakout ---

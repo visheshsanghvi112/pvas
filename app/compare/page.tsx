@@ -122,8 +122,12 @@ export default function ComparePage() {
                     <div className="mt-1 text-xl font-bold text-amber-700">{detail1.metrics.volume_z}σ</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="text-[10px] font-sans font-semibold text-slate-500">Upper Circuit Hits</div>
+                    <div className="text-[10px] font-sans font-semibold text-slate-500 font-bold">Upper Circuit Hits</div>
                     <div className="mt-1 text-xl font-bold text-blue-700">{detail1.metrics.band_hit_days} days</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-[10px] font-sans font-semibold text-slate-500 font-bold">180D New Highs</div>
+                    <div className="mt-1 text-xl font-bold text-teal-700">{detail1.metrics.new_high_days} days</div>
                   </div>
                 </div>
 
@@ -162,8 +166,12 @@ export default function ComparePage() {
                     <div className="mt-1 text-xl font-bold text-amber-700">{detail2.metrics.volume_z}σ</div>
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="text-[10px] font-sans font-semibold text-slate-500">Upper Circuit Hits</div>
+                    <div className="text-[10px] font-sans font-semibold text-slate-500 font-bold">Upper Circuit Hits</div>
                     <div className="mt-1 text-xl font-bold text-indigo-700">{detail2.metrics.band_hit_days} days</div>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="text-[10px] font-sans font-semibold text-slate-500 font-bold">180D New Highs</div>
+                    <div className="mt-1 text-xl font-bold text-teal-700">{detail2.metrics.new_high_days} days</div>
                   </div>
                 </div>
 
@@ -231,6 +239,14 @@ export default function ComparePage() {
                       <td className="py-3.5 px-4 font-bold">{detail2.metrics.band_hit_days} days</td>
                       <td className="py-3.5 px-4 font-bold">
                         {Math.abs(detail1.metrics.band_hit_days - detail2.metrics.band_hit_days)} days
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="py-3.5 px-4 font-sans font-bold text-slate-900">180D New High Breakouts</td>
+                      <td className="py-3.5 px-4 font-bold">{detail1.metrics.new_high_days} days</td>
+                      <td className="py-3.5 px-4 font-bold">{detail2.metrics.new_high_days} days</td>
+                      <td className="py-3.5 px-4 font-bold">
+                        {Math.abs(detail1.metrics.new_high_days - detail2.metrics.new_high_days)} days
                       </td>
                     </tr>
                   </tbody>

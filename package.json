@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently \"npm run backend\" \"npm run dev\"",
+    "backend": "uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -25,6 +27,7 @@
     "@types/react": "^19.0.1",
     "@types/react-dom": "^19.0.2",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^10.0.3",
     "eslint": "^9.17.0",
     "eslint-config-next": "^15.0.0",
     "postcss": "^8.4.49",
