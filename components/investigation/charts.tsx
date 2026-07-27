@@ -17,6 +17,7 @@ import {
   YAxis
 } from "recharts";
 import type { PricePoint, ScripSummary } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -177,46 +178,42 @@ export function AlertDriversChart({ breakdown = [] }: { breakdown?: Array<{ labe
   if (!breakdown || breakdown.length === 0)
     return <div className="text-slate-500 text-xs p-4">No score breakdown available.</div>;
 
-  // Map to display data: weight×score/5 gives contribution per param
-  const data = breakdown.map((b) => ({
-    label: b.label,
-    contribution: Math.round((b.weight * b.score) / 5 * 10) / 10,
-    max_possible: b.weight,
-    raw_score: b.score,
-  }));
-
-  const COLORS = ["#e11d48", "#7c3aed", "#d97706", "#0891b2", "#059669"];
+  const PARAM_METADATA: Record<string, { color: string; bg: string; border: string; bar: string }> = {
+    "Price Rise": { color: "text-blue-700", bg: "bg-blue-50/60", border: "border-blue-200", bar: "bg-blue-600" },
+    "Price Z": { color: "text-indigo-700", bg: "bg-indigo-50/60", border: "border-indigo-200", bar: "bg-indigo-600" },
+    "Volume Z": { color: "text-cyan-700", bg: "bg-cyan-50/60", border: "border-cyan-200", bar: "bg-cyan-600" },
+    "Band Persistence": { color: "text-amber-700", bg: "bg-amber-50/60", border: "border-amber-200", bar: "bg-amber-600" },
+    "180 Day New High": { color: "text-rose-700", bg: "bg-rose-50/60", border: "border-rose-200", bar: "bg-rose-600" },
+  };
 
   return (
-    <div className="w-full min-w-0 h-[220px] overflow-hidden">
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-          <XAxis dataKey="label" stroke="#94a3b8" tick={{ fontSize: 9 }} />
-          <YAxis domain={[0, Math.max(...data.map(d => d.max_possible)) + 2]} stroke="#94a3b8" tick={{ fontSize: 10 }} width={25} />
-          <Tooltip
-            content={({ active, payload, label }: any) => {
-              if (active && payload && payload.length) {
-                const d = payload[0].payload;
-                return (
-                  <div className="rounded border border-slate-200 bg-white p-2 text-xs shadow-xl">
-                    <p className="font-bold mb-1">{label}</p>
-                    <p className="font-mono text-slate-600">Raw Score: <strong>{d.raw_score}/5</strong></p>
-                    <p className="font-mono text-slate-600">Weight: <strong>{d.max_possible}</strong></p>
-                    <p className="font-mono text-rose-700">Contribution: <strong>{d.contribution}</strong></p>
-                  </div>
-                );
-              }
-              return null;
-            }}
-          />
-          <Bar dataKey="contribution" name="Score Contribution" radius={[5, 5, 0, 0]}>
-            {data.map((_, i) => (
-              <Cell key={i} fill={COLORS[i % COLORS.length]} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="w-full p-2 space-y-2">
+      <div className="grid grid-cols-1 gap-2">
+        {breakdown.map((b) => {
+          const meta = PARAM_METADATA[b.label] || { color: "text-slate-700", bg: "bg-slate-50", border: "border-slate-200", bar: "bg-slate-600" };
+          const contribution = Math.round((b.weight * b.score) / 5 * 10) / 10;
+          const pctFill = (b.score / 5) * 100;
+
+          return (
+            <div key={b.label} className={cn("p-2 rounded border flex flex-col gap-1.5 transition-colors", meta.bg, meta.border)}>
+              <div className="flex items-center justify-between text-xs">
+                <span className={cn("font-bold", meta.color)}>{b.label}</span>
+                <div className="flex items-center gap-2 font-mono text-[11px]">
+                  <span className="text-slate-500">Weight: <strong>{b.weight}%</strong></span>
+                  <span className="text-slate-500">Score: <strong>{b.score}/5</strong></span>
+                  <span className={cn("font-black text-xs", meta.color)}>+ {contribution}</span>
+                </div>
+              </div>
+              <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
+                <div
+                  className={cn("h-2 rounded-full transition-all duration-500", meta.bar)}
+                  style={{ width: `${Math.max(pctFill, 2)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
