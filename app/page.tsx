@@ -244,11 +244,11 @@ export default function DashboardPage() {
               <a href="/cases" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
                 Case Dossiers
               </a>
-              <a href="/members" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                Broker Audit
+              <a href="/" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                Watchlist Triage
               </a>
-              <a href="/algo-ctcl" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                CTCL Algo Intel
+              <a href="/settings" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                Metric Weights
               </a>
             </div>
           </div>
