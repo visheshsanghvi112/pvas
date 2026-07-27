@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, ShieldAlert, SlidersHorizontal, RefreshCw, BarChart2, CheckCircle, PieChart, Activity } from "lucide-react";
+import { AlertTriangle, ShieldAlert, SlidersHorizontal, RefreshCw, BarChart2, CheckCircle, PieChart, Activity, TrendingUp } from "lucide-react";
 import { AlertsTable } from "@/components/dashboard/alerts-table";
 import { ScoreDistributionChart, RiskDonut } from "@/components/investigation/charts";
 import { fetchWatchlist, type ScripSummary } from "@/lib/api";
@@ -105,27 +105,154 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Right Column: Risk Heatmap / Analytics */}
-        <div className="flex flex-col gap-2 min-h-0">
-          <div className="bg-white border border-slate-200 rounded shadow-sm flex flex-col flex-1 min-h-0">
-            <div className="bg-slate-100 border-b border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-              <BarChart2 className="h-3 w-3 text-blue-600" />
-              Score Distribution
+        {/* Right Column: Executive Surveillance KPI Cards & Anomaly Highlights */}
+        <div className="flex flex-col gap-2.5 min-h-0 overflow-y-auto pr-0.5">
+          
+          {/* KPI Card 1: Risk Severity & Watchlist Summary */}
+          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2.5">
+            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="flex items-center gap-1.5">
+                <ShieldAlert className="h-3.5 w-3.5 text-blue-600" />
+                Alert Risk Breakdown
+              </span>
+              <span className="text-[9px] font-mono text-slate-400">PVASF v2.4</span>
             </div>
-            <div className="p-3 flex-1 min-h-0 overflow-hidden">
-              <ScoreDistributionChart scrips={scrips} />
+            
+            <div className="grid grid-cols-3 gap-2">
+              <div className="bg-rose-50/70 border border-rose-200 rounded p-2 text-center">
+                <div className="text-[9px] font-bold uppercase text-rose-700">High Risk</div>
+                <div className="text-lg font-black text-rose-700 font-mono mt-0.5">{loading ? "..." : highRiskCount}</div>
+                <div className="text-[8px] font-mono text-rose-500">score ≥75</div>
+              </div>
+              <div className="bg-amber-50/70 border border-amber-200 rounded p-2 text-center">
+                <div className="text-[9px] font-bold uppercase text-amber-700">Med Risk</div>
+                <div className="text-lg font-black text-amber-700 font-mono mt-0.5">{loading ? "..." : medRiskCount}</div>
+                <div className="text-[8px] font-mono text-amber-500">60 - 74</div>
+              </div>
+              <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 text-center">
+                <div className="text-[9px] font-bold uppercase text-emerald-700">Normal</div>
+                <div className="text-lg font-black text-emerald-700 font-mono mt-0.5">{loading ? "..." : lowRiskCount}</div>
+                <div className="text-[8px] font-mono text-emerald-500">&lt;60</div>
+              </div>
             </div>
           </div>
 
-          <div className="bg-white border border-slate-200 rounded shadow-sm flex flex-col flex-1 min-h-0">
-            <div className="bg-slate-100 border-b border-slate-200 px-3 py-1.5 text-[10px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
-              <PieChart className="h-3 w-3 text-rose-600" />
-              Risk Heatmap
+          {/* KPI Card 2: Anomaly Mover Highlights */}
+          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2.5">
+            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
+              <TrendingUp className="h-3.5 w-3.5 text-amber-600" />
+              Anomaly Highlights (15D Window)
             </div>
-            <div className="p-3 flex-1 min-h-0 flex items-center justify-center">
-              <RiskDonut scrips={scrips} />
+
+            {loading || scrips.length === 0 ? (
+              <div className="text-[10px] text-slate-400 font-mono py-2">Loading highlights…</div>
+            ) : (
+              <div className="space-y-2 text-xs">
+                {/* Max Price Rise */}
+                {(() => {
+                  const maxRise = [...scrips].sort((a, b) => b.price_rise_pct - a.price_rise_pct)[0];
+                  return maxRise ? (
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
+                      <div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Price Rise (vs T-180)</div>
+                        <div className="font-bold text-slate-900">{maxRise.symbol}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black text-rose-600 font-mono">+{maxRise.price_rise_pct.toFixed(1)}%</div>
+                        <div className="text-[9px] text-slate-400 font-mono">15D Peak</div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Max Circuit Hits */}
+                {(() => {
+                  const maxBand = [...scrips].sort((a, b) => b.band_hit_days - a.band_hit_days)[0];
+                  return maxBand ? (
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
+                      <div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Circuit Band Persistence</div>
+                        <div className="font-bold text-slate-900">{maxBand.symbol}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black text-blue-700 font-mono">{maxBand.band_hit_days} Days</div>
+                        <div className="text-[9px] text-slate-400 font-mono">≥90% Circuit</div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+
+                {/* Max Volume Z */}
+                {(() => {
+                  const maxVolZ = [...scrips].sort((a, b) => b.volume_z - a.volume_z)[0];
+                  return maxVolZ ? (
+                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
+                      <div>
+                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Volume Z-Score</div>
+                        <div className="font-bold text-slate-900">{maxVolZ.symbol}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-black text-violet-700 font-mono">{maxVolZ.volume_z.toFixed(2)}σ</div>
+                        <div className="text-[9px] text-slate-400 font-mono">Volume Surge</div>
+                      </div>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
+            )}
+          </div>
+
+          {/* KPI Card 3: Engine Architecture Status */}
+          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2">
+            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1.5">
+              <span className="flex items-center gap-1.5">
+                <BarChart2 className="h-3.5 w-3.5 text-emerald-600" />
+                Surveillance Architecture
+              </span>
+              <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 rounded">ONLINE</span>
+            </div>
+
+            <div className="space-y-1.5 text-[11px] font-mono">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Baseline Window:</span>
+                <span className="font-bold text-slate-900">180 Trading Days</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Observation Window:</span>
+                <span className="font-bold text-slate-900">15 Trading Days</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Warehouse Engine:</span>
+                <span className="font-bold text-slate-900">Teradata DWBIS</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Active Core Rules:</span>
+                <span className="font-bold text-blue-700">5 PV Metrics</span>
+              </div>
             </div>
           </div>
+
+          {/* KPI Card 4: Quick Action Shortcuts */}
+          <div className="bg-slate-900 text-white rounded shadow-xs p-3 space-y-2">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
+              Surveillance Workflows
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold">
+              <a href="/compare" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                Compare Scrips
+              </a>
+              <a href="/cases" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                Case Dossiers
+              </a>
+              <a href="/members" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                Broker Audit
+              </a>
+              <a href="/algo-ctcl" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
+                CTCL Algo Intel
+              </a>
+            </div>
+          </div>
+
         </div>
 
       </div>
