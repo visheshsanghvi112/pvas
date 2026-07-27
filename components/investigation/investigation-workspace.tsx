@@ -334,7 +334,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             rawScore={newHighRaw}
           />
           <div className="flex items-center ml-1 text-[9px] text-slate-400 shrink-0 font-mono">
-            threshold: 60=Med · 75=High
+            threshold: 10=Med · 15=High
           </div>
         </div>
       </div>
@@ -762,9 +762,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               PVASF Score Legend
             </div>
             <div className="space-y-1 text-[10px] font-mono">
-              <div className="flex justify-between"><span className="text-rose-600 font-bold">HIGH RISK</span><span className="text-slate-500">≥ 75</span></div>
-              <div className="flex justify-between"><span className="text-amber-600 font-bold">MEDIUM</span><span className="text-slate-500">60 – 74</span></div>
-              <div className="flex justify-between"><span className="text-emerald-600 font-bold">LOW</span><span className="text-slate-500">&lt; 60</span></div>
+              <div className="flex justify-between"><span className="text-rose-600 font-bold">HIGH RISK</span><span className="text-slate-500">≥ 15</span></div>
+              <div className="flex justify-between"><span className="text-amber-600 font-bold">MEDIUM</span><span className="text-slate-500">10 – 14</span></div>
+              <div className="flex justify-between"><span className="text-emerald-600 font-bold">LOW</span><span className="text-slate-500">&lt; 10</span></div>
               <div className="border-t border-slate-100 pt-1 mt-1 text-slate-400 text-[9px]">
                 5 params · max 5 pts each<br />
                 Price Rise 25% · Vol Z 25%<br />
