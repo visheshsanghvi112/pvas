@@ -122,17 +122,20 @@ export function AlertsTable({
             </tr>
           ) : (
             sorted.map((alert) => (
-              <tr key={alert.symbol} className="hover:bg-blue-50 transition-colors group">
-                <td className="px-3 py-1.5 font-sans">
+              <tr key={alert.symbol} className={cn(
+                "transition-colors group border-b border-slate-100",
+                alert.risk === "High" ? "hover:bg-rose-50/60 bg-rose-50/20" : alert.risk === "Medium" ? "hover:bg-amber-50/60" : "hover:bg-blue-50/50"
+              )}>
+                <td className="px-3 py-2 font-sans">
                   <div className="flex items-center gap-2">
                     <div className={cn(
-                      "w-1.5 h-1.5 rounded-full shrink-0",
-                      alert.risk === "High" ? "bg-rose-500" : alert.risk === "Medium" ? "bg-amber-500" : "bg-emerald-500"
+                      "w-2 h-2 rounded-full shrink-0 shadow-xs",
+                      alert.risk === "High" ? "bg-rose-600 animate-pulse" : alert.risk === "Medium" ? "bg-amber-500" : "bg-emerald-500"
                     )} />
                     <div>
                       <Link
                         href={`/investigations/${alert.symbol}`}
-                        className="font-bold text-sm text-blue-700 hover:underline"
+                        className="font-bold text-sm text-blue-700 hover:underline hover:text-blue-900"
                       >
                         {alert.symbol}
                       </Link>
@@ -142,12 +145,23 @@ export function AlertsTable({
                     </div>
                   </div>
                 </td>
-                <td className="px-3 py-1.5">
-                  <div className={cn(
-                    "font-extrabold text-sm",
-                    alert.score >= 75 ? "text-rose-600" : alert.score >= 60 ? "text-amber-600" : "text-emerald-600"
-                  )}>
-                    {alert.score}
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <div className={cn(
+                      "font-extrabold text-sm font-mono w-10 text-right",
+                      alert.score >= 75 ? "text-rose-600" : alert.score >= 60 ? "text-amber-600" : "text-emerald-600"
+                    )}>
+                      {alert.score}
+                    </div>
+                    <div className="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden hidden sm:block">
+                      <div
+                        className={cn(
+                          "h-1.5 rounded-full",
+                          alert.score >= 75 ? "bg-rose-600" : alert.score >= 60 ? "bg-amber-500" : "bg-emerald-500"
+                        )}
+                        style={{ width: `${Math.min(alert.score, 100)}%` }}
+                      />
+                    </div>
                   </div>
                 </td>
                 <td className="px-3 py-1.5">

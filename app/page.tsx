@@ -36,28 +36,38 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-2 h-[calc(100vh-4rem)]">
       {/* Dense Market Overview Strip */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+      <div className="flex items-center justify-between border-b border-slate-200 pb-2 px-1">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-widest text-[10px]">
-            <Activity className="h-3.5 w-3.5" />
-            Market Surveillance Overview
+            <Activity className="h-3.5 w-3.5 text-blue-600 animate-pulse" />
+            Market Surveillance Command Center
           </div>
           <div className="h-4 w-px bg-slate-300"></div>
-          <div className="flex gap-4 text-xs font-mono">
+          <div className="flex gap-4 text-xs font-mono items-center">
             <div>Total EOD Scrips: <strong className="text-slate-900">{loading ? "..." : scrips.length}</strong></div>
-            <div className="text-rose-600">High Risk: <strong className="font-extrabold">{loading ? "..." : highRiskCount}</strong></div>
-            <div className="text-amber-600">Med Risk: <strong>{loading ? "..." : medRiskCount}</strong></div>
-            <div className="text-emerald-600">Low Risk: <strong>{loading ? "..." : lowRiskCount}</strong></div>
+            <div className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full text-[11px]">
+              <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-ping" />
+              High Risk: <strong className="font-black">{loading ? "..." : highRiskCount}</strong>
+            </div>
+            <div className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[11px]">
+              Med Risk: <strong className="font-bold">{loading ? "..." : medRiskCount}</strong>
+            </div>
+            <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[11px]">
+              Normal: <strong>{loading ? "..." : lowRiskCount}</strong>
+            </div>
           </div>
         </div>
-        <button
-          onClick={loadData}
-          disabled={loading}
-          className="flex items-center gap-1 text-[10px] font-bold uppercase text-slate-500 hover:text-slate-900 transition-colors"
-        >
-          <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
-          Sync
-        </button>
+        <div className="flex items-center gap-3">
+          <span className="text-[10px] font-mono text-slate-400 uppercase">Engine: <span className="text-slate-700 font-bold">Teradata DWBIS</span></span>
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-1.5 text-[10px] font-bold uppercase bg-slate-900 text-white px-2.5 py-1 rounded hover:bg-blue-700 transition-colors shadow-xs"
+          >
+            <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+            Sync Data
+          </button>
+        </div>
       </div>
 
       {/* Main Grid: Alerts Table & Analytics */}
