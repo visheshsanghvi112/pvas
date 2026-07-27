@@ -34,30 +34,31 @@ export default function DashboardPage() {
   const lowRiskCount = scrips.filter((s) => s.risk === "Low").length;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-2 h-[calc(100vh-4rem)]">
+    <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-2.5 p-2 sm:p-4 lg:h-[calc(100vh-4.5rem)] min-h-0">
       {/* Dense Market Overview Strip */}
-      <div className="flex items-center justify-between border-b border-slate-200 pb-2 px-1">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-widest text-[10px]">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-200 pb-2 px-1 gap-2 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-widest text-[10px] shrink-0">
             <Activity className="h-3.5 w-3.5 text-blue-600 animate-pulse" />
-            Market Surveillance Command Center
+            <span className="hidden sm:inline">Market Surveillance Command Center</span>
+            <span className="sm:hidden">Command Center</span>
           </div>
-          <div className="h-4 w-px bg-slate-300"></div>
-          <div className="flex gap-4 text-xs font-mono items-center">
-            <div>Total EOD Scrips: <strong className="text-slate-900">{loading ? "..." : scrips.length}</strong></div>
-            <div className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full text-[11px]">
+          <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
+          <div className="flex flex-wrap gap-2 text-xs font-mono items-center">
+            <div className="text-[11px] text-slate-600">Scrips: <strong className="text-slate-900">{loading ? "..." : scrips.length}</strong></div>
+            <div className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full text-[10px]">
               <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-ping" />
-              High Risk: <strong className="font-black">{loading ? "..." : highRiskCount}</strong>
+              High: <strong className="font-black">{loading ? "..." : highRiskCount}</strong>
             </div>
-            <div className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[11px]">
-              Med Risk: <strong className="font-bold">{loading ? "..." : medRiskCount}</strong>
+            <div className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[10px]">
+              Med: <strong className="font-bold">{loading ? "..." : medRiskCount}</strong>
             </div>
-            <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[11px]">
+            <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px]">
               Normal: <strong>{loading ? "..." : lowRiskCount}</strong>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between w-full md:w-auto gap-3 shrink-0">
           <span className="text-[10px] font-mono text-slate-400 uppercase">Engine: <span className="text-slate-700 font-bold">Teradata DWBIS</span></span>
           <button
             onClick={loadData}
@@ -71,10 +72,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Grid: Alerts Table & Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-2 flex-1 min-h-0">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] xl:grid-cols-[1fr_340px] gap-3 flex-1 min-h-0">
         
         {/* Left Column: Watchlist Data Grid */}
-        <div className="flex flex-col bg-white border border-slate-200 rounded shadow-sm overflow-hidden min-h-0">
+        <div className="flex flex-col bg-white border border-slate-200 rounded shadow-sm overflow-hidden min-h-[400px] lg:min-h-0">
           <div className="bg-slate-100 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between shrink-0">
             <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
               <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
@@ -96,7 +97,7 @@ export default function DashboardPage() {
               ))}
             </div>
           </div>
-          <div className="flex-1 overflow-auto min-h-0">
+          <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
             <AlertsTable
               scrips={scrips}
               onStatusChange={handleStatusChange}

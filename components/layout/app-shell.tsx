@@ -110,25 +110,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 antialiased font-sans flex flex-col max-w-full overflow-x-hidden">
       {/* Top Banner - System Status */}
-      <div className="relative z-[60] flex min-h-6 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 py-1 text-[10px] text-slate-300 sm:px-4 font-mono uppercase tracking-wider">
+      <div className="relative z-[60] flex flex-wrap min-h-6 items-center justify-between border-b border-slate-800 bg-slate-900 px-3 py-1 text-[10px] text-slate-300 font-mono uppercase tracking-wider gap-1">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5">
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             <span className="font-bold text-white">SYSTEM READY</span>
           </div>
-          <span className="hidden md:inline text-slate-500">| PVASF Engine v2.4</span>
+          <span className="hidden sm:inline text-slate-500">| PVASF Engine v2.4</span>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-slate-500">Last EOD Run: <span className="text-slate-300">2026-07-23 18:45 IST</span></span>
+        <div className="flex items-center gap-3 text-[9px] sm:text-[10px]">
+          <span className="text-slate-500">Last EOD Run: <span className="text-slate-300 font-mono">2026-07-23 18:45 IST</span></span>
         </div>
       </div>
 
       {/* Dense Top Nav */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white shadow-xs">
-        <div className="flex items-center justify-between px-4 py-2 gap-4">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between px-3 sm:px-4 py-2 gap-2 sm:gap-4">
           
           {/* Logo & Search Area */}
-          <div className="flex items-center gap-6 flex-1">
+          <div className="flex items-center gap-3 sm:gap-6 flex-1 min-w-0">
             <Link href="/" className="flex items-center gap-2 shrink-0 group">
               <div className="h-8 w-8 bg-slate-900 text-white font-black text-sm flex items-center justify-center rounded shadow-sm group-hover:bg-blue-700 transition-colors">
                 PV
@@ -136,12 +136,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </Link>
 
             {/* Global Search */}
-            <div className="relative max-w-md w-full" ref={searchRef}>
+            <div className="relative flex-1 max-w-full sm:max-w-xs md:max-w-md" ref={searchRef}>
               <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-400" />
               <Input
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="h-7 pl-8 pr-7 bg-slate-100 border-transparent hover:border-slate-300 text-slate-900 text-xs placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded"
+                className="h-7 pl-8 pr-7 bg-slate-100 border-transparent hover:border-slate-300 text-slate-900 text-xs placeholder:text-slate-500 focus:bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded w-full"
                 placeholder="Search Scrip (Symbol/ISIN) or PAN..."
               />
               {searchQuery && (
@@ -190,8 +190,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
 
           {/* Navigation Links & Controls */}
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <nav className="flex items-center gap-1 mr-4">
+          <div className="flex items-center justify-between sm:justify-end gap-2 text-sm font-medium shrink-0 overflow-x-auto">
+            <nav className="flex items-center gap-1 overflow-x-auto shrink-0">
               {nav.map((item) => {
                 const active = pathname === item.href || (item.key === 'dashboard' && pathname === '/');
                 return (
@@ -199,7 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     key={item.key}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-1.5 px-3 py-1.5 rounded text-xs transition-colors",
+                      "flex items-center gap-1.5 px-2.5 py-1 rounded text-xs transition-colors whitespace-nowrap",
                       active 
                         ? "bg-slate-900 text-white font-semibold" 
                         : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
@@ -212,16 +212,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               })}
             </nav>
 
-            <div className="h-4 w-px bg-slate-300 mx-2"></div>
+            <div className="h-4 w-px bg-slate-300 mx-1 hidden sm:block"></div>
 
             {/* Ingest Button */}
             <Button
               onClick={() => setUploadModalOpen(true)}
               variant="outline"
-              className="h-7 px-2 text-[11px] font-semibold border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded shadow-sm flex items-center gap-1.5"
+              className="h-7 px-2 text-[11px] font-semibold border-slate-300 text-slate-700 bg-white hover:bg-slate-50 rounded shadow-sm flex items-center gap-1.5 shrink-0"
             >
               <Upload className="h-3 w-3 text-blue-600" />
-              Ingest EOD
+              <span className="hidden sm:inline">Ingest EOD</span>
             </Button>
 
             {/* Notifications */}

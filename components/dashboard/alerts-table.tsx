@@ -71,7 +71,8 @@ export function AlertsTable({
         />
       </div>
 
-      <table className="w-full text-left border-collapse">
+      <div className="overflow-x-auto w-full">
+        <table className="w-full text-left border-collapse min-w-[850px]">
         <thead className="bg-slate-100 text-[10px] font-bold uppercase tracking-wider text-slate-500 sticky top-7 z-10 shadow-sm border-b border-slate-200">
           <tr>
             <th className="px-3 py-1.5 cursor-pointer hover:text-slate-900 w-[200px]" onClick={() => handleSort("symbol")}>
@@ -220,6 +221,7 @@ export function AlertsTable({
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
