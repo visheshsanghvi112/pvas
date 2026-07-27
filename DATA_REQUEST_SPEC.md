@@ -1,192 +1,153 @@
-# PVASF Institutional Data Requirement & Extraction Specification
+# PVASF Targeted Data Request Specification
+## Minimal Data Extract Requirements for Production Model Execution
 
-**Document Version:** 2.0.0  
-**Prepared For:** Surveillance Product Manager & Teradata Data Engineering Team  
-**System Target:** Price-Volume Alert Surveillance Framework (PVASF)  
-
----
-
-## Executive Overview & Business Purpose
-
-The **Price-Volume Alert Surveillance Framework (PVASF)** frontend and backend modules have been fully implemented, integrated, and validated against synthetic database schemas. The surveillance engine evaluates 5 statistical shortlisting metrics over a 180-day baseline and audits intraday trade execution logs to detect market manipulation schemes.
-
-To transition from synthetic development data to live exchange analytics, we require a targeted extract of historical and ongoing production market data from the Teradata Data Warehouse. 
-
-This document specifies:
-1. **Which tables and columns** are mandatory for each surveillance module.
-2. **Business justifications** for every requested column to ensure compliance with minimal-extract data governance.
-3. **Production Teradata SQL queries** for data extraction.
-4. **SLA, transmission, and PII security requirements**.
-
-> **Scope Boundary (Current Phase — Artificial Price Inflation Focus):**  
-> As defined in the PVASF core specification, the surveillance engine shortlists high-risk scrips using five right-tail metric parameters: Price Rise %, Price Z-Score ($Z \ge 1.645$), Volume Z-Score ($Z \ge 1.645$), Upper Circuit Band Persistence, and 180-Day New High Breakouts. The current phase targets **artificial price inflation and coordinated upward volume manipulation**. Downward price manipulation (deflation/short-selling raids) uses the same schema structure but is out of scope for the current scoring phase.
+**Document Version:** 2.1.0  
+**Prepared By:** PVASF Surveillance Development Team  
+**Target Audience:** Surveillance Product Manager & Teradata Data Engineering Team  
+**Reference Schema Document:** [`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md) (attached)
 
 ---
 
-## Summary of Datasets Required
+## 1. Executive Context: Minimal Extract Rationale
 
-| Dataset ID | Dataset Name | Source Teradata Table / Feed | Primary Key | Refresh Frequency | Core Surveillance Module Powered |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **DS-01** | **Trade Match Execution Log** | `FACT_TRADES` (`FTRD`) | `Ftrd_Trd_Num` | Daily EOD Batch | Watchlist Scoring, 180D Chart, Trade Explorer, LTP Pushers, Wash Trades |
-| **DS-02** | **Exchange Client Master** | `DIM_EXCH_CLNT_DTLS` (`DECL`) | `Decl_Exch_Clnt_Token` | Daily EOD Delta | Participant PAN Resolution, Volume Share per Client, Trading Member Audit |
-| **DS-03** | **Depository Client Master** | `DIM_DEP_CLNT_DTLS` (`DDCL`) | `Ddcl_Clnt_Token` | Daily EOD Delta | Client 360° Identity Resolution (Cross-referencing NSDL/CDSL Demat Accounts) |
-| **DS-04** | **Corporate Announcements Feed** | `SCRIP_ANNOUNCEMENTS` | `Ticker`, `AnnouncementDate` | Daily EOD | Material Disclosure Timeline Correlation (Validating price surges against news) |
-| **DS-05** | **Shareholding Pattern Archives** | `SCRIP_SHAREHOLDING` | `Ticker`, `Quarter` | Quarterly / Monthly | Float Analysis, Promoter % Shift, Top 1% Ownership Concentration |
+The Price-Volume Alert Surveillance Framework (PVASF) UI and FastAPI backend modules are fully operational on synthetic schemas matching Teradata warehouse structures (`FACT_TRADES`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`).
 
----
+To execute our surveillance algorithms against live production market data without requiring a massive, full-database warehouse dump, **this document specifies the exact minimal set of tables, columns, and date ranges required to power the specific modules we have built.**
 
-## Historical Windows & Date Range Guidelines
-
-- **Default Framework Baseline**: 180 Trading Days ($T-180$).
-- **Default Observation Window**: 15 Trading Days ($T-15$).
-- **Custom Range Investigation Support**: The surveillance backend is built with dynamic API filtering (`date_from` and `date_to`). Analysts frequently investigate historical manipulation events across custom date ranges (e.g., a specific 30-day window from 6 months ago).
-
-> **Impact on Data Request**:  
-> All column requirements specified below remain identical regardless of window size. To support analyst custom queries, **we request access to full historical `FACT_TRADES` records (minimum 260 trading days / 1 calendar year), refreshed nightly via an EOD batch process.**
+### Scope & System Compatibility
+- **Built Engine Capabilities**: Our current implementation focuses on **Artificial Price Inflation, Volume Pumps, and Conduct Audits** (Price Rise %, Price Z-Score $Z \ge 1.645$, Volume Z-Score $Z \ge 1.645$, Upper Circuit Band Persistence, 180D New Highs, LTP Price Pushers, Same-Broker Wash Trades, and Counterparty Loops).
+- **Compatibility with Deflation / Downward Surveillance Systems**: If the organization has existing modules or is building separate alerts for price deflation, short-selling raids, or volatility drops, **the schema request below is 100% compatible**. The trade match columns (`Ftrd_Trd_Price`, `Ftrd_Trd_Qty`, `Ftrd_Trd_Date`, `Ftrd_LTP_Chng_Indc`, `Decl_Clnt_Pan`) support both upward and downward statistical scoring.
 
 ---
 
-## Detailed Column Requirements by Surveillance Module
+## 2. Summary of Minimum Required Tables
+
+Out of the hundreds of tables in the production data warehouse, **our system requires access to only 3 core tables**:
+
+| Table Name | Short Code | Full Entity Name | Total Columns in Schema | Minimal Columns Required by Our System |
+| :--- | :--- | :--- | :---: | :---: |
+| `FACT_TRADES` | `FTRD` | Trade Match Execution Facts | 97 | **18 Columns** |
+| `DIM_EXCH_CLNT_DTLS` | `DECL` | Exchange Client Master (PAN Link) | 44 | **7 Columns** |
+| `DIM_DEP_CLNT_DTLS` | `DDCL` | Depository Client Master (Demat Accounts) | 45 | **6 Columns** |
+
+> Complete column-by-column schema descriptions for all 3 tables are available in [`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md).
+
+---
+
+## 3. Date Range & Baseline Guidelines
+
+- **Default Surveillance Window**: 180 Trading Days ($T-180$) baseline + 15 Trading Days observation window.
+- **Dynamic Custom Range Queries**: Analysts require flexibility to run custom date-range investigations (e.g. audit a 30-day window from 6 months ago).
+
+> **Impact on Extract Request**:  
+> The system requires access to historical `FACT_TRADES` records (minimum 260 trading days / 1 calendar year), refreshed via a daily EOD batch. The API dynamically filters `Ftrd_Trd_Date BETWEEN date_from AND date_to` at query time.
+
+---
+
+## 4. Module-by-Module Column Requirements & Business Justifications
 
 ### Module 1: PVASF Alert Scoring & Watchlist Engine
-
-**Spec Reference**: PVASF Shortlisting Metrics (Section 2) & Composite Scoring (Section 3)  
-**Purpose**: Generates the primary surveillance watchlist ranking all listed scrips by calculated PVASF Risk Score ($0 \dots 100$).  
+**Purpose**: Computes 5 shortlisting metric scores and generates the primary risk-ranked watchlist.  
 **Source Table**: `FACT_TRADES` (`FTRD`)  
 
-| Column Name | Data Type | Mandatory? | Business Justification & Metric Usage |
+| Column Name | Data Type | Mandatory? | Exact Business Justification & Metric Formula |
 | :--- | :--- | :---: | :--- |
-| `Ftrd_Symbol` | `VARCHAR` | **YES** | Ticker symbol; primary group-by key for scrip aggregated metrics. |
-| `Ftrd_Trd_Date` | `DATE` | **YES** | Execution date; filters 180-day baseline and 15-day observation windows. |
-| `Ftrd_Trd_Price` | `DECIMAL` | **YES** | Executed trade price; used as EOD close proxy to compute Price Rise % and Price Z-Score. |
-| `Ftrd_Last_Trd_Price` | `DECIMAL` | **YES** | Running Last Traded Price (LTP); tracks 180-day historical new high breakouts. |
-| `Ftrd_Trd_Qty` | `DECIMAL` | **YES** | Daily traded volume; computes 15-day mean volume vs 180-day baseline Volume Z-Score. |
-| `Ftrd_Trd_Val` | `DECIMAL` | Optional | Daily traded value; validates volume concentration against rupee/dollar turnover. |
-| `Ftrd_Sess_Type` | `INTEGER` | **YES** | Session type filter: `1`=Pre-Open, `2`=Normal Market, `3`=Closing Auction. Only `2` is scored. |
-| `Ftrd_LTP_Chng_Indc` | `VARCHAR` | **YES** | LTP direction indicator (`+`, `-`, `=`). `+` flags positive price movement ticks. |
-| `Ftrd_Last_Estd_Hi_Price` | `DECIMAL` | **YES** | Applicable upper price band limit; used to evaluate Circuit Band Persistence ($\ge 90\%$ band hits). |
+| `Ftrd_Symbol` | `VARCHAR` | **YES** | Ticker symbol; primary group-by key for per-scrip calculations. |
+| `Ftrd_Trd_Date` | `DATE` | **YES** | Calendar date filter for 180-day baseline and 15-day window. |
+| `Ftrd_Trd_Price` | `DECIMAL` | **YES** | Executed price; used as EOD close proxy to compute Price Rise % and Price Z-Score. |
+| `Ftrd_Last_Trd_Price` | `DECIMAL` | **YES** | Running LTP; computes 180-day new high breakouts (`max(180D LTP)`). |
+| `Ftrd_Trd_Qty` | `DECIMAL` | **YES** | Daily volume; computes Volume Z-Score (15D avg vs 180D rolling mean & stddev). |
+| `Ftrd_Sess_Type` | `INTEGER` | **YES** | Session type filter (`2` = Normal Market). Pre-open (`1`) and closing auction (`3`) trades are filtered out. |
+| `Ftrd_LTP_Chng_Indc` | `VARCHAR` | **YES** | LTP direction (`+`, `-`, `=`). `+` indicates positive tick movement. |
+| `Ftrd_Last_Estd_Hi_Price` | `DECIMAL` | **YES** | Upper price band; evaluates Circuit Band Persistence ($\ge 90\%$ of upper circuit limit). |
 
 ---
 
-### Module 2: 180-Day Interactive Price & Volume Chart
+### Module 2: 180-Day Price & Volume Trend Chart
+**Purpose**: Powers the interactive dual-axis price candlestick and volume bar chart in the Security Workspace.  
+**Source Table**: `FACT_TRADES` (`FTRD`)  
 
-**Spec Reference**: Dashboard Output (Section 5) — "Price movement over 180 days", "Rolling 15-day average"  
-**Purpose**: Renders dual-axis interactive price movement and volume trend charts for security deep-dive investigations.  
-**Source Table**: `FACT_TRADES` (`FTRD`) (or pre-aggregated EOD bar table `EOD_PRICE_VOLUME_HIST`)  
-
-| Column Name | Data Type | Mandatory? | Business Justification & Usage |
+| Column Name | Data Type | Mandatory? | Exact Business Justification & Chart Element |
 | :--- | :--- | :---: | :--- |
-| `Ftrd_Symbol` | `VARCHAR` | **YES** | Filter for security under active investigation. |
+| `Ftrd_Symbol` | `VARCHAR` | **YES** | Filter to selected security under investigation. |
 | `Ftrd_Trd_Date` | `DATE` | **YES** | X-axis timeline distribution. |
-| `Ftrd_Trd_Price` | `DECIMAL` | **YES** | Daily closing price trend and 20D / 50D moving average overlay. |
-| `Ftrd_Trd_Qty` | `DECIMAL` | **YES** | Daily volume bars and 15-day rolling average volume line overlay. |
-| `Ftrd_Sess_Type` | `INTEGER` | **YES** | Filter out pre-open/closing auction spikes (`Sess_Type = 2`). |
+| `Ftrd_Trd_Price` | `DECIMAL` | **YES** | Daily close price trend, 20D and 50D moving average overlays. |
+| `Ftrd_Trd_Qty` | `DECIMAL` | **YES** | Daily volume bars and 15D rolling average volume line overlay. |
+| `Ftrd_Sess_Type` | `INTEGER` | **YES** | Filters normal trading session (`Sess_Type = 2`). |
 
 ---
 
 ### Module 3: Participant Conduct Audit & LTP Contribution
-
-**Spec Reference**: Participant-Level Metrics (Section 4.1, 4.2)  
-**Purpose**: Identifies individual client PANs driving positive price movement (LTP pushers) and volume concentration.  
+**Purpose**: Identifies client PANs driving positive price movement (LTP pushers) and volume concentration.  
 **Source Tables**: `FACT_TRADES` (`FTRD`) joined with `DIM_EXCH_CLNT_DTLS` (`DECL`)  
-**Join Condition**: `Ftrd_Buy_Exch_Clnt_Token = Decl_Exch_Clnt_Token` and `Ftrd_Sell_Exch_Clnt_Token = Decl_Exch_Clnt_Token`  
 
-| Table | Column Name | Data Type | Business Justification & Usage |
+| Table | Column Name | Data Type | Exact Business Justification |
 | :--- | :--- | :--- | :--- |
-| `FTRD` | `Ftrd_Trd_Tmst` | `TIMESTAMP` | Millisecond timestamp to match trade match moment to LTP tick movement. |
-| `FTRD` | `Ftrd_Buy_Exch_Clnt_Token` | `INTEGER` | Buyer exchange client token; joins to `DECL` to resolve buyer PAN. |
-| `FTRD` | `Ftrd_Sell_Exch_Clnt_Token` | `INTEGER` | Seller exchange client token; joins to `DECL` to resolve seller PAN. |
-| `FTRD` | `Ftrd_Init_Side_Type` | `INTEGER` | Initiator flag: `1`=Buy Aggressive, `2`=Sell Aggressive. Aggressive buy trades drive LTP up. |
-| `FTRD` | `Ftrd_LTP_Chng_Indc` | `VARCHAR` | `+` flag indicates buyer pushed LTP higher. Only positive ticks count for LTP Contribution %. |
-| `FTRD` | `Ftrd_Trd_Qty` | `DECIMAL` | Summed per buyer/seller PAN to measure Volume Share %. |
-| `FTRD` | `Ftrd_Trd_Val` | `DECIMAL` | Summed buy value vs sell value per PAN to calculate Net Realized/Unrealized P&L. |
-| `DECL` | `Decl_Exch_Clnt_Token` | `INTEGER` | Primary key join token. |
-| `DECL` | `Decl_Clnt_Pan` | `VARCHAR` | Client PAN; primary legal entity identifier for grouping participant activity. |
-| `DECL` | `Decl_Clnt_Name` | `VARCHAR` | Client full legal name. |
+| `FTRD` | `Ftrd_Trd_Tmst` | `TIMESTAMP` | Millisecond execution timestamp to correlate trade execution to LTP tick changes. |
+| `FTRD` | `Ftrd_Buy_Exch_Clnt_Token` | `INTEGER` | Buyer client token; joins to `DECL.Decl_Exch_Clnt_Token` to resolve buyer PAN. |
+| `FTRD` | `Ftrd_Sell_Exch_Clnt_Token` | `INTEGER` | Seller client token; joins to `DECL.Decl_Exch_Clnt_Token` to resolve seller PAN. |
+| `FTRD` | `Ftrd_Init_Side_Type` | `INTEGER` | Aggressor flag (`1`=Buy Aggressive). Aggressive buyers drive price up. |
+| `FTRD` | `Ftrd_LTP_Chng_Indc` | `VARCHAR` | `+` flag indicates trade pushed LTP higher. Only `+` trades count for LTP Contribution %. |
+| `FTRD` | `Ftrd_Trd_Qty` | `DECIMAL` | Volume per buyer/seller PAN to compute Volume Share %. |
+| `FTRD` | `Ftrd_Trd_Val` | `DECIMAL` | Gross buy value vs sell value per PAN to calculate Net Realized/Unrealized P&L. |
+| `DECL` | `Decl_Exch_Clnt_Token` | `INTEGER` | Primary key join token from `FTRD`. |
+| `DECL` | `Decl_Clnt_Pan` | `VARCHAR` | **Client PAN — primary legal entity identifier for participant grouping.** |
+| `DECL` | `Decl_Clnt_Name` | `VARCHAR` | Client full legal name for audit UI. |
 
 ---
 
-### Module 4: Counterparty Concentration & Wash Trade Audit
-
-**Spec Reference**: Counterparty Concentration (Section 4.3)  
-**Purpose**: Detects synchronized trading between PAN pairs, circular volume rotation (A→B→C→A), and same-broker wash trades.  
+### Module 4: Counterparty Concentration & Wash Trade Explorer
+**Purpose**: Audits synchronized trading between PAN pairs, circular trading, and same-broker wash trades.  
 **Source Tables**: `FACT_TRADES` (`FTRD`) joined with `DIM_EXCH_CLNT_DTLS` (`DECL`)  
 
-| Column Name | Data Type | Mandatory? | Business Justification & Usage |
+| Column Name | Data Type | Mandatory? | Exact Business Justification |
 | :--- | :--- | :---: | :--- |
-| `Ftrd_Buy_Exch_Clnt_Token` | `INTEGER` | **YES** | Buyer token for counterparty pair aggregation. |
-| `Ftrd_Sell_Exch_Clnt_Token` | `INTEGER` | **YES** | Seller token for counterparty pair aggregation. |
-| `Ftrd_Buy_Exch_TM_Token` | `INTEGER` | **YES** | Buying Trading Member (Broker) token. |
-| `Ftrd_Sell_Exch_TM_Token` | `INTEGER` | **YES** | Selling Trading Member (Broker) token. |
-| `Ftrd_Same_Broker_Wash_Flag`| `INTEGER` | **YES** | Flag `1` indicates buy and sell orders matched within the same broker. |
-| `Ftrd_Diff_Broker_Wash_Flag`| `INTEGER` | **YES** | Flag `1` indicates pre-arranged wash trade matched across different brokers. |
+| `Ftrd_Buy_Exch_Clnt_Token` | `INTEGER` | **YES** | Buyer token for counterparty pair matrix. |
+| `Ftrd_Sell_Exch_Clnt_Token` | `INTEGER` | **YES** | Seller token for counterparty pair matrix. |
+| `Ftrd_Buy_Exch_TM_Token` | `INTEGER` | **YES** | Buyer Trading Member (Broker) token. |
+| `Ftrd_Sell_Exch_TM_Token` | `INTEGER` | **YES** | Seller Trading Member (Broker) token. |
+| `Ftrd_Same_Broker_Wash_Flag`| `INTEGER` | **YES** | Flag `1` indicates buyer & seller matched at the same broker (wash trade). |
+| `Ftrd_Diff_Broker_Wash_Flag`| `INTEGER` | **YES** | Flag `1` indicates pre-arranged wash trade across different brokers. |
 
 ---
 
 ### Module 5: Client 360° Identity Resolution (Exchange + Depository)
-
-**Purpose**: Cross-references exchange trading accounts (`DECL`) with depository demat accounts (`DDCL`) to audit client holdings, joint accounts, and Power of Attorney (PoA) relationships.  
+**Purpose**: In-context modal cross-referencing exchange client accounts (`DECL`) with depository demat accounts (`DDCL`).  
 **Source Tables**: `DIM_EXCH_CLNT_DTLS` (`DECL`) and `DIM_DEP_CLNT_DTLS` (`DDCL`)  
-**Join Condition**: `DECL.Decl_Clnt_Pan = DDCL.Ddcl_Clnt_Pan`  
 
-| Table | Column Name | Data Type | Business Justification & Usage |
+| Table | Column Name | Data Type | Exact Business Justification |
 | :--- | :--- | :--- | :--- |
-| `DECL` | `Decl_Clnt_Pan` | `VARCHAR` | Join key to `DDCL`. |
+| `DECL` | `Decl_Clnt_Pan` | `VARCHAR` | Join key to `DDCL.Ddcl_Clnt_Pan`. |
 | `DECL` | `Decl_TM_Id` | `VARCHAR` | Trading Member Broker ID. |
 | `DECL` | `Decl_Clnt_Stat` | `INTEGER` | Account status (`1`=Active, `2`=Suspended). |
-| `DECL` | `Decl_City`, `Decl_State` | `VARCHAR` | Geographical location auditing (detecting out-of-state terminal concentrations). |
+| `DECL` | `Decl_City`, `Decl_State` | `VARCHAR` | Geographical audit (detecting out-of-state terminal concentrations). |
 | `DDCL` | `Ddcl_Dp_Id` | `VARCHAR` | Depository Participant ID (NSDL / CDSL). |
-| `DDCL` | `Ddcl_Clnt_Id` | `VARCHAR` | Demat Account Client ID. |
-| `DDCL` | `Ddcl_Jnt_Hldr1_Pan` | `VARCHAR` | Joint Holder 1 PAN (verifying connected party networks). |
+| `DDCL` | `Ddcl_Clnt_Id` | `VARCHAR` | Demat account client ID. |
+| `DDCL` | `Ddcl_Jnt_Hldr1_Pan` | `VARCHAR` | Joint Holder 1 PAN (verifying connected entity networks). |
 | `DDCL` | `Ddcl_Poa_Hldr_Pan` | `VARCHAR` | Power of Attorney PAN (detecting entity control hubs). |
 
 ---
 
-## Production Teradata SQL Extraction Queries
+## 5. Production Teradata Extraction Queries
 
-To facilitate data extraction by the Teradata engineering team, standard ANSI / Teradata SQL queries are provided below.
-
-### Query 1: EOD Historical Price-Volume Extraction (DS-01)
+The following targeted ANSI/Teradata SQL queries extract **only the required data fields** for our modules:
 
 ```sql
--- Extract 260 Trading Days of Daily Aggregated OHLCV per Scrip
+-- 1. Daily Aggregated OHLCV Extract (Module 1 & Module 2)
 SELECT 
     Ftrd_Symbol AS Ticker,
     Ftrd_Trd_Date AS TradeDate,
-    MIN(Ftrd_Trd_Tmst) AS FirstTradeTimestamp,
-    MAX(Ftrd_Trd_Tmst) AS LastTradeTimestamp,
-    -- Open Price: Price of first trade match of day
-    (SELECT TOP 1 t1.Ftrd_Trd_Price 
-     FROM FACT_TRADES t1 
-     WHERE t1.Ftrd_Symbol = f.Ftrd_Symbol 
-       AND t1.Ftrd_Trd_Date = f.Ftrd_Trd_Date 
-       AND t1.Ftrd_Sess_Type = 2
-     ORDER BY t1.Ftrd_Trd_Tmst ASC) AS OpenPrice,
-    MAX(Ftrd_Trd_Price) AS HighPrice,
     MIN(Ftrd_Trd_Price) AS LowPrice,
-    -- Close Price: Price of last trade match of day
-    (SELECT TOP 1 t2.Ftrd_Trd_Price 
-     FROM FACT_TRADES t2 
-     WHERE t2.Ftrd_Symbol = f.Ftrd_Symbol 
-       AND t2.Ftrd_Trd_Date = f.Ftrd_Trd_Date 
-       AND t2.Ftrd_Sess_Type = 2
-     ORDER BY t2.Ftrd_Trd_Tmst DESC) AS ClosePrice,
+    MAX(Ftrd_Trd_Price) AS HighPrice,
     SUM(Ftrd_Trd_Qty) AS TradedVolume,
     SUM(Ftrd_Trd_Val) AS TradedValue,
-    MAX(Ftrd_Last_Estd_Hi_Price) AS ApplicableUpperBandPrice
-FROM FACT_TRADES f
+    MAX(Ftrd_Last_Estd_Hi_Price) AS UpperCircuitLimit
+FROM FACT_TRADES
 WHERE Ftrd_Sess_Type = 2
   AND Ftrd_Trd_Date BETWEEN CURRENT_DATE - 365 AND CURRENT_DATE
-GROUP BY Ftrd_Symbol, Ftrd_Trd_Date
-ORDER BY Ftrd_Symbol, Ftrd_Trd_Date ASC;
-```
+GROUP BY Ftrd_Symbol, Ftrd_Trd_Date;
 
----
-
-### Query 2: Participant Trade Match Audit Extraction (DS-03 + DS-02)
-
-```sql
--- Extract Detailed Intraday Trade Matches for Suspicious Scrips (Joined with Client PANs)
+-- 2. Intraday Participant Trade Audit Extract (Module 3 & Module 4)
 SELECT 
     f.Ftrd_Trd_Num AS TradeNum,
     f.Ftrd_Trd_Date AS TradeDate,
@@ -194,64 +155,16 @@ SELECT
     f.Ftrd_Symbol AS Ticker,
     f.Ftrd_Trd_Price AS TradePrice,
     f.Ftrd_Trd_Qty AS TradeQty,
-    f.Ftrd_Trd_Val AS TradeVal,
     f.Ftrd_LTP_Chng_Indc AS LTPChangeIndicator,
     f.Ftrd_Init_Side_Type AS InitiatorSide,
     f.Ftrd_Same_Broker_Wash_Flag AS SameBrokerWashFlag,
-    f.Ftrd_Buy_CTCL_Algo_Flag AS BuyAlgoFlag,
-    f.Ftrd_Sell_CTCL_Algo_Flag AS SellAlgoFlag,
     b.Decl_Clnt_Pan AS BuyerPAN,
-    b.Decl_Clnt_Name AS BuyerName,
     s.Decl_Clnt_Pan AS SellerPAN,
-    s.Decl_Clnt_Name AS SellerName,
     f.Ftrd_Buy_Exch_TM_Token AS BuyerBrokerID,
     f.Ftrd_Sell_Exch_TM_Token AS SellerBrokerID
 FROM FACT_TRADES f
-INNER JOIN DIM_EXCH_CLNT_DTLS b ON f.Ftrd_Buy_Exch_Clnt_Token = b.Decl_Exch_Clnt_Token
-INNER JOIN DIM_EXCH_CLNT_DTLS s ON f.Ftrd_Sell_Exch_Clnt_Token = s.Decl_Exch_Clnt_Token
+JOIN DIM_EXCH_CLNT_DTLS b ON f.Ftrd_Buy_Exch_Clnt_Token = b.Decl_Exch_Clnt_Token
+JOIN DIM_EXCH_CLNT_DTLS s ON f.Ftrd_Sell_Exch_Clnt_Token = s.Decl_Exch_Clnt_Token
 WHERE f.Ftrd_Trd_Date BETWEEN :DateFrom AND :DateTo
-  AND f.Ftrd_Symbol = :TargetSymbol
-ORDER BY f.Ftrd_Trd_Tmst ASC;
+  AND f.Ftrd_Symbol = :TargetSymbol;
 ```
-
----
-
-### Query 3: Unified Client 360 Master Extraction (DS-02 + DS-03)
-
-```sql
--- Join Exchange Client Accounts with Depository Demat Accounts by PAN
-SELECT 
-    e.Decl_Exch_Clnt_Token AS ExchangeClientToken,
-    e.Decl_Clnt_Pan AS ClientPAN,
-    e.Decl_Clnt_Name AS ClientName,
-    e.Decl_TM_Id AS BrokerID,
-    e.Decl_Client_Code AS ExchangeClientCode,
-    e.Decl_Clnt_Stat_Indc AS AccountStatus,
-    e.Decl_City AS City,
-    e.Decl_State AS State,
-    d.Ddcl_Dp_Id AS DepositoryDPID,
-    d.Ddcl_Clnt_Id AS DematClientID,
-    d.Ddcl_Dp_Type_Desc AS DepositoryType,
-    d.Ddcl_Jnt_Hldr1_Pan AS JointHolder1PAN,
-    d.Ddcl_Poa_Hldr_Pan AS PowerOfAttorneyPAN
-FROM DIM_EXCH_CLNT_DTLS e
-LEFT JOIN DIM_DEP_CLNT_DTLS d ON e.Decl_Clnt_Pan = d.Ddcl_Clnt_Pan;
-```
-
----
-
-## Data Delivery, SLA & Governance Requirements
-
-### 1. Delivery Frequency & Schedule
-- **Nightly EOD Batch**: Trade archives (`FACT_TRADES`) and client delta updates (`DECL`/`DDCL`) must be delivered nightly by **22:00 IST** following market close.
-- **File Format**: Encrypted CSV / Parquet or direct staging table access in Teradata.
-
-### 2. Security & PII Masking
-- In accordance with RBAC security policies:
-  - **Analyst Role View**: PAN numbers exported to reporting layers must be masked (`XXXXX1234F`).
-  - **Investigator / Supervisor Role View**: Unmasked PAN numbers are retained for formal enforcement action.
-- Data transmission must use SSH/SFTP or TLS 1.3 encrypted ODBC channels.
-
-### 3. Open Clarifications for Data Engineering Team
-1. **Official Circuit Band Table**: Does an explicit `PRICE_BAND_MASTER` table exist providing exact daily upper circuit limits per scrip, or should the engine continue computing limits from `Ftrd_Last_Estd_Hi_Price`?
-2. **Corporate Action Price Adjustments**: Does Teradata store pre-adjusted historical closing prices (`ClosePriceAdjusted`), or will corporate actions be provided via feed `DS-04`?
