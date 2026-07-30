@@ -143,10 +143,10 @@ def participant_trades(
 def get_trade_detail(
     trd_date:   date,
     trd_num:    int,
-    cmp_token:  int = Query(..., description="Company token (part of composite PK)"),
-    prd_token:  int = Query(..., description="Product token (part of composite PK)"),
-    exch_token: int = Query(..., description="Exchange token"),
-    seg_token:  int = Query(..., description="Segment token"),
+    cmp_token:  Optional[int] = Query(None, description="Company token"),
+    prd_token:  Optional[int] = Query(None, description="Product token"),
+    exch_token: Optional[int] = Query(None, description="Exchange token"),
+    seg_token:  Optional[int] = Query(None, description="Segment token"),
     svc: FactTradesService = Depends(_get_service),
 ):
     trade = svc.get_trade_detail(

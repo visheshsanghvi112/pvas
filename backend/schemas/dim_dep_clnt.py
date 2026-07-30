@@ -62,7 +62,7 @@ class DimDepClntDetail(DimDepClntBase):
     Ddcl_Scnd_Hldr_Name:    Optional[str] = None
     Ddcl_Thrd_Hldr_Clnt_Token: Optional[int] = None
     Ddcl_Thrd_Hldr_Name:    Optional[str] = None
-    Ddcl_SEBI_Reg_Num:      Optional[str] = None
+    Ddcl_Regulatory_Reg_Num:      Optional[str] = None
     Ddcl_BO_Exch_Id:        Optional[str] = None
     Ddcl_BO_CM_Id:          Optional[str] = None
     Ddcl_Exch_Clnt_Id:      Optional[str] = None

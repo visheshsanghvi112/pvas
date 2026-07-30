@@ -26,7 +26,14 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from backend.db.models import DimExchClntDtls, DimDepClntDtls, FactTrades
+from backend.db.models import (
+    DimExchClntDtls, DimDepClntDtls, FactTrades,
+    FactMstrSharehldg, FactMainShldng, FactPromShldrDtls, FactPubShldrDtls,
+    FactDvrShldng, FactDrHolding, FactLkdinShldng, FactCmpExchShldng,
+    FactCorpActions, FactCaDilFctr,
+    SysUser, SysAuditLog, ForensicCase
+)
+from backend.security import hash_password
 
 # ── Seed constants ────────────────────────────────────────────────────────────
 RANDOM_SEED = 42
@@ -408,42 +415,415 @@ def _build_fact_trade(
     )
 
 
+def _seed_users(db: Session):
+    """Seed initial SysUser accounts and audit log if empty."""
+    if db.query(SysUser).count() == 0:
+        users_to_seed = [
+            SysUser(
+                username="vishesh_admin",
+                email="vishesh@surveillance.gov",
+                full_name="Vishesh",
+                department="Market Conduct & Compliance",
+                hashed_password=hash_password("vishesh123"),
+                role="Admin",
+                is_active=True
+            ),
+            SysUser(
+                username="arao_analyst",
+                email="a.rao@surveillance.gov",
+                full_name="A. Rao",
+                department="Quantitative Surveillance",
+                hashed_password=hash_password("arao123"),
+                role="Analyst",
+                is_active=True
+            ),
+            SysUser(
+                username="vsanghvi_analyst",
+                email="v.sanghvi@surveillance.gov",
+                full_name="V. Sanghvi",
+                department="Price Manipulation Cell",
+                hashed_password=hash_password("vsanghvi123"),
+                role="Analyst",
+                is_active=True
+            ),
+            SysUser(
+                username="audit_viewer",
+                email="audit@surveillance.gov",
+                full_name="Audit User",
+                department="Internal Audit",
+                hashed_password=hash_password("audit123"),
+                role="Viewer",
+                is_active=True
+            ),
+        ]
+        db.bulk_save_objects(users_to_seed)
+        db.commit()
+
+        initial_logs = [
+            SysAuditLog(
+                timestamp=datetime.utcnow(),
+                username="vishesh_admin",
+                role="Admin",
+                action="SYSTEM_INIT",
+                target="SURVEILLANCE_ENGINE",
+                details="Initialized PVASF Security & RBAC User Management tables",
+                ip_address="127.0.0.1"
+            )
+        ]
+        db.bulk_save_objects(initial_logs)
+        db.commit()
+
+
+def _seed_forensic_cases(db: Session):
+    """Seed realistic sample forensic case dossiers if the table is empty."""
+    if db.query(ForensicCase).first() is not None:
+        return
+
+    import json as _json
+    now = datetime.utcnow()
+
+    sample_cases = [
+        {
+            "case_id":        "CASE-2026-ALPHATECH-001",
+            "target_symbol":  "ALPHATECH",
+            "title":          "Self-Matched Wash Trade Network & LTP Ramping Investigation",
+            "lead_officer":   "Surveillance Officer #104",
+            "status":         "Open Investigation",
+            "priority":       "High",
+            "description":    (
+                "Multiple same-broker wash trades detected across 15 trading sessions. "
+                "Buy and sell orders placed within milliseconds by clients sharing the same TM ID. "
+                "LTP artificially ramped by 22.4% over 5 days without fundamental catalyst."
+            ),
+            "evidence_json":  _json.dumps([
+                {"title": "180D Price Spike Chart",     "description": "+124.5% surge with upper circuit hits",   "type": "Chart"},
+                {"title": "Wash Trade Summary",         "description": "1,250,000 shares same-broker matches",   "type": "Trade Log"},
+                {"title": "Joint Demat Account Proof",  "description": "Shared bank account HDFC-9845***",       "type": "KYC"},
+                {"title": "Order Book Depth Log",       "description": "54.2x Pending Spoofing Volume",          "type": "Trade Log"},
+                {"title": "LTP Ramping Timeline",       "description": "Tick-level LTP manipulation evidence",   "type": "Chart"},
+            ]),
+            "created_by":     "vishesh_admin",
+            "created_at":     now.replace(day=max(1, now.day - 8)),
+        },
+        {
+            "case_id":        "CASE-2026-NOVAENERGY-002",
+            "target_symbol":  "NOVAENERGY",
+            "title":          "Upper Circuit Persistence & Promoter Holding Shift Audit",
+            "lead_officer":   "Surveillance Officer #212",
+            "status":         "Pending Action",
+            "priority":       "High",
+            "description":    (
+                "NOVAENERGY hit upper circuit on 11 of the last 15 trading days. "
+                "Promoter holding dropped 4.2% over the same window, suggesting coordinated exit. "
+                "Pending referral to Enforcement Division."
+            ),
+            "evidence_json":  _json.dumps([
+                {"title": "Circuit Hit Calendar",        "description": "11/15 days at upper circuit (20%)",     "type": "Chart"},
+                {"title": "Shareholding Change Report",  "description": "Promoter reduced from 68.4% to 64.2%", "type": "KYC"},
+                {"title": "Participant Volume Share",    "description": "Top 3 clients = 78% of buy volume",     "type": "Trade Log"},
+            ]),
+            "created_by":     "vsanghvi_analyst",
+            "created_at":     now.replace(day=max(1, now.day - 10)),
+        },
+        {
+            "case_id":        "CASE-2026-ORBITCEM-003",
+            "target_symbol":  "ORBITCEM",
+            "title":          "Spoofing & Pending Order Book Imbalance Audit",
+            "lead_officer":   "HFT Specialist #402",
+            "status":         "Open Investigation",
+            "priority":       "Medium",
+            "description":    (
+                "Large pending orders placed and cancelled within 50ms repeatedly over 3 days. "
+                "Bid/ask imbalance consistently >10:1 before significant price moves. "
+                "Classic spoofing signature detected by the algo-CTCL scanner."
+            ),
+            "evidence_json":  _json.dumps([
+                {"title": "Order Cancel Rate Chart",     "description": "92% cancel rate on large bids",         "type": "Chart"},
+                {"title": "CTCL Algo Log Extract",       "description": "ALGO0011 — 4,820 cancel events",        "type": "Trade Log"},
+                {"title": "Order Book Depth Log",        "description": "54.2x Pending vs Executed ratio",       "type": "Trade Log"},
+                {"title": "IP Address Trace",            "description": "Consistent source IP: 10.42.18.77",     "type": "KYC"},
+            ]),
+            "created_by":     "arao_analyst",
+            "created_at":     now.replace(day=max(1, now.day - 13)),
+        },
+        {
+            "case_id":        "CASE-2026-SBIN-004",
+            "target_symbol":  "SBIN",
+            "title":          "Close-to-Close Volume Z-Score Anomaly Review",
+            "lead_officer":   "Surveillance Officer #104",
+            "status":         "Closed",
+            "priority":       "Low",
+            "description":    (
+                "Volume Z-score of +3.8 flagged on T-3. Subsequent investigation found volume spike "
+                "correlated with a scheduled block deal disclosure. No manipulation evidence found."
+            ),
+            "evidence_json":  _json.dumps([
+                {"title": "Volume Z-Score Chart",        "description": "Z = +3.8 on 2026-07-10",               "type": "Chart"},
+                {"title": "Block Deal Disclosure",       "description": "Regulatory bulk deal filing verified",       "type": "General"},
+            ]),
+            "created_by":     "arao_analyst",
+            "created_at":     now.replace(day=max(1, now.day - 18)),
+            "closed_at":      now.replace(day=max(1, now.day - 5)),
+        },
+        {
+            "case_id":        "CASE-2026-ZENITHBIO-005",
+            "target_symbol":  "ZENITHBIO",
+            "title":          "Circular Trading Ring — Intra-Day Price Coordination",
+            "lead_officer":   "Surveillance Officer #212",
+            "status":         "Draft",
+            "priority":       "High",
+            "description":    (
+                "Three client PANs suspected of rotating buy/sell activity to maintain "
+                "artificial price level. Circular loop detected by participant audit engine "
+                "with gross volume 3.2× net volume."
+            ),
+            "evidence_json":  _json.dumps([
+                {"title": "Circular Loop Report",        "description": "3-node loop: CL00000045→CL00000187→CL00000312", "type": "Trade Log"},
+            ]),
+            "created_by":     "vsanghvi_analyst",
+            "created_at":     now.replace(day=max(1, now.day - 2)),
+        },
+    ]
+
+    rows = []
+    for c in sample_cases:
+        kwargs = {k: v for k, v in c.items()}
+        # updated_at = created_at for seed data
+        kwargs.setdefault("updated_at", kwargs["created_at"])
+        rows.append(ForensicCase(**kwargs))
+
+    db.bulk_save_objects(rows)
+    db.commit()
+    print(f"[seed] Seeded {len(rows)} forensic case dossiers.")
+
+
+def _seed_sh_and_ann(db: Session):
+    if db.query(FactMainShldng).first() is not None:
+        return
+    print("[seed] Seeding Enterprise Shareholding Results (FMSH, FSHG, FPRH, FPUH) & Corporate Actions (FCAC, FCDF)...")
+    
+    mstr_rows = []
+    main_rows = []
+    prom_rows = []
+    pub_rows = []
+    ca_rows = []
+    dil_rows = []
+
+    ann_templates = [
+        ("DP", "Dividend", "Board recommended interim dividend of INR 12 per share"),
+        ("BN", "Bonus", "Board approved 1:1 bonus share issue"),
+        ("SS", "Stock Split", "Sub-division of equity shares from Face Value INR 10 to INR 2"),
+        ("ET", "Rights", "Rights issue declared at INR 450 per share")
+    ]
+
+    for idx, (sym, base, vol, series) in enumerate(SYMBOLS):
+        r_seed = random.Random(abs(hash(sym)))
+        cmp_token = 1000 + idx + 1
+        
+        # Quarter Q1, Q2, Q3, Q4 shareholding records
+        for q_idx, q_num in enumerate(["Q1", "Q2", "Q3", "Q4"]):
+            as_date = date(2026, 3 * (q_idx + 1), 31 if q_idx in [0, 3] else 30)
+            promoter_pct = Decimal(str(round(r_seed.uniform(48.0, 72.0), 2)))
+            public_pct = Decimal(str(round(100.0 - float(promoter_pct), 2)))
+            pledge_pct = Decimal(str(round(r_seed.choice([0.0, 0.0, 1.25, 2.5]), 2)))
+            
+            total_shares = 100_000_000
+            prom_shares = int(total_shares * (float(promoter_pct) / 100.0))
+            pub_shares = total_shares - prom_shares
+            plge_shares = int(prom_shares * (float(pledge_pct) / 100.0))
+
+            # 1. Master Shareholding
+            mstr_rows.append(FactMstrSharehldg(
+                Fmsh_Exch_Token=1,
+                Fmsh_Cmp_Token=cmp_token,
+                Fmsh_Cmp_Name=f"{sym} India Ltd",
+                Fmsh_Trd_Prd_Token=1,
+                Fmsh_Symbol=sym,
+                Fmsh_Series=series,
+                Fmsh_Qrtr_Num=q_num,
+                Fmsh_As_on_Date=as_date,
+                Fmsh_Mn_Shldng_Rec_Cnt=2,
+                Fmsh_Promtr_Shldng_Rec_Cnt=1,
+                Fmsh_Public_Shldng_Rec_Cnt=1,
+                Fmsh_Rec_Date=as_date
+            ))
+
+            # 2. Main Shareholding — Promoter
+            main_rows.append(FactMainShldng(
+                Fshg_Exch_Token=1,
+                Fshg_Cmp_Token=cmp_token,
+                Fshg_Trd_Prd_Token=1,
+                Fshg_Symbol=sym,
+                Fshg_Series=series,
+                Fshg_Qrtr_Num=q_num,
+                Fshg_Shldng_Date=as_date,
+                Fshg_Shldr_Desc="Promoter & Promoter Group",
+                Fshg_Shldng_Catg_Type=1,
+                Fshg_Shldng_Sub_Catg_Type=1,
+                Fshg_Shldr_Cnt=4,
+                Fshg_Tot_Eq_Shares=prom_shares,
+                Fshg_Issd_Cap_Shares=total_shares,
+                Fshg_Dmat_Shares=prom_shares,
+                Fshg_Dmat_Shares_Pct=Decimal("100.00"),
+                Fshg_Tot_Shares_Pct=promoter_pct,
+                Fshg_Grd_Tot_Shares_Pct=promoter_pct,
+                Fshg_Plge_Shares=plge_shares,
+                Fshg_Plge_Tot_Shares_Pct=pledge_pct,
+                Fshg_Rec_Date=as_date
+            ))
+
+            # 3. Main Shareholding — Public
+            main_rows.append(FactMainShldng(
+                Fshg_Exch_Token=1,
+                Fshg_Cmp_Token=cmp_token,
+                Fshg_Trd_Prd_Token=1,
+                Fshg_Symbol=sym,
+                Fshg_Series=series,
+                Fshg_Qrtr_Num=q_num,
+                Fshg_Shldng_Date=as_date,
+                Fshg_Shldr_Desc="Public Shareholding",
+                Fshg_Shldng_Catg_Type=2,
+                Fshg_Shldng_Sub_Catg_Type=4,
+                Fshg_Shldr_Cnt=12500,
+                Fshg_Tot_Eq_Shares=pub_shares,
+                Fshg_Issd_Cap_Shares=total_shares,
+                Fshg_Dmat_Shares=pub_shares,
+                Fshg_Dmat_Shares_Pct=Decimal("99.80"),
+                Fshg_Tot_Shares_Pct=public_pct,
+                Fshg_Grd_Tot_Shares_Pct=public_pct,
+                Fshg_Rec_Date=as_date
+            ))
+
+            # 4. Promoter Details
+            prom_rows.append(FactPromShldrDtls(
+                Fprh_Exch_Token=1,
+                Fprh_Cmp_Token=cmp_token,
+                Fprh_Exch_Cmp_Token=cmp_token,
+                Fprh_Symbol=sym,
+                Fprh_Series=series,
+                Fprh_Qrtr_Num=q_num,
+                Fprh_Shldng_Date=as_date,
+                Fprh_Shldr_Desc="Promoter Group",
+                Fprh_Shldng_Catg_Type=1,
+                Fprh_Shldng_Sub_Catg_Type=1,
+                Fprh_Shldr_Name=f"{sym} Holdings Pvt Ltd",
+                Fprh_Tot_Shares=prom_shares,
+                Fprh_Tot_Shares_Pct=promoter_pct,
+                Fprh_Plge_Shares=plge_shares,
+                Fprh_Plge_Shares_Pct=pledge_pct,
+                Fprh_Rec_Date=as_date
+            ))
+
+            # 5. Public Details
+            pub_rows.append(FactPubShldrDtls(
+                Fpuh_Exch_Token=1,
+                Fpuh_Cmp_Token=cmp_token,
+                Fpuh_Exch_Cmp_Token=cmp_token,
+                Fpuh_Symbol=sym,
+                Fpuh_Series=series,
+                Fpuh_Qrtr_Num=q_num,
+                Fpuh_Shldng_Date=as_date,
+                Fpuh_Shldr_Desc="Institutional Public",
+                Fpuh_Shldng_Catg_Type=2,
+                Fpuh_Shldng_Sub_Catg_Type=4,
+                Fpuh_Shldr_Name="Reliance Mutual Fund / LIC India",
+                Fpuh_Tot_Shares=pub_shares,
+                Fpuh_Tot_Shares_Pct=public_pct,
+                Fpuh_Rec_Date=as_date
+            ))
+
+        # Corporate Actions for this symbol
+        catg_code, action_title, action_desc = ann_templates[idx % len(ann_templates)]
+        ex_date = date.today() - timedelta(days=r_seed.randint(10, 60))
+        ca_rows.append(FactCorpActions(
+            Fcac_Exch_Token=1,
+            Fcac_Cmp_Token=cmp_token,
+            Fcac_Trd_Prd_Token=1,
+            Fcac_Symbol=sym,
+            Fcac_Series=series,
+            Fcac_Cmp_Name=f"{sym} India Ltd",
+            Fcac_Corp_Action_Catg=catg_code,
+            Fcac_Corp_Action_Type=1 if catg_code == "BN" else 3 if catg_code == "DP" else 6,
+            Fcac_Ex_Divnd_Date=ex_date if catg_code == "DP" else None,
+            Fcac_Ex_Bonus_Date=ex_date if catg_code == "BN" else None,
+            Fcac_Ex_Split_Date=ex_date if catg_code == "SS" else None,
+            Fcac_Bonus_Ratio="1:1" if catg_code == "BN" else None,
+            Fcac_Divnd_Pct=Decimal("120.00") if catg_code == "DP" else None,
+            Fcac_Divnd_Val=Decimal("12.00") if catg_code == "DP" else None,
+            Fcac_Divnd_Prpse=action_desc,
+            Fcac_Rec_Date=ex_date
+        ))
+
+        # Dilution factor
+        dil_rows.append(FactCaDilFctr(
+            Fcdf_Exch_Token=1,
+            Fcdf_Cmp_Token=cmp_token,
+            Fcdf_NSE_Trd_Prd_Token=1,
+            Fcdf_BSE_Trd_Prd_Token=2,
+            Fcdf_Symbol=sym,
+            Fcdf_Corp_Action_Catg=catg_code,
+            Fcdf_Appl_From_Date=ex_date,
+            Fcdf_Appl_To_Date=date(2026, 12, 31),
+            Fcdf_Price_Adj_Factor=Decimal("0.500000") if catg_code in ["BN", "SS"] else Decimal("1.000000"),
+            Fcdf_Rec_Date=ex_date
+        ))
+
+    db.bulk_save_objects(mstr_rows)
+    db.bulk_save_objects(main_rows)
+    db.bulk_save_objects(prom_rows)
+    db.bulk_save_objects(pub_rows)
+    db.bulk_save_objects(ca_rows)
+    db.bulk_save_objects(dil_rows)
+    db.commit()
+    print(f"[seed] Seeded Shareholding & Corporate Action tables: FMSH={len(mstr_rows)}, FSHG={len(main_rows)}, FPRH={len(prom_rows)}, FPUH={len(pub_rows)}, FCAC={len(ca_rows)}, FCDF={len(dil_rows)}.")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Main seeder
 # ══════════════════════════════════════════════════════════════════════════════
 
 def seed_database(db: Session) -> dict:
-    """
-    Seed all 3 tables. Returns a summary dict.
-    Idempotent: checks if data already exists before inserting.
-    """
-    # --- Guard: skip if already seeded ---
-    existing = db.query(DimExchClntDtls).first()
-    if existing is not None:
+    """Seed all tables if FACT_TRADES is empty."""
+    _seed_users(db)
+    _seed_forensic_cases(db)
+    _seed_sh_and_ann(db)
+
+    if db.query(FactTrades).first() is not None and db.query(FactTrades).count() > 1000:
         count_decl = db.query(DimExchClntDtls).count()
         count_ddcl = db.query(DimDepClntDtls).count()
         count_ftrd = db.query(FactTrades).count()
+        count_fmsh = db.query(FactMstrSharehldg).count()
+        count_fshg = db.query(FactMainShldng).count()
+        count_fcac = db.query(FactCorpActions).count()
+        count_usr  = db.query(SysUser).count()
+        count_log  = db.query(SysAuditLog).count()
+        count_case = db.query(ForensicCase).count()
         return {
             "status": "already_seeded",
             "DIM_EXCH_CLNT_DTLS": count_decl,
             "DIM_DEP_CLNT_DTLS":  count_ddcl,
             "FACT_TRADES":        count_ftrd,
+            "FACT_MSTR_SHAREHLDG": count_fmsh,
+            "FACT_MAIN_SHLDNG": count_fshg,
+            "FACT_CORP_ACTIONS": count_fcac,
+            "SYS_USERS": count_usr,
+            "SYS_AUDIT_LOGS": count_log,
+            "FORENSIC_CASES": count_case
         }
 
     print("[seed] Generating DIM_EXCH_CLNT_DTLS rows …")
     decl_rows = [_build_dim_exch_clnt(c, i) for i, c in enumerate(CLIENTS, start=1)]
     db.bulk_save_objects(decl_rows)
-    db.flush()
+    db.commit()
 
     print("[seed] Generating DIM_DEP_CLNT_DTLS rows …")
     ddcl_rows = [_build_dim_dep_clnt(c, i) for i, c in enumerate(CLIENTS, start=1)]
     db.bulk_save_objects(ddcl_rows)
-    db.flush()
+    db.commit()
 
     print("[seed] Generating FACT_TRADES rows …")
     trading_dates = _trading_dates(260)
 
-    # Pre-compute symbol metadata
     sym_meta: dict[str, dict] = {}
     for idx, (sym, base, vol, series) in enumerate(SYMBOLS):
         sym_meta[sym] = {
@@ -460,21 +840,17 @@ def seed_database(db: Session) -> dict:
     global_seq = 1
     ltp_map: dict[str, float] = {sym: meta["base"] for sym, meta in sym_meta.items()}
 
-    # Trades per day: ~20 per symbol = 15 symbols × 20 × 260 days ≈ 78,000
-    # Keep it at 8 per symbol per day = ~31,200 total
     TRADES_PER_SYMBOL_PER_DAY = 8
 
     for trd_date in trading_dates:
         for sym, meta in sym_meta.items():
             for _ in range(TRADES_PER_SYMBOL_PER_DAY):
-                # Pick buy/sell clients; enforce same broker for wash trades
                 is_wash = random.random() < 0.05
                 is_algo = random.random() < 0.15
                 is_dma  = random.random() < 0.10
 
                 buy_client  = CLIENTS[random.randint(0, len(CLIENTS) - 1)]
                 if is_wash:
-                    # same TM, possibly same client → wash trade signal
                     same_tm_clients = [c for c in CLIENTS if c["tm_id"] == buy_client["tm_id"]]
                     sell_client = random.choice(same_tm_clients)
                 else:
@@ -503,27 +879,35 @@ def seed_database(db: Session) -> dict:
                 trade_rows.append(t)
                 global_seq += 1
 
-                # Batch flush every 2000 rows to avoid memory pressure
                 if len(trade_rows) >= 2000:
                     db.bulk_save_objects(trade_rows)
-                    db.flush()
+                    db.commit()
                     trade_rows.clear()
-                    print(f"[seed]   … {global_seq:,} trades written")
 
     if trade_rows:
         db.bulk_save_objects(trade_rows)
-        db.flush()
-
-    db.commit()
+        db.commit()
 
     count_decl = db.query(DimExchClntDtls).count()
     count_ddcl = db.query(DimDepClntDtls).count()
     count_ftrd = db.query(FactTrades).count()
+    count_fmsh = db.query(FactMstrSharehldg).count()
+    count_fshg = db.query(FactMainShldng).count()
+    count_fcac = db.query(FactCorpActions).count()
+    count_usr  = db.query(SysUser).count()
+    count_log  = db.query(SysAuditLog).count()
+    count_case = db.query(ForensicCase).count()
 
-    print(f"[seed] Done. DECL={count_decl}, DDCL={count_ddcl}, FTRD={count_ftrd}")
+    print(f"[seed] Done. DECL={count_decl}, DDCL={count_ddcl}, FTRD={count_ftrd}, FMSH={count_fmsh}, FSHG={count_fshg}, FCAC={count_fcac}")
     return {
         "status": "seeded",
         "DIM_EXCH_CLNT_DTLS": count_decl,
         "DIM_DEP_CLNT_DTLS":  count_ddcl,
         "FACT_TRADES":        count_ftrd,
+        "FACT_MSTR_SHAREHLDG": count_fmsh,
+        "FACT_MAIN_SHLDNG": count_fshg,
+        "FACT_CORP_ACTIONS": count_fcac,
+        "SYS_USERS": count_usr,
+        "SYS_AUDIT_LOGS": count_log,
+        "FORENSIC_CASES": count_case
     }

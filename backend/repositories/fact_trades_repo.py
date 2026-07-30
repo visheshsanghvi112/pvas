@@ -91,23 +91,24 @@ class FactTradesRepository:
         self,
         trd_date: date,
         trd_num: int,
-        cmp_token: int,
-        prd_token: int,
-        exch_token: int,
-        seg_token: int,
+        cmp_token: Optional[int] = None,
+        prd_token: Optional[int] = None,
+        exch_token: Optional[int] = None,
+        seg_token: Optional[int] = None,
     ) -> Optional[FactTrades]:
-        return (
-            self._db.query(FactTrades)
-            .filter(
-                FactTrades.Ftrd_Trd_Date      == trd_date,
-                FactTrades.Ftrd_Trd_Num       == trd_num,
-                FactTrades.Ftrd_Cmp_Token     == cmp_token,
-                FactTrades.Ftrd_Trd_Prd_Token == prd_token,
-                FactTrades.Ftrd_Exch_Token    == exch_token,
-                FactTrades.Ftrd_Seg_Token     == seg_token,
-            )
-            .first()
+        q = self._db.query(FactTrades).filter(
+            FactTrades.Ftrd_Trd_Date == trd_date,
+            FactTrades.Ftrd_Trd_Num  == trd_num,
         )
+        if cmp_token is not None:
+            q = q.filter(FactTrades.Ftrd_Cmp_Token == cmp_token)
+        if prd_token is not None:
+            q = q.filter(FactTrades.Ftrd_Trd_Prd_Token == prd_token)
+        if exch_token is not None:
+            q = q.filter(FactTrades.Ftrd_Exch_Token == exch_token)
+        if seg_token is not None:
+            q = q.filter(FactTrades.Ftrd_Seg_Token == seg_token)
+        return q.first()
 
     def get_trades_for_symbol(
         self,
@@ -178,6 +179,8 @@ class FactTradesRepository:
             func.count().label("total"),
             func.sum(algo_col).label("algo"),
             func.sum(dma_col).label("dma"),
+            func.avg(FactTrades.Ftrd_Bid_Pdg_Ord_Qty + FactTrades.Ftrd_Ask_Pdg_Ord_Qty).label("avg_depth"),
+            func.avg(FactTrades.Ftrd_Trd_Qty).label("avg_trd"),
         )
         if date_from:
             q = q.filter(FactTrades.Ftrd_Trd_Date >= date_from)
@@ -194,6 +197,7 @@ class FactTradesRepository:
                 "total_count":  int(r.total),
                 "algo_pct":     round(int(r.algo or 0) / max(int(r.total), 1) * 100, 2),
                 "dma_pct":      round(int(r.dma or 0) / max(int(r.total), 1) * 100, 2),
+                "spoof_ratio":  round(float(r.avg_depth or 0.0) / max(float(r.avg_trd or 1.0), 1.0), 1),
             }
             for r in rows
         ]

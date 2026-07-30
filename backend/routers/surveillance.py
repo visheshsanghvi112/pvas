@@ -51,6 +51,16 @@ def get_scrip_participants(scrip_id: str):
         raise HTTPException(status_code=404, detail=str(e))
 
 
+@router.get("/scrip/{scrip_id}/shareholding-breakdown")
+def get_scrip_shareholding_breakdown(scrip_id: str):
+    return service.get_scrip_shareholding_breakdown(scrip_id.upper())
+
+
+@router.get("/scrip/{scrip_id}/corporate-actions")
+def get_scrip_corporate_actions(scrip_id: str):
+    return service.get_scrip_corporate_actions(scrip_id.upper())
+
+
 @router.post("/weights")
 def update_weights(payload: Dict[str, Any]):
     weights = payload.get("weights", {})

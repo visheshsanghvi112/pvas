@@ -14,6 +14,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.routers.surveillance import router as surveillance_router
 from backend.routers.fact_trades import router as fact_trades_router
 from backend.routers.clients import router as clients_router
+from backend.routers.auth import router as auth_router
+from backend.routers.cases import router as cases_router
 
 
 @asynccontextmanager
@@ -67,6 +69,8 @@ app.include_router(surveillance_router)
 # ── New Teradata-schema-backed routers ────────────────────────────────────────
 app.include_router(fact_trades_router)
 app.include_router(clients_router)
+app.include_router(auth_router)
+app.include_router(cases_router)
 
 if __name__ == "__main__":
     import uvicorn

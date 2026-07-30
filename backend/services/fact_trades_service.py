@@ -47,10 +47,10 @@ class FactTradesService:
         self,
         trd_date: date,
         trd_num: int,
-        cmp_token: int,
-        prd_token: int,
-        exch_token: int,
-        seg_token: int,
+        cmp_token: int | None = None,
+        prd_token: int | None = None,
+        exch_token: int | None = None,
+        seg_token: int | None = None,
     ):
         return self._repo.get_by_pk(
             trd_date, trd_num, cmp_token, prd_token, exch_token, seg_token

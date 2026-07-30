@@ -36,6 +36,22 @@ export interface PricePoint {
   ma50?: number;
 }
 
+export interface ShareholderStats {
+  unique_pans_15d?: number;
+  unique_pans_180d?: number;
+  top_1pct_concentration?: number;
+  promoter_percent?: number | null;
+  public_percent?: number | null;
+  has_live_feed?: boolean;
+}
+
+export interface AnnouncementItem {
+  date: string;
+  category: string;
+  title: string;
+  status: string;
+}
+
 export interface ScripDetail {
   ticker: string;
   symbol: string;
@@ -59,6 +75,8 @@ export interface ScripDetail {
     price_change_pct: number;
     avg_15d_volume: number;
   };
+  shareholders?: ShareholderStats | null;
+  announcements?: AnnouncementItem[];
 }
 
 export interface ParticipantAudit {
@@ -138,7 +156,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
   const new_high_days: number  = m["new_high_days"]  ?? m["180d New Highs (15d)"] ?? 0;
   const final_score: number    = m["final_score"]    ?? m["Final Score"]    ?? 0;
 
-  const risk = final_score >= 75 ? "High" : final_score >= 60 ? "Medium" : "Low";
+  const risk = final_score >= 60 ? "High" : final_score >= 33 ? "Medium" : "Low";
 
   return {
     ticker: data.ticker ?? cleanId,
@@ -147,7 +165,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
     isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
     risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
     status: (data.status as "Open" | "Under review" | "Closed") ??
-            (final_score >= 75 ? "Open" : final_score >= 60 ? "Under review" : "Closed"),
+            (final_score >= 60 ? "Open" : final_score >= 33 ? "Under review" : "Closed"),
     metrics: { price_rise_pct, price_z, volume_z, band_hit_days, new_high_days, final_score },
     score_breakdown: data.score_breakdown ?? [],
     history: data.history ?? [],
@@ -156,7 +174,9 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
       latest_close: 0,
       price_change_pct: 0,
       avg_15d_volume: 0
-    }
+    },
+    shareholders: data.shareholders ?? null,
+    announcements: data.announcements ?? []
   };
 }
 
@@ -206,4 +226,18 @@ export async function uploadEodFile(file: File) {
   } catch (e: any) {
     return { error: e.message || "Failed to connect to backend server" };
   }
+}
+
+export async function fetchShareholdingBreakdown(scripId: string) {
+  const cleanId = scripId.toUpperCase();
+  const res = await fetch(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`, { cache: "no-store" });
+  if (!res.ok) return { symbol: cleanId, quarterly_history: [], promoter_group: [] };
+  return await res.json();
+}
+
+export async function fetchCorporateActions(scripId: string) {
+  const cleanId = scripId.toUpperCase();
+  const res = await fetch(`${API_BASE}/scrip/${cleanId}/corporate-actions`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return await res.json();
 }

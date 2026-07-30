@@ -1,262 +1,261 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, ShieldAlert, SlidersHorizontal, RefreshCw, BarChart2, CheckCircle, PieChart, Activity, TrendingUp } from "lucide-react";
+import {
+  AlertTriangle,
+  RefreshCw,
+  BarChart2,
+  TrendingUp,
+  Activity,
+  Clock,
+  Zap,
+  Database,
+  ChevronRight
+} from "lucide-react";
 import { AlertsTable } from "@/components/dashboard/alerts-table";
-import { ScoreDistributionChart, RiskDonut } from "@/components/investigation/charts";
 import { fetchWatchlist, type ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const [scrips, setScrips] = useState<ScripSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState<string>("All");
+  const [lastRefresh, setLastRefresh] = useState<string>("");
 
   const loadData = async () => {
     setLoading(true);
     const data = await fetchWatchlist();
     setScrips(data);
     setLoading(false);
+    setLastRefresh(
+      new Date().toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      })
+    );
   };
 
   useEffect(() => {
     loadData();
   }, []);
 
-  const handleStatusChange = (symbol: string, newStatus: "Open" | "Under review" | "Closed") => {
+  const highRiskCount = scrips.filter((s) => s.risk === "High").length;
+  const medRiskCount = scrips.filter((s) => s.risk === "Medium").length;
+  const lowRiskCount = scrips.filter((s) => s.risk === "Low").length;
+
+  const handleStatusChange = (
+    symbol: string,
+    newStatus: "Open" | "Under review" | "Closed"
+  ) => {
     setScrips((prev) =>
       prev.map((s) => (s.symbol === symbol ? { ...s, status: newStatus } : s))
     );
   };
 
-  const highRiskCount = scrips.filter((s) => s.risk === "High").length;
-  const medRiskCount = scrips.filter((s) => s.risk === "Medium").length;
-  const lowRiskCount = scrips.filter((s) => s.risk === "Low").length;
+  const topMover =
+    scrips.length > 0
+      ? [...scrips].sort((a, b) => b.price_rise_pct - a.price_rise_pct)[0]
+      : null;
+
+  const topVolume =
+    scrips.length > 0
+      ? [...scrips].sort((a, b) => b.volume_z - a.volume_z)[0]
+      : null;
 
   return (
-    <div className="mx-auto w-full max-w-[1600px] flex flex-col gap-2.5 p-2 sm:p-4 lg:h-[calc(100vh-4.5rem)] min-h-0">
-      {/* Dense Market Overview Strip */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-slate-200 pb-2 px-1 gap-2 shrink-0">
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
-          <div className="flex items-center gap-1.5 text-blue-700 font-bold uppercase tracking-widest text-[10px] shrink-0">
-            <Activity className="h-3.5 w-3.5 text-blue-600 animate-pulse" />
-            <span className="hidden sm:inline">Market Surveillance Command Center</span>
-            <span className="sm:hidden">Command Center</span>
+    <div className="flex flex-col h-full bg-slate-50 text-slate-900 font-sans overflow-hidden">
+      {/* ── Page Header Bar (Crisp Light Theme) ── */}
+      <header className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+            <Activity className="h-5 w-5 text-blue-600" />
           </div>
-          <div className="h-4 w-px bg-slate-300 hidden sm:block"></div>
-          <div className="flex flex-wrap gap-2 text-xs font-mono items-center">
-            <div className="text-[11px] text-slate-600">Scrips: <strong className="text-slate-900">{loading ? "..." : scrips.length}</strong></div>
-            <div className="flex items-center gap-1 text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full text-[10px]">
-              <span className="h-1.5 w-1.5 rounded-full bg-rose-600 animate-ping" />
-              High: <strong className="font-black">{loading ? "..." : highRiskCount}</strong>
+          <div>
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-base font-bold text-slate-900">
+                Market Surveillance Dashboard
+              </h1>
+              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                Teradata DWBIS Connected
+              </span>
             </div>
-            <div className="text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full text-[10px]">
-              Med: <strong className="font-bold">{loading ? "..." : medRiskCount}</strong>
-            </div>
-            <div className="text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full text-[10px]">
-              Normal: <strong>{loading ? "..." : lowRiskCount}</strong>
-            </div>
+            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
+              <span>PVASF Surveillance Engine v2.4</span>
+              <span className="text-slate-300">•</span>
+              <span>180D Baseline Window</span>
+              <span className="text-slate-300">•</span>
+              <span>15D Observation Horizon</span>
+            </p>
           </div>
         </div>
-        <div className="flex items-center justify-between w-full md:w-auto gap-3 shrink-0">
-          <span className="text-[10px] font-mono text-slate-400 uppercase">Engine: <span className="text-slate-700 font-bold">Teradata DWBIS</span></span>
+
+        {/* Sync Controls */}
+        <div className="flex items-center gap-3">
+          {lastRefresh && (
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
+              <Clock className="h-3.5 w-3.5 text-slate-400" />
+              <span>Synced at {lastRefresh}</span>
+            </div>
+          )}
           <button
             onClick={loadData}
             disabled={loading}
-            className="flex items-center gap-1.5 text-[10px] font-bold uppercase bg-slate-900 text-white px-2.5 py-1 rounded hover:bg-blue-700 transition-colors shadow-xs"
+            className="flex items-center gap-2 h-8.5 px-3.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-blue-600 transition-colors disabled:opacity-60 cursor-pointer shadow-xs"
           >
-            <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
-            Sync Data
+            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+            {loading ? "Syncing..." : "Sync Teradata Data"}
           </button>
         </div>
-      </div>
+      </header>
 
-      {/* Main Grid: Alerts Table & Analytics */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] xl:grid-cols-[1fr_340px] gap-3 flex-1 min-h-0">
-        
-        {/* Left Column: Watchlist Data Grid */}
-        <div className="flex flex-col bg-white border border-slate-200 rounded shadow-sm overflow-hidden min-h-[400px] lg:min-h-0">
-          <div className="bg-slate-100 border-b border-slate-200 px-3 py-1.5 flex items-center justify-between shrink-0">
-            <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-rose-500" />
-              Surveillance Watchlist
-            </div>
-            {/* Risk Filters */}
-            <div className="flex bg-white rounded border border-slate-200 overflow-hidden text-[10px] font-bold">
-              {["All", "High", "Medium", "Low"].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setRiskFilter(r)}
-                  className={cn(
-                    "px-2 py-0.5 border-r border-slate-200 last:border-0 hover:bg-slate-50 uppercase",
-                    riskFilter === r ? "bg-blue-50 text-blue-700" : "text-slate-500"
-                  )}
-                >
-                  {r}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="flex-1 overflow-x-auto overflow-y-auto min-h-0">
-            <AlertsTable
-              scrips={scrips}
-              onStatusChange={handleStatusChange}
-              selectedRiskFilter={riskFilter}
-            />
-          </div>
-        </div>
-
-        {/* Right Column: Executive Surveillance KPI Cards & Anomaly Highlights */}
-        <div className="flex flex-col gap-2.5 min-h-0 overflow-y-auto pr-0.5">
+      {/* ── KPI Executive Summary Cards (Clickable Filter Controls) ── */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3.5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           
-          {/* KPI Card 1: Risk Severity & Watchlist Summary */}
-          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2.5">
-            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1.5">
-              <span className="flex items-center gap-1.5">
-                <ShieldAlert className="h-3.5 w-3.5 text-blue-600" />
-                Alert Risk Breakdown
+          {/* Card 1: Monitored Universe */}
+          <button
+            onClick={() => setRiskFilter("All")}
+            className={cn(
+              "text-left border rounded-xl p-3.5 flex flex-col justify-between transition-all cursor-pointer",
+              riskFilter === "All"
+                ? "bg-blue-50/60 border-blue-300 ring-2 ring-blue-500/20 shadow-sm"
+                : "bg-slate-50/70 border-slate-200 hover:border-slate-300 hover:bg-slate-100/60"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                Monitored Scrips
               </span>
-              <span className="text-[9px] font-mono text-slate-400">PVASF v2.4</span>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-2">
-              <div className="bg-rose-50/70 border border-rose-200 rounded p-2 text-center">
-                <div className="text-[9px] font-bold uppercase text-rose-700">High Risk</div>
-                <div className="text-lg font-black text-rose-700 font-mono mt-0.5">{loading ? "..." : highRiskCount}</div>
-                <div className="text-[8px] font-mono text-rose-500">score ≥15</div>
-              </div>
-              <div className="bg-amber-50/70 border border-amber-200 rounded p-2 text-center">
-                <div className="text-[9px] font-bold uppercase text-amber-700">Med Risk</div>
-                <div className="text-lg font-black text-amber-700 font-mono mt-0.5">{loading ? "..." : medRiskCount}</div>
-                <div className="text-[8px] font-mono text-amber-500">10 - 14</div>
-              </div>
-              <div className="bg-emerald-50/70 border border-emerald-200 rounded p-2 text-center">
-                <div className="text-[9px] font-bold uppercase text-emerald-700">Normal</div>
-                <div className="text-lg font-black text-emerald-700 font-mono mt-0.5">{loading ? "..." : lowRiskCount}</div>
-                <div className="text-[8px] font-mono text-emerald-500">&lt;10</div>
+              <div className="w-7 h-7 rounded-md bg-slate-200/60 flex items-center justify-center">
+                <BarChart2 className="h-3.5 w-3.5 text-slate-700" />
               </div>
             </div>
-          </div>
+            <div className="mt-2.5 flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-slate-900 leading-none">
+                {loading ? "—" : scrips.length}
+              </span>
+              <span className="text-xs text-slate-500">Securities</span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+              <Database className="h-3 w-3 text-slate-400" /> 31,200 Teradata Trade Matches
+            </div>
+          </button>
 
-          {/* KPI Card 2: Anomaly Mover Highlights */}
-          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2.5">
-            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5 border-b border-slate-100 pb-1.5">
-              <TrendingUp className="h-3.5 w-3.5 text-amber-600" />
-              Anomaly Highlights (15D Window)
+          {/* Card 2: High Risk Critical Alerts */}
+          <button
+            onClick={() => setRiskFilter("High")}
+            className={cn(
+              "text-left border rounded-xl p-3.5 flex flex-col justify-between transition-all cursor-pointer",
+              riskFilter === "High"
+                ? "bg-rose-100/70 border-rose-400 ring-2 ring-rose-500/20 shadow-sm"
+                : "bg-rose-50/50 border-rose-200/80 hover:border-rose-300 hover:bg-rose-100/40"
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-rose-700 uppercase tracking-wider">
+                High Risk Alerts
+              </span>
+              <div className="w-7 h-7 rounded-md bg-rose-100 border border-rose-200 flex items-center justify-center">
+                <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
+              </div>
             </div>
+            <div className="mt-2.5 flex items-baseline gap-2">
+              <span className="text-2xl font-bold text-rose-600 leading-none">
+                {loading ? "—" : highRiskCount}
+              </span>
+              <span className="text-xs font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-200">
+                Score ≥ 15
+              </span>
+            </div>
+            <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1.5">
+              <span>{medRiskCount} Medium (10–14)</span>
+              <span className="text-slate-300">•</span>
+              <span>{lowRiskCount} Normal</span>
+            </div>
+          </button>
 
-            {loading || scrips.length === 0 ? (
-              <div className="text-[10px] text-slate-400 font-mono py-2">Loading highlights…</div>
+          {/* Card 3: Top Price Mover */}
+          <div className="bg-violet-50/50 border border-violet-200/80 rounded-xl p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-violet-700 uppercase tracking-wider">
+                Top Price Surge
+              </span>
+              <div className="w-7 h-7 rounded-md bg-violet-100 border border-violet-200 flex items-center justify-center">
+                <TrendingUp className="h-3.5 w-3.5 text-violet-600" />
+              </div>
+            </div>
+            {topMover && !loading ? (
+              <>
+                <div className="mt-2.5 flex items-baseline justify-between">
+                  <Link
+                    href={`/investigations/${topMover.symbol}`}
+                    className="text-base font-bold text-slate-900 hover:text-violet-700 hover:underline flex items-center gap-1 leading-none"
+                  >
+                    {topMover.symbol} <ChevronRight className="h-3.5 w-3.5 text-violet-500" />
+                  </Link>
+                  <span className="text-xs font-bold text-rose-600 bg-rose-100/80 px-1.5 py-0.5 rounded border border-rose-200">
+                    +{topMover.price_rise_pct.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between">
+                  <span>Price Z: <strong className="text-slate-800">{topMover.price_z.toFixed(2)}σ</strong></span>
+                  <span className="text-slate-400">vs T-180 Baseline</span>
+                </div>
+              </>
             ) : (
-              <div className="space-y-2 text-xs">
-                {/* Max Price Rise */}
-                {(() => {
-                  const maxRise = [...scrips].sort((a, b) => b.price_rise_pct - a.price_rise_pct)[0];
-                  return maxRise ? (
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
-                      <div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Price Rise (vs T-180)</div>
-                        <div className="font-bold text-slate-900">{maxRise.symbol}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-black text-rose-600 font-mono">+{maxRise.price_rise_pct.toFixed(1)}%</div>
-                        <div className="text-[9px] text-slate-400 font-mono">15D Peak</div>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-
-                {/* Max Circuit Hits */}
-                {(() => {
-                  const maxBand = [...scrips].sort((a, b) => b.band_hit_days - a.band_hit_days)[0];
-                  return maxBand ? (
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
-                      <div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Circuit Band Persistence</div>
-                        <div className="font-bold text-slate-900">{maxBand.symbol}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-black text-blue-700 font-mono">{maxBand.band_hit_days} Days</div>
-                        <div className="text-[9px] text-slate-400 font-mono">≥90% Circuit</div>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-
-                {/* Max Volume Z */}
-                {(() => {
-                  const maxVolZ = [...scrips].sort((a, b) => b.volume_z - a.volume_z)[0];
-                  return maxVolZ ? (
-                    <div className="flex items-center justify-between bg-slate-50 border border-slate-200 rounded p-2">
-                      <div>
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">Max Volume Z-Score</div>
-                        <div className="font-bold text-slate-900">{maxVolZ.symbol}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-black text-violet-700 font-mono">{maxVolZ.volume_z.toFixed(2)}σ</div>
-                        <div className="text-[9px] text-slate-400 font-mono">Volume Surge</div>
-                      </div>
-                    </div>
-                  ) : null;
-                })()}
-              </div>
+              <div className="mt-2 text-xs text-slate-400">Loading metrics...</div>
             )}
           </div>
 
-          {/* KPI Card 3: Engine Architecture Status */}
-          <div className="bg-white border border-slate-200 rounded shadow-xs p-3 space-y-2">
-            <div className="text-[10px] font-bold text-slate-700 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1.5">
-              <span className="flex items-center gap-1.5">
-                <BarChart2 className="h-3.5 w-3.5 text-emerald-600" />
-                Surveillance Architecture
+          {/* Card 4: Top Volume Anomaly */}
+          <div className="bg-amber-50/50 border border-amber-200/80 rounded-xl p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-amber-700 uppercase tracking-wider">
+                Top Volume Surge
               </span>
-              <span className="text-[9px] font-mono bg-emerald-100 text-emerald-800 font-bold px-1.5 rounded">ONLINE</span>
-            </div>
-
-            <div className="space-y-1.5 text-[11px] font-mono">
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Baseline Window:</span>
-                <span className="font-bold text-slate-900">180 Trading Days</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Observation Window:</span>
-                <span className="font-bold text-slate-900">15 Trading Days</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Warehouse Engine:</span>
-                <span className="font-bold text-slate-900">Teradata DWBIS</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-600">
-                <span>Active Core Rules:</span>
-                <span className="font-bold text-blue-700">5 PV Metrics</span>
+              <div className="w-7 h-7 rounded-md bg-amber-100 border border-amber-200 flex items-center justify-center">
+                <Zap className="h-3.5 w-3.5 text-amber-600" />
               </div>
             </div>
-          </div>
-
-          {/* KPI Card 4: Quick Action Shortcuts */}
-          <div className="bg-slate-900 text-white rounded shadow-xs p-3 space-y-2">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-800 pb-1.5">
-              Surveillance Workflows
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 text-[10px] font-bold">
-              <a href="/compare" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                Compare Scrips
-              </a>
-              <a href="/cases" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                Case Dossiers
-              </a>
-              <a href="/" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                Watchlist Triage
-              </a>
-              <a href="/settings" className="bg-slate-800 hover:bg-blue-600 text-slate-200 hover:text-white p-2 rounded text-center transition-colors">
-                Metric Weights
-              </a>
-            </div>
+            {topVolume && !loading ? (
+              <>
+                <div className="mt-2.5 flex items-baseline justify-between">
+                  <Link
+                    href={`/investigations/${topVolume.symbol}`}
+                    className="text-base font-bold text-slate-900 hover:text-amber-700 hover:underline flex items-center gap-1 leading-none"
+                  >
+                    {topVolume.symbol} <ChevronRight className="h-3.5 w-3.5 text-amber-500" />
+                  </Link>
+                  <span className="text-xs font-bold text-amber-700 bg-amber-100/80 px-1.5 py-0.5 rounded border border-amber-200">
+                    {topVolume.volume_z.toFixed(2)}σ Surge
+                  </span>
+                </div>
+                <div className="mt-2 text-[11px] text-slate-500 flex items-center justify-between">
+                  <span>Circuit Hits: <strong className="text-slate-800">{topVolume.band_hit_days} Days</strong></span>
+                  <span className="text-slate-400">≥90% Upper Band</span>
+                </div>
+              </>
+            ) : (
+              <div className="mt-2 text-xs text-slate-400">Loading metrics...</div>
+            )}
           </div>
 
         </div>
-
       </div>
+
+      {/* ── Main Content: Watchlist Table Workspace (Clean Single Overflow Layout) ── */}
+      <main className="flex-1 overflow-hidden flex flex-col bg-white">
+        <AlertsTable
+          scrips={scrips}
+          onStatusChange={handleStatusChange}
+          selectedRiskFilter={riskFilter}
+          onRiskFilterChange={(newFilter) => setRiskFilter(newFilter)}
+          loading={loading}
+        />
+      </main>
     </div>
   );
 }

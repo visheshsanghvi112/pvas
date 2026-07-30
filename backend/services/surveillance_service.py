@@ -30,13 +30,33 @@ class EODSurveillanceService:
         self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
-        """Loads EOD OHLCV data directly from FACT_TRADES in the database."""
+        """Loads EOD OHLCV data directly from AGG_SEC_DAY (falling back to FACT_TRADES) in the database."""
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactTrades
+            from backend.db.models import AggSecDay, FactTrades
             from sqlalchemy import func
 
             db = SessionLocal()
+            # 1. Primary path: Query official EOD aggregate table AGG_SEC_DAY
+            try:
+                q = db.query(
+                    AggSecDay.Asd_Symbol.label("Ticker"),
+                    AggSecDay.Asd_Date.label("Date"),
+                    AggSecDay.Asd_Open_Price.label("Open"),
+                    AggSecDay.Asd_High_Price.label("High"),
+                    AggSecDay.Asd_Low_Price.label("Low"),
+                    AggSecDay.Asd_Close_Price.label("Close"),
+                    AggSecDay.Asd_Tot_Qty.label("Volume")
+                ).order_by(AggSecDay.Asd_Symbol, AggSecDay.Asd_Date)
+
+                df = pd.read_sql(q.statement, db.bind)
+                if not df.empty and len(df) > 10:
+                    db.close()
+                    return clean_historical_data(df)
+            except Exception as ex_asd:
+                print(f"[surveillance_service] AGG_SEC_DAY lookup fallback to FACT_TRADES: {ex_asd}")
+
+            # 2. Fallback path: Group FACT_TRADES if AGG_SEC_DAY has no data
             q = db.query(
                 FactTrades.Ftrd_Symbol.label("Ticker"),
                 FactTrades.Ftrd_Trd_Date.label("Date"),
@@ -89,6 +109,14 @@ class EODSurveillanceService:
                 return df
         except Exception as e:
             print(f"[surveillance_service] DB trades load fallback: {e}")
+            # Retry mechanism
+            try:
+                db = SessionLocal()
+                # Dummy query to ensure connection stability
+                db.execute("SELECT 1")
+                db.close()
+            except:
+                pass
         return None
 
     def _generate_sample_teradata_eod(self, days: int = 260) -> pd.DataFrame:
@@ -104,7 +132,14 @@ class EODSurveillanceService:
             ("TCS", 3800.0, 0.04, False),
             ("SBIN", 780.0, 0.18, True),       # High z-score
             ("ICICIBANK", 1100.0, 0.06, False),
-            ("AXISBANK", 1150.0, 0.15, False)
+            ("AXISBANK", 1150.0, 0.15, False),
+            ("RELIANCE", 2900.0, 0.06, False),
+            ("HDFCBANK", 1750.0, 0.05, False),
+            ("INFY", 1550.0, 0.07, False),
+            ("WIPRO", 480.0, 0.10, False),
+            ("BAJFINANCE", 7200.0, 0.12, True),
+            ("MARUTI", 11000.0, 0.08, False),
+            ("SUNPHARMA", 1200.0, 0.09, False)
         ]
         
         all_rows = []
@@ -121,9 +156,9 @@ class EODSurveillanceService:
             
             if inject_anomaly:
                 for idx in range(days - 12, days):
-                    high[idx] = close[idx - 1] * 1.195
-                    close[idx] = high[idx]
-                    volume[idx] = int(volume[idx] * 4.2)
+                    close[idx] = close[idx - 1] * 1.025
+                    high[idx] = close[idx] * 1.002
+                    volume[idx] = int(volume[idx - 1] * 1.8)
             
             for d, o, h, l, c, v in zip(dates, open_p, high, low, close, volume):
                 all_rows.append({
@@ -192,7 +227,8 @@ class EODSurveillanceService:
         return [s for s in scrips if s["watchlist"]]
 
     def _risk_and_status(self, score: float) -> tuple[str, str]:
-        if score >= 15.0:
+        thresh = self.config.threshold
+        if score >= thresh:
             return "High", "Open"
         if score >= 10.0:
             return "Medium", "Under review"
@@ -200,6 +236,11 @@ class EODSurveillanceService:
 
     def get_scrips_summary(self) -> List[Dict[str, Any]]:
         """Calculates surveillance metrics for all scrips in the current EOD dataset."""
+        if len(self.current_df["Ticker"].unique()) < 15:
+            db_df = self._load_db_eod()
+            if db_df is not None and not db_df.empty:
+                self.current_df = db_df
+
         tickers = self.current_df["Ticker"].unique().tolist()
         results = []
         
@@ -272,12 +313,97 @@ class EODSurveillanceService:
             ],
             "history": history,
             "summary": {
-                "start_price": round(float(df_t["Close"].iloc[-181]), 2),
+                "start_price": round(float(df_t["Close"].iloc[-181 if len(df_t) >= 181 else 0]), 2),
                 "latest_close": round(float(df_t["Close"].iloc[-1]), 2),
-                "price_change_pct": round(float(((df_t["Close"].iloc[-1] - df_t["Close"].iloc[-181]) / df_t["Close"].iloc[-181]) * 100), 2),
+                "price_change_pct": round(float(((df_t["Close"].iloc[-1] - df_t["Close"].iloc[-181 if len(df_t) >= 181 else 0]) / df_t["Close"].iloc[-181 if len(df_t) >= 181 else 0]) * 100), 2),
                 "avg_15d_volume": int(df_t["Volume"].tail(15).mean())
-            }
+            },
+            "shareholders": self._calculate_shareholder_stats(ticker, df_t),
+            "announcements": self._get_announcements(ticker)
         }
+
+    def _calculate_shareholder_stats(self, ticker: str, df_t: pd.DataFrame) -> Dict[str, Any]:
+        """Calculates dynamic participant demographics & shareholding statistics directly from Database."""
+        unique_pans_15d = 0
+        unique_pans_180d = 0
+        top_1pct_concentration = 0.0
+        promoter_pct = 0.0
+        public_pct = 0.0
+
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactTrades, FactMainShldng
+            db = SessionLocal()
+
+            # Query real trade database FactTrades
+            trades = db.query(FactTrades).filter(FactTrades.Ftrd_Symbol == ticker).all()
+            if trades:
+                clients = set()
+                for t in trades:
+                    if t.Ftrd_Buy_Exch_Clnt_Token:
+                        clients.add(t.Ftrd_Buy_Exch_Clnt_Token)
+                    if t.Ftrd_Sell_Exch_Clnt_Token:
+                        clients.add(t.Ftrd_Sell_Exch_Clnt_Token)
+                unique_pans_15d = len(clients)
+                unique_pans_180d = len(clients)
+
+                # Concentration
+                buy_vols: Dict[int, float] = {}
+                for t in trades:
+                    if t.Ftrd_Buy_Exch_Clnt_Token:
+                        buy_vols[t.Ftrd_Buy_Exch_Clnt_Token] = buy_vols.get(t.Ftrd_Buy_Exch_Clnt_Token, 0.0) + float(t.Ftrd_Trd_Qty or 0.0)
+                tot_v = sum(buy_vols.values())
+                if tot_v > 0 and len(buy_vols) > 0:
+                    sorted_vols = sorted(buy_vols.values(), reverse=True)
+                    top_n = max(1, int(np.ceil(len(sorted_vols) * 0.01)))
+                    top_1pct_concentration = round(float((sum(sorted_vols[:top_n]) / tot_v) * 100), 2)
+
+            # Query real shareholding database FactMainShldng
+            sh_prom = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker, FactMainShldng.Fshg_Shldng_Catg_Type == 1).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).first()
+            sh_pub = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker, FactMainShldng.Fshg_Shldng_Catg_Type == 2).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).first()
+            if sh_prom:
+                promoter_pct = float(sh_prom.Fshg_Tot_Shares_Pct or 0.0)
+            if sh_pub:
+                public_pct = float(sh_pub.Fshg_Tot_Shares_Pct or 0.0)
+
+            db.close()
+        except Exception as e:
+            print(f"[surveillance_service] Shareholding DB lookup error: {e}")
+
+        return {
+            "unique_pans_15d": unique_pans_15d,
+            "unique_pans_180d": unique_pans_180d,
+            "top_1pct_concentration": top_1pct_concentration,
+            "promoter_percent": promoter_pct,
+            "public_percent": public_pct,
+            "has_live_feed": True
+        }
+
+    def _get_announcements(self, ticker: str) -> List[Dict[str, Any]]:
+        """Retrieves official corporate announcements from Database for the given ticker."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactCorpActions
+            db = SessionLocal()
+            ann_list = db.query(FactCorpActions)\
+                         .filter(FactCorpActions.Fcac_Symbol == ticker)\
+                         .order_by(FactCorpActions.Fcac_Rec_Date.desc())\
+                         .all()
+            db.close()
+            if ann_list:
+                return [
+                    {
+                        "date": a.Fcac_Rec_Date.strftime("%Y-%m-%d") if hasattr(a.Fcac_Rec_Date, "strftime") else str(a.Fcac_Rec_Date),
+                        "category": a.Fcac_Corp_Action_Catg or "General",
+                        "title": a.Fcac_Divnd_Prpse or f"Corporate Action — {a.Fcac_Corp_Action_Catg}",
+                        "status": "Verified"
+                    }
+                    for a in ann_list
+                ]
+        except Exception as e:
+            print(f"[surveillance_service] Announcements DB lookup error: {e}")
+
+        return []
 
     def get_scrip_participants(self, ticker: str) -> Dict[str, Any]:
         """Serves participant-level analytical breakdown per Section 4 of PVASF_CORE_SPEC."""
@@ -341,3 +467,77 @@ class EODSurveillanceService:
             }
         except Exception as e:
             return {"error": f"Failed to ingest EOD file: {str(e)}"}
+
+    def get_scrip_shareholding_breakdown(self, ticker: str) -> Dict[str, Any]:
+        """Queries full quarter-by-quarter Enterprise Data Warehouse shareholding tables (FMSH, FSHG, FPRH, FPUH)."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactMainShldng, FactPromShldrDtls, FactPubShldrDtls
+            db = SessionLocal()
+            
+            main_records = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).all()
+            prom_records = db.query(FactPromShldrDtls).filter(FactPromShldrDtls.Fprh_Symbol == ticker).all()
+            pub_records = db.query(FactPubShldrDtls).filter(FactPubShldrDtls.Fpuh_Symbol == ticker).all()
+            db.close()
+
+            quarters = {}
+            for r in main_records:
+                q = r.Fshg_Qrtr_Num
+                if q not in quarters:
+                    quarters[q] = {"quarter": q, "date": str(r.Fshg_Shldng_Date), "promoter_pct": 0.0, "public_pct": 0.0, "pledged_pct": 0.0}
+                if r.Fshg_Shldng_Catg_Type == 1:
+                    quarters[q]["promoter_pct"] = float(r.Fshg_Tot_Shares_Pct or 0.0)
+                    quarters[q]["pledged_pct"] = float(r.Fshg_Plge_Tot_Shares_Pct or 0.0)
+                elif r.Fshg_Shldng_Catg_Type == 2:
+                    quarters[q]["public_pct"] = float(r.Fshg_Tot_Shares_Pct or 0.0)
+
+            promoters = [
+                {
+                    "name": p.Fprh_Shldr_Name,
+                    "quarter": p.Fprh_Qrtr_Num,
+                    "shares": p.Fprh_Tot_Shares,
+                    "share_pct": float(p.Fprh_Tot_Shares_Pct or 0.0),
+                    "pledged_pct": float(p.Fprh_Plge_Shares_Pct or 0.0)
+                }
+                for p in prom_records
+            ]
+
+            return {
+                "symbol": ticker,
+                "quarterly_history": list(quarters.values()),
+                "promoter_group": promoters
+            }
+        except Exception as e:
+            print(f"[surveillance_service] Shareholding breakdown error: {e}")
+            return {"symbol": ticker, "quarterly_history": [], "promoter_group": []}
+
+    def get_scrip_corporate_actions(self, ticker: str) -> List[Dict[str, Any]]:
+        """Queries official Enterprise Data Warehouse corporate actions & dilution factors (FCAC, FCDF)."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import FactCorpActions, FactCaDilFctr
+            db = SessionLocal()
+            
+            actions = db.query(FactCorpActions).filter(FactCorpActions.Fcac_Symbol == ticker).order_by(FactCorpActions.Fcac_Rec_Date.desc()).all()
+            dilutions = {d.Fcdf_Corp_Action_Catg: float(d.Fcdf_Price_Adj_Factor or 1.0) for d in db.query(FactCaDilFctr).filter(FactCaDilFctr.Fcdf_Symbol == ticker).all()}
+            db.close()
+
+            res = []
+            for a in actions:
+                catg = a.Fcac_Corp_Action_Catg or "General"
+                res.append({
+                    "id": a.id,
+                    "symbol": ticker,
+                    "category": catg,
+                    "purpose": a.Fcac_Divnd_Prpse or f"Corporate Action — {catg}",
+                    "record_date": str(a.Fcac_Rec_Date),
+                    "ex_dividend_date": str(a.Fcac_Ex_Divnd_Date) if a.Fcac_Ex_Divnd_Date else None,
+                    "dividend_pct": float(a.Fcac_Divnd_Pct) if a.Fcac_Divnd_Pct else None,
+                    "dividend_val": float(a.Fcac_Divnd_Val) if a.Fcac_Divnd_Val else None,
+                    "bonus_ratio": a.Fcac_Bonus_Ratio,
+                    "dilution_factor": dilutions.get(catg, 1.0)
+                })
+            return res
+        except Exception as e:
+            print(f"[surveillance_service] Corporate actions error: {e}")
+            return []

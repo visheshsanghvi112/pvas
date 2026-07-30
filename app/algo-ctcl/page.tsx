@@ -41,12 +41,7 @@ export default function AlgoCtclPage() {
       const res = await fetch("http://127.0.0.1:8000/api/v1/trades/analysis/algo-breakdown");
       if (res.ok) {
         const raw = await res.json();
-        // Enrich with realistic spoof ratio calculation (Pending Book Depth vs Executed)
-        const enriched = raw.map((item: AlgoScripSummary, idx: number) => ({
-          ...item,
-          spoof_ratio: roundVal(12.4 + (idx * 3.8) % 45, 1)
-        }));
-        setAlgoData(enriched.sort((a: AlgoScripSummary, b: AlgoScripSummary) => b.spoof_ratio - a.spoof_ratio));
+        setAlgoData(raw.sort((a: AlgoScripSummary, b: AlgoScripSummary) => b.spoof_ratio - a.spoof_ratio));
       }
     } catch (e) {
       console.error("Failed to load algo breakdown", e);

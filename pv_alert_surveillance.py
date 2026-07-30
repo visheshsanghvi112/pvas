@@ -179,7 +179,7 @@ class SurveillanceConfig:
     default_band_percent: float = 0.20
     lookback_days: int = 180
     recent_days: int = 15
-    threshold: float = 60.0
+    threshold: float = 15.0
 
 
 @dataclass
@@ -365,8 +365,9 @@ class SurveillanceEngine:
         # --- 2.1 Price Rise ---
         # highest price (High) in last 15 days vs closing price at T-180
         last15_high = high.iloc[-recent:].max()
-        close_t180 = close.iloc[-(lookback + 1)]
-        price_rise_pct = ((last15_high - close_t180) / close_t180) * 100
+        close_t180 = float(close.iloc[-(lookback + 1)])
+        safe_close_t180 = max(close_t180, 1e-4) if close_t180 != 0 else 1e-4
+        price_rise_pct = ((last15_high - close_t180) / safe_close_t180) * 100
         price_rise_score = self.score_price_rise(price_rise_pct)
 
         # Helper rolling calculators
@@ -384,9 +385,9 @@ class SurveillanceEngine:
             background = series_clean.iloc[-(lookback + 1):-1]
             mu = background.mean()
             sigma = background.std()
-            if sigma == 0 or np.isnan(sigma):
+            if sigma < 1e-6 or np.isnan(sigma):
                 return 0.0
-            return (latest - mu) / sigma
+            return float((latest - mu) / sigma)
 
         def modified_zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
@@ -396,9 +397,9 @@ class SurveillanceEngine:
             background = series_clean.iloc[-(lookback + 1):-1]
             med = background.median()
             mad = np.median(np.abs(background - med))
-            if mad == 0 or np.isnan(mad):
+            if mad < 1e-6 or np.isnan(mad):
                 sigma = background.std()
-                if sigma == 0 or np.isnan(sigma):
+                if sigma < 1e-6 or np.isnan(sigma):
                     return 0.0
                 return float((latest - med) / sigma)
             return float(0.6745 * (latest - med) / mad)
@@ -418,7 +419,7 @@ class SurveillanceEngine:
         # --- 2.4 Price Band Persistence (Upper Circuit Only) ---
         # Checks if the daily High reached >= 90% of the upper circuit limit.
         # Per PVASF spec (confirmed): only upper circuit hits are counted.
-        prev_close = close.shift(1)
+        prev_close = close.shift(1).replace(0, np.nan).fillna(1e-4)
         high_pct = (high - prev_close) / prev_close
         band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
         band_score = self.score_band_persistence(band_hit_days)
@@ -429,7 +430,7 @@ class SurveillanceEngine:
         new_high_days = int(is_new_high.iloc[-recent:].sum())
         new_high_score = self.score_new_high(new_high_days)
 
-        # --- Section 3: Weighted Final Score ---
+        # --- Section 3: Weighted Final Score (0.0 to 100.0) ---
         w = self.config.weights
         final_score = sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
             "price_rise": price_rise_score,

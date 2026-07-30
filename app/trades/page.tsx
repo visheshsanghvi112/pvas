@@ -142,78 +142,84 @@ export default function TradeExplorerPage() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/40 pb-4">
+    <div className="flex flex-col h-full">
+
+      {/* Page Header */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <TrendingUp className="h-6 w-6 text-primary" />
+          <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-blue-600" />
             Execution Audit & Trade Explorer
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Forensic audit of 31,200+ database trade matches backed by Teradata <code className="bg-muted px-1.5 py-0.5 rounded text-xs">FACT_TRADES</code> schema.
+          <p className="text-xs text-slate-400 mt-0.5">
+            Forensic audit of trade matches backed by Teradata <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">FACT_TRADES</code> schema.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="h-9 px-3 text-xs" onClick={() => { setPage(1); loadTrades(); }}>
-            <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
-          </Button>
-        </div>
+        <button
+          className="flex items-center gap-2 h-9 px-4 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors shadow-sm"
+          onClick={() => { setPage(1); loadTrades(); }}
+        >
+          <RefreshCw className="h-3.5 w-3.5 text-blue-600" />
+          Refresh
+        </button>
       </div>
 
+      {/* Scrollable Content */}
+      <div className="flex-1 overflow-auto bg-slate-50 p-6">
+        <div className="space-y-4 max-w-full">
+
       {/* Filter Controls */}
-      <div className="bg-card border border-border rounded-lg p-4 space-y-4 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <div className="relative">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
+            <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+            <input
               placeholder="Filter by Symbol e.g. ALPHATECH"
-              className="pl-9"
+              className="w-full h-10 pl-9 pr-4 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder:text-slate-400 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"
               value={symbol}
               onChange={(e) => setSymbol(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && (setPage(1), loadTrades())}
             />
           </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant={washOnly ? "destructive" : "outline"}
-              className="w-full justify-start text-xs h-10"
-              onClick={() => { setWashOnly(!washOnly); setPage(1); }}
-            >
-              <ShieldAlert className="h-4 w-4 mr-2" />
-              {washOnly ? "Filter: Wash Trades Only" : "Show All Trades"}
-            </Button>
-          </div>
+          <button
+            className={`w-full h-10 flex items-center justify-start gap-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
+              washOnly
+                ? "bg-rose-600 text-white border-rose-600 hover:bg-rose-700"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+            onClick={() => { setWashOnly(!washOnly); setPage(1); }}
+          >
+            <ShieldAlert className="h-4 w-4" />
+            {washOnly ? "Wash Trades Only" : "All Trades"}
+          </button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant={algoOnly ? "default" : "outline"}
-              className="w-full justify-start text-xs h-10"
-              onClick={() => { setAlgoOnly(!algoOnly); setPage(1); }}
-            >
-              <Layers className="h-4 w-4 mr-2" />
-              {algoOnly ? "Filter: Algo Orders Only" : "Show All Channels"}
-            </Button>
-          </div>
+          <button
+            className={`w-full h-10 flex items-center justify-start gap-2 px-4 rounded-lg border text-sm font-medium transition-colors ${
+              algoOnly
+                ? "bg-blue-600 text-white border-blue-600 hover:bg-blue-700"
+                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            }`}
+            onClick={() => { setAlgoOnly(!algoOnly); setPage(1); }}
+          >
+            <Layers className="h-4 w-4" />
+            {algoOnly ? "Algo Orders Only" : "All Channels"}
+          </button>
 
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              className="w-full justify-between text-xs h-10"
-              onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
-            >
-              <span className="flex items-center gap-2">
-                <ArrowUpDown className="h-4 w-4" />
-                Sort: {sortDir === "desc" ? "Newest First" : "Oldest First"}
-              </span>
-            </Button>
-          </div>
+          <button
+            className="w-full h-10 flex items-center justify-between gap-2 px-4 rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+            onClick={() => setSortDir(sortDir === "desc" ? "asc" : "desc")}
+          >
+            <span className="flex items-center gap-2">
+              <ArrowUpDown className="h-4 w-4" />
+              {sortDir === "desc" ? "Newest First" : "Oldest First"}
+            </span>
+          </button>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-card border border-border rounded-lg overflow-hidden shadow-sm">
+      {/* Trades Table */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-muted/50 text-muted-foreground uppercase text-[11px] font-semibold tracking-wider border-b border-border">
@@ -329,65 +335,70 @@ export default function TradeExplorerPage() {
         </div>
       </div>
 
+        </div>
+      </div>
+
       {/* Trade Match Order Book Snapshot Modal */}
       {selectedTrade && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-card border border-border rounded-xl shadow-xl max-w-2xl w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
               <div>
-                <h3 className="font-bold text-lg text-foreground flex items-center gap-2">
-                  <Clock className="h-5 w-5 text-primary" />
-                  Trade Execution Match Detail & Depth
+                <h3 className="font-bold text-slate-900 flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-blue-600" />
+                  Trade Execution Detail
                 </h3>
-                <p className="text-xs text-muted-foreground font-mono">
-                  Trade ID: {selectedTrade.Ftrd_Trd_Num} | Date: {selectedTrade.Ftrd_Trd_Date}
+                <p className="text-xs text-slate-400 font-mono mt-0.5">
+                  Trade #{selectedTrade.Ftrd_Trd_Num} · {selectedTrade.Ftrd_Trd_Date}
                 </p>
               </div>
-              <Button variant="ghost" className="h-8 w-8 p-0" onClick={() => setSelectedTrade(null)}>
+              <button onClick={() => setSelectedTrade(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
                 <X className="h-4 w-4" />
-              </Button>
+              </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-xs">
-              <div className="bg-muted/30 p-3 rounded-lg space-y-1">
-                <span className="font-semibold text-foreground">Buy Side Parameters</span>
-                <div>TM Token: {selectedTrade.Ftrd_Buy_Exch_TM_Token}</div>
-                <div>Client Token: {selectedTrade.Ftrd_Buy_Exch_Clnt_Token}</div>
-                <div>Account Type: {selectedTrade.Ftrd_Buy_Acct_Type === 1 ? "Client" : "Proprietary"}</div>
-                <div>Algo Flag: {selectedTrade.Ftrd_Buy_CTCL_Algo_Flag === 0 ? "Algo Execution" : "Manual"}</div>
-              </div>
-
-              <div className="bg-muted/30 p-3 rounded-lg space-y-1">
-                <span className="font-semibold text-foreground">Sell Side Parameters</span>
-                <div>TM Token: {selectedTrade.Ftrd_Sell_Exch_TM_Token}</div>
-                <div>Client Token: {selectedTrade.Ftrd_Sell_Exch_Clnt_Token}</div>
-                <div>Account Type: {selectedTrade.Ftrd_Sell_Acct_Type === 1 ? "Client" : "Proprietary"}</div>
-                <div>Algo Flag: {selectedTrade.Ftrd_Sell_CTCL_Algo_Flag === 0 ? "Algo Execution" : "Manual"}</div>
-              </div>
-            </div>
-
-            <div className="bg-muted/40 p-4 rounded-lg space-y-3">
-              <h4 className="font-semibold text-xs text-foreground uppercase tracking-wider">
-                Order Book Depth Snapshot at Execution Moment
-              </h4>
-              <div className="grid grid-cols-2 gap-4 font-mono text-xs">
-                <div className="border-r border-border/60 pr-2 space-y-1">
-                  <div className="text-emerald-500 font-bold">BEST BID: ₹{selectedTrade.Ftrd_Best_Bid_Price || selectedTrade.Ftrd_Trd_Price}</div>
-                  <div>Bid Qty: {selectedTrade.Ftrd_Best_Bid_Qty || selectedTrade.Ftrd_Trd_Qty}</div>
-                  <div>Pending Orders: {selectedTrade.Ftrd_Bid_Pdg_Ord_Cnt || 42}</div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
+                  <div className="font-semibold text-slate-800 mb-2">Buy Side</div>
+                  <div className="flex justify-between"><span className="text-slate-500">TM Token</span><span className="font-mono font-medium">{selectedTrade.Ftrd_Buy_Exch_TM_Token}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Client Token</span><span className="font-mono font-medium">{selectedTrade.Ftrd_Buy_Exch_Clnt_Token}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Account Type</span><span className="font-medium">{selectedTrade.Ftrd_Buy_Acct_Type === 1 ? "Client" : "Proprietary"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Channel</span><span className="font-medium">{selectedTrade.Ftrd_Buy_CTCL_Algo_Flag === 0 ? "Algo" : "Manual"}</span></div>
                 </div>
-                <div className="space-y-1">
-                  <div className="text-red-500 font-bold">BEST ASK: ₹{selectedTrade.Ftrd_Best_Ask_Price || selectedTrade.Ftrd_Trd_Price}</div>
-                  <div>Ask Qty: {selectedTrade.Ftrd_Best_Ask_Qty || selectedTrade.Ftrd_Trd_Qty}</div>
-                  <div>Pending Orders: {selectedTrade.Ftrd_Ask_Pdg_Ord_Cnt || 38}</div>
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl space-y-1.5">
+                  <div className="font-semibold text-slate-800 mb-2">Sell Side</div>
+                  <div className="flex justify-between"><span className="text-slate-500">TM Token</span><span className="font-mono font-medium">{selectedTrade.Ftrd_Sell_Exch_TM_Token}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Client Token</span><span className="font-mono font-medium">{selectedTrade.Ftrd_Sell_Exch_Clnt_Token}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Account Type</span><span className="font-medium">{selectedTrade.Ftrd_Sell_Acct_Type === 1 ? "Client" : "Proprietary"}</span></div>
+                  <div className="flex justify-between"><span className="text-slate-500">Channel</span><span className="font-medium">{selectedTrade.Ftrd_Sell_CTCL_Algo_Flag === 0 ? "Algo" : "Manual"}</span></div>
                 </div>
               </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
+                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Order Book Depth at Execution</div>
+                <div className="grid grid-cols-2 gap-4 font-mono text-sm">
+                  <div className="space-y-1.5">
+                    <div className="font-bold text-emerald-600">Best Bid: ₹{selectedTrade.Ftrd_Best_Bid_Price || selectedTrade.Ftrd_Trd_Price}</div>
+                    <div className="text-slate-600">Qty: {selectedTrade.Ftrd_Best_Bid_Qty || selectedTrade.Ftrd_Trd_Qty}</div>
+                    <div className="text-slate-600">Pending Orders: {selectedTrade.Ftrd_Bid_Pdg_Ord_Cnt || 42}</div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <div className="font-bold text-rose-600">Best Ask: ₹{selectedTrade.Ftrd_Best_Ask_Price || selectedTrade.Ftrd_Trd_Price}</div>
+                    <div className="text-slate-600">Qty: {selectedTrade.Ftrd_Best_Ask_Qty || selectedTrade.Ftrd_Trd_Qty}</div>
+                    <div className="text-slate-600">Pending Orders: {selectedTrade.Ftrd_Ask_Pdg_Ord_Cnt || 38}</div>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" className="h-8 text-xs px-3" onClick={() => setSelectedTrade(null)}>
-                Close Inspector
-              </Button>
+            <div className="flex justify-end px-6 py-4 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setSelectedTrade(null)}
+                className="px-4 py-2 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-white transition-colors"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

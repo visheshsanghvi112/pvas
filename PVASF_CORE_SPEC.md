@@ -196,7 +196,7 @@ $$\text{LTP Contribution \%} = \frac{\sum (\text{Net LTP contribution of entity 
 *(Calculated only for trades where the PAN was the "Aggressor" or initiator)*
 - **What It Conveys**: Tracks how much each PAN's trades changed the Last Traded Price (LTP) throughout the 15-day observation period.
 - **Explanation**: Finds the "Leader". If the price went from ₹100 to ₹110 over the last 15 days, and one specific investor's trades were responsible for ₹8 of that ₹10 increase, they are setting the price rather than following it.
-- **Report Output**: Entities with positive/negative LTP contribution higher than $x\%$ of total 15-day LTP movement are displayed under **"LTP Contributors"** with their percentage contribution.
+- **Report Output**: Entities with positive/negative LTP contribution higher than x% of total 15-day LTP movement are displayed under **"LTP Contributors"** with their percentage contribution.
 
 ### 4.2. Volume Share (The "Dominance" Metric)
 - **Aim**: Details of top unique PANs who significantly contributed to total volume of the scrip in the past 15 days, beyond a given threshold.
@@ -204,7 +204,7 @@ $$\text{LTP Contribution \%} = \frac{\sum (\text{Net LTP contribution of entity 
 $$\text{Volume Share \%} = \frac{\text{Individual PAN Volume over 15 trading days}}{\text{Total Scrip Volume over 15 trading days}} \times 100$$
 - **What It Conveys**: Percentage of total trading accounted for by each PAN.
 - **Explanation**: If one person accounts for 50% of all buying and selling in a stock, they dominate the market—a key sign of cornering.
-- **Report Output**: Entities with volume concentration higher than $x\%$ are displayed under **"Volume Contributors"**.
+- **Report Output**: Entities with volume concentration higher than x% are displayed under **"Volume Contributors"**.
 
 ### 4.3. Counterparty Concentration (The "Circular Trading" Metric)
 - **Aim**: Details of top unique PAN-counterparty PAN pairs who significantly contributed to total volume in the past 15 days, beyond a given threshold.
@@ -212,7 +212,7 @@ $$\text{Volume Share \%} = \frac{\text{Individual PAN Volume over 15 trading day
 $$\text{Counterparty Pair Share \%} = \frac{\text{Volume traded within Entity-Counterparty Pair over 15 trading days}}{\text{Total Scrip Volume over 15 trading days}} \times 100$$
 - **What It Conveys**: Evaluates if a single counterparty pair accounts for the majority of the security's volume.
 - **Explanation**: If "Person A" sells to "Person B," who sells back to "Person A," the price rises without shares leaving the group. High concentration suggests a trading ring.
-- **Report Output**: Counterparty pairs exceeding $x\%$ volume concentration are displayed under **"Counterparty Concentration"**.
+- **Report Output**: Counterparty pairs exceeding x% volume concentration are displayed under **"Counterparty Concentration"**.
 
 ---
 

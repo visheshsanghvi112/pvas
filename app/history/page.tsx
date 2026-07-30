@@ -1,27 +1,56 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
-import { History, Search, Download, Filter } from "lucide-react";
+import { History, Search, Download, Filter, RefreshCw } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
-const initialHistory = [
-  { symbol: "ALPHATECH", company: "AlphaTech Systems Ltd", status: "Open", risk: "High" as const, opened: "2026-07-20", outcome: "Synchronized upper band accumulation under audit" },
-  { symbol: "NOVAENERGY", company: "Nova Energy Products", status: "Under review", risk: "High" as const, opened: "2026-07-19", outcome: "KYC linkage report requested from top 5 brokers" },
-  { symbol: "TRIDENTEX", company: "Trident Exports", status: "Escalated", risk: "High" as const, opened: "2026-07-17", outcome: "Beneficial ownership linkage confirmed via MCA database" },
-  { symbol: "AURUMFIN", company: "Aurum Finance", status: "Closed", risk: "Medium" as const, opened: "2026-07-18", outcome: "No manipulation established; price movement news-driven" },
-  { symbol: "HELIOSMIN", company: "Helios Minerals", status: "Closed", risk: "Low" as const, opened: "2026-07-14", outcome: "Normal market order flow verified" },
-  { symbol: "MICRODYN", company: "Microdyn Components", status: "Under review", risk: "High" as const, opened: "2026-07-12", outcome: "Awaiting clarification letter from compliance officer" }
-];
+interface HistoryItem {
+  symbol: string;
+  company: string;
+  status: string;
+  risk: "High" | "Medium" | "Low";
+  opened: string;
+  outcome: string;
+}
 
 export default function HistoryPage() {
+  const [historyItems, setHistoryItems] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
 
-  const filtered = initialHistory.filter((item) => {
+  useEffect(() => {
+    loadHistory();
+  }, []);
+
+  async function loadHistory() {
+    setLoading(true);
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/v1/cases/");
+      if (res.ok) {
+        const cases = await res.json();
+        const mapped: HistoryItem[] = cases.map((c: any) => ({
+          symbol: c.target_symbol || c.case_id,
+          company: c.title || `${c.target_symbol} Surveillance Case`,
+          status: c.status || "Open",
+          risk: (c.priority as "High" | "Medium" | "Low") || "High",
+          opened: (c.created_at || "").split("T")[0] || "2026-07-28",
+          outcome: c.description || "Dossier under regulatory review.",
+        }));
+        setHistoryItems(mapped);
+      }
+    } catch (e) {
+      console.error("Failed to load history from cases endpoint", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const filtered = historyItems.filter((item) => {
     const matchesSearch =
       item.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -44,10 +73,15 @@ export default function HistoryPage() {
           <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900">Analysis History Log</h1>
           <p className="mt-1 text-xs text-slate-500">Archived surveillance analyses, broker queries, and final regulatory disposition outcomes.</p>
         </div>
-        <Button variant="outline" className="gap-2 border-slate-200 bg-white text-xs text-slate-700">
-          <Download className="h-4 w-4 text-blue-600" />
-          Export History Log (CSV)
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={loadHistory} className="h-8 gap-1.5 text-xs">
+            <RefreshCw className="h-3.5 w-3.5" /> Refresh Log
+          </Button>
+          <Button variant="outline" className="gap-2 border-slate-200 bg-white text-xs text-slate-700">
+            <Download className="h-4 w-4 text-blue-600" />
+            Export History Log (CSV)
+          </Button>
+        </div>
       </div>
 
       <Card>
@@ -75,9 +109,8 @@ export default function HistoryPage() {
                 className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-800 outline-none"
               >
                 <option value="All">All Statuses</option>
-                <option value="Open">Open</option>
-                <option value="Under review">Under review</option>
-                <option value="Escalated">Escalated</option>
+                <option value="Open Investigation">Open Investigation</option>
+                <option value="Pending Action">Pending Action</option>
                 <option value="Closed">Closed</option>
               </select>
             </div>
@@ -89,34 +122,48 @@ export default function HistoryPage() {
               <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5">Scrip Symbol</th>
-                  <th className="px-4 py-3.5">Company Name</th>
+                  <th className="px-4 py-3.5">Investigation Title</th>
                   <th className="px-4 py-3.5">Status</th>
-                  <th className="px-4 py-3.5">Risk Level</th>
+                  <th className="px-4 py-3.5">Priority</th>
                   <th className="px-4 py-3.5">Opened Date</th>
                   <th className="px-4 py-3.5">Audit Outcome</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-mono text-xs">
-                {filtered.map((row) => (
-                  <tr key={row.symbol} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4 font-sans font-bold">
-                      <Link href={`/investigations/${row.symbol}`} className="text-blue-600 hover:underline font-mono">
-                        {row.symbol}
-                      </Link>
+                {loading ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      Loading surveillance history from database...
                     </td>
-                    <td className="px-4 py-4 font-sans text-slate-900">{row.company}</td>
-                    <td className="px-4 py-4 font-sans">
-                      <span className="rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                        {row.status}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 font-sans">
-                      <RiskBadge risk={row.risk} />
-                    </td>
-                    <td className="px-4 py-4 text-slate-500">{row.opened}</td>
-                    <td className="px-4 py-4 font-sans text-slate-700 leading-relaxed max-w-md">{row.outcome}</td>
                   </tr>
-                ))}
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-8 text-center text-slate-400">
+                      No audit history records found.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((row, idx) => (
+                    <tr key={`${row.symbol}-${idx}`} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-4 font-sans font-bold">
+                        <Link href={`/investigations/${row.symbol}`} className="text-blue-600 hover:underline font-mono">
+                          {row.symbol}
+                        </Link>
+                      </td>
+                      <td className="px-4 py-4 font-sans text-slate-900">{row.company}</td>
+                      <td className="px-4 py-4 font-sans">
+                        <span className="rounded-md bg-slate-100 border border-slate-200 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {row.status}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 font-sans">
+                        <RiskBadge risk={row.risk} />
+                      </td>
+                      <td className="px-4 py-4 text-slate-500">{row.opened}</td>
+                      <td className="px-4 py-4 font-sans text-slate-700 leading-relaxed max-w-md">{row.outcome}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

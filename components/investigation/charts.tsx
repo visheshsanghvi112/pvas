@@ -70,6 +70,9 @@ export function PriceChart({ history = [] }: { history?: PricePoint[] }) {
   const recentStart = enriched.length >= 15 ? enriched[enriched.length - 15].date : enriched[0]?.date;
   const recentEnd = enriched[enriched.length - 1]?.date;
 
+  // 180-Day Peak High level across the historical window
+  const max180High = Math.max(...history.map((h) => h.high ?? h.close));
+
   return (
     <div className="w-full min-w-0 h-[260px] overflow-hidden">
       <ResponsiveContainer width="100%" height="100%">
@@ -82,6 +85,10 @@ export function PriceChart({ history = [] }: { history?: PricePoint[] }) {
           {recentStart && recentEnd && (
             <ReferenceArea x1={recentStart} x2={recentEnd} fill="#fef08a" fillOpacity={0.25}
               label={{ value: "15D Window", position: "insideTopLeft", fontSize: 9, fill: "#92400e" }} />
+          )}
+          {max180High > 0 && (
+            <ReferenceLine y={max180High} stroke="#e11d48" strokeDasharray="3 3"
+              label={{ value: `180D High (₹${max180High})`, position: "insideTopRight", fontSize: 9, fill: "#e11d48" }} />
           )}
           <Line dataKey="close" name="Close (₹)" stroke="#2563eb" strokeWidth={2} dot={false} activeDot={{ r: 5 }} />
           <Line dataKey="ma20" name="MA-20" stroke="#059669" strokeWidth={1.5} dot={false} strokeDasharray="4 3" connectNulls />
@@ -187,33 +194,31 @@ export function AlertDriversChart({ breakdown = [] }: { breakdown?: Array<{ labe
   };
 
   return (
-    <div className="w-full p-2 space-y-2">
-      <div className="grid grid-cols-1 gap-2">
-        {breakdown.map((b) => {
-          const meta = PARAM_METADATA[b.label] || { color: "text-slate-700", bg: "bg-slate-50", border: "border-slate-200", bar: "bg-slate-600" };
-          const contribution = Math.round((b.weight * b.score) / 5 * 10) / 10;
-          const pctFill = (b.score / 5) * 100;
+    <div className="w-full space-y-3">
+      {breakdown.map((b) => {
+        const meta = PARAM_METADATA[b.label] || { color: "text-slate-700", bg: "bg-slate-50", border: "border-slate-200", bar: "bg-slate-600" };
+        const contribution = Math.round((b.weight * b.score) / 5 * 10) / 10;
+        const pctFill = (b.score / 5) * 100;
 
-          return (
-            <div key={b.label} className={cn("p-2 rounded border flex flex-col gap-1.5 transition-colors", meta.bg, meta.border)}>
-              <div className="flex items-center justify-between text-xs">
-                <span className={cn("font-bold", meta.color)}>{b.label}</span>
-                <div className="flex items-center gap-2 font-mono text-[11px]">
-                  <span className="text-slate-500">Weight: <strong>{b.weight}%</strong></span>
-                  <span className="text-slate-500">Score: <strong>{b.score}/5</strong></span>
-                  <span className={cn("font-black text-xs", meta.color)}>+ {contribution}</span>
-                </div>
-              </div>
-              <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
-                <div
-                  className={cn("h-2 rounded-full transition-all duration-500", meta.bar)}
-                  style={{ width: `${Math.max(pctFill, 2)}%` }}
-                />
+        return (
+          <div key={b.label} className={cn("p-3 rounded-xl border flex flex-col gap-2 transition-colors", meta.bg, meta.border)}>
+            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
+              <span className={cn("font-bold text-sm", meta.color)}>{b.label}</span>
+              <div className="flex items-center gap-3 font-mono text-xs">
+                <span className="text-slate-500">Weight: <strong>{b.weight}%</strong></span>
+                <span className="text-slate-500">Score: <strong>{b.score}/5</strong></span>
+                <span className={cn("font-bold text-sm", meta.color)}>+{contribution} pts</span>
               </div>
             </div>
-          );
-        })}
-      </div>
+            <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
+              <div
+                className={cn("h-2 rounded-full transition-all duration-500", meta.bar)}
+                style={{ width: `${Math.max(pctFill, 2)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

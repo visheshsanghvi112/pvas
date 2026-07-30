@@ -3,9 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:all": "concurrently \"npm run backend\" \"npm run dev\"",
-    "backend": "uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload",
+    "dev": "concurrently -k -n \"BACKEND,FRONTEND\" -c \"blue,green\" \"npm run backend\" \"next dev\"",
+    "backend": "python3 backend/main.py",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

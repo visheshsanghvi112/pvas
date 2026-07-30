@@ -5,6 +5,7 @@ FastAPI router for client data:
   /api/v1/clients/exchange    → DIM_EXCH_CLNT_DTLS (DECL)
   /api/v1/clients/depository  → DIM_DEP_CLNT_DTLS  (DDCL)
   /api/v1/clients/profile/{token} → full cross-referenced profile
+  /api/v1/clients/pan/{pan}   → ClientDetail lookup by PAN (frontend fetchClient360)
 """
 
 from __future__ import annotations
@@ -173,3 +174,21 @@ def get_client_profile(
             DimDepClntBase.model_validate(d) for d in profile["depository_accounts"]
         ],
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#  PAN LOOKUP  (ClientDetail — used by frontend fetchClient360)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/pan/{pan}",
+    summary="Client 360 lookup by PAN — returns ClientDetail for the frontend",
+)
+def get_client_by_pan(
+    pan: str,
+    svc: ClientService = Depends(_get_service),
+):
+    result = svc.get_client_by_pan(pan)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result

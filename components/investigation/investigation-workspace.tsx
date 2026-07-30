@@ -30,21 +30,22 @@ import {
   fetchScripParticipants,
   fetchTradeLog,
   fetchClient360,
+  fetchShareholdingBreakdown,
+  fetchCorporateActions,
   type ScripDetail,
   type ParticipantAudit,
   type TradeRow,
   type ClientDetail
 } from "@/lib/api";
 import { useUser } from "@/lib/user-context";
-import { remarks } from "@/lib/data";
 
 const TABS = ["Overview", "180-Day Chart", "Participants", "Trades Log", "Case Notes"] as const;
 type Tab = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
 function scoreZone(score: number): "High" | "Medium" | "Low" {
-  if (score >= 75) return "High";
-  if (score >= 60) return "Medium";
+  if (score >= 60) return "High";
+  if (score >= 33) return "Medium";
   return "Low";
 }
 function scoreColor(score: number) {
@@ -78,67 +79,80 @@ function rawScoreForNewHighDays(d: number) {
   return 0;
 }
 
-function ScoreChip({ label, value, rawScore }: { label: string; value: string; rawScore: number }) {
-  const chipColor =
-    rawScore === 5 ? "bg-rose-50 border-rose-200 text-rose-700"
-    : rawScore >= 3 ? "bg-amber-50 border-amber-200 text-amber-700"
-    : rawScore >= 1 ? "bg-blue-50 border-blue-200 text-blue-700"
-    : "bg-slate-100 border-slate-200 text-slate-500";
+function ScoreChip({ label, value, rawScore, weight }: { label: string; value: string; rawScore: number; weight: number }) {
+  const chipBg =
+    rawScore === 5 ? "bg-rose-50 border-rose-200"
+    : rawScore >= 3 ? "bg-amber-50 border-amber-200"
+    : rawScore >= 1 ? "bg-blue-50 border-blue-100"
+    : "bg-slate-50 border-slate-200";
+  const valColor =
+    rawScore === 5 ? "text-rose-700"
+    : rawScore >= 3 ? "text-amber-700"
+    : rawScore >= 1 ? "text-blue-700"
+    : "text-slate-400";
+  const scoreColor =
+    rawScore === 5 ? "text-rose-600" : rawScore >= 3 ? "text-amber-600" : rawScore >= 1 ? "text-blue-600" : "text-slate-300";
 
   return (
-    <div className={cn("flex flex-col items-center border rounded px-3 py-1.5 shrink-0 min-w-[80px]", chipColor)}>
-      <div className="text-[9px] font-bold uppercase tracking-wide opacity-70">{label}</div>
-      <div className="text-sm font-black">{value}</div>
-      <div className="text-[9px] font-mono opacity-60">score {rawScore}/5</div>
+    <div className={cn("flex-1 min-w-[110px] border rounded-xl p-3 flex flex-col gap-1", chipBg)}>
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className={cn("text-lg font-black leading-none", valColor)}>{value}</div>
+      <div className="flex items-center justify-between mt-1">
+        <span className="text-xs text-slate-400">Wt: {weight}%</span>
+        <span className={cn("text-xs font-bold font-mono", scoreColor)}>Score {rawScore}/5</span>
+      </div>
     </div>
   );
 }
 
 function DataTable({ headers, rows }: { headers: string[]; rows: (string | React.ReactNode)[][] }) {
-  if (rows.length === 0)
-    return <div className="p-4 text-xs text-slate-500">No data available.</div>;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-left text-xs">
-        <thead className="bg-slate-100 border-b border-slate-200">
+      <table className="w-full text-xs text-left">
+        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
           <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">{h}</th>
+            {headers.map((h, i) => (
+              <th key={i} className="px-3 py-2">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
-          {rows.map((row, i) => (
-            <tr key={i} className="hover:bg-slate-50 transition-colors">
-              {row.map((cell, j) => (
-                <td key={j} className={cn("px-3 py-2 text-[11px] font-mono", j === 0 && "font-sans font-semibold text-slate-900")}>
-                  {cell}
-                </td>
-              ))}
+          {rows.length === 0 ? (
+            <tr>
+              <td colSpan={headers.length} className="px-3 py-4 text-center text-slate-400 italic">No records found</td>
             </tr>
-          ))}
+          ) : (
+            rows.map((r, ri) => (
+              <tr key={ri} className="hover:bg-slate-50/80 transition-colors">
+                {r.map((cell, ci) => (
+                  <td key={ci} className="px-3 py-2 text-slate-700">{cell}</td>
+                ))}
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
     </div>
   );
 }
 
-/** Section heading used inside tabs */
-function SectionHeader({ icon, title, subtitle }: { icon?: React.ReactNode; title: string; subtitle?: string }) {
+function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: React.ReactNode }) {
   return (
-    <div className="bg-slate-100 border-b border-slate-200 px-3 py-2 flex items-center justify-between shrink-0">
-      <div className="flex items-center gap-1.5">
-        {icon && <span className="text-slate-600">{icon}</span>}
-        <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider">{title}</span>
+    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+      <div className="flex items-center gap-2">
+        {icon && <span className="text-slate-500">{icon}</span>}
+        <div>
+          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
+          {subtitle && <p className="text-[11px] text-slate-500">{subtitle}</p>}
+        </div>
       </div>
-      {subtitle && <span className="text-[10px] text-slate-400 font-normal normal-case">{subtitle}</span>}
     </div>
   );
 }
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("border border-slate-200 bg-white rounded shadow-sm flex flex-col overflow-hidden", className)}>
+    <div className={cn("border border-slate-200 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden", className)}>
       {children}
     </div>
   );
@@ -152,11 +166,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   const [participants, setParticipants] = useState<ParticipantAudit | null>(null);
   const [trades, setTrades] = useState<TradeRow[]>([]);
   const [client360, setClient360] = useState<ClientDetail | null>(null);
+  const [shBreakdown, setShBreakdown] = useState<any>(null);
+  const [corpActions, setCorpActions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [analysisStatus, setAnalysisStatus] = useState<"Active" | "Completed">("Active");
-  const [notes, setNotes] = useState<TimelineItem[]>(remarks);
+  const [notes, setNotes] = useState<TimelineItem[]>([]);
   const [newNote, setNewNote] = useState("");
   const [selectedPan, setSelectedPan] = useState<string | null>(null);
   const [selectedTrade, setSelectedTrade] = useState<TradeRow | null>(null);
@@ -166,15 +182,34 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       setLoading(true);
       setError(null);
       try {
-        const [d, p, t] = await Promise.all([
+        const [d, p, t, sh, ca] = await Promise.all([
           fetchScripDetail(symbol),
           fetchScripParticipants(symbol).catch(() => null),
-          fetchTradeLog(symbol).catch(() => [])
+          fetchTradeLog(symbol).catch(() => []),
+          fetchShareholdingBreakdown(symbol).catch(() => null),
+          fetchCorporateActions(symbol).catch(() => [])
         ]);
         setDetail(d);
         if (p) setParticipants(p);
         if (t) setTrades(t);
+        if (sh) setShBreakdown(sh);
+        if (ca) setCorpActions(ca);
         setAnalysisStatus(d.status === "Closed" ? "Completed" : "Active");
+
+        // Fetch real case notes from DB
+        fetch(`http://127.0.0.1:8000/api/v1/cases/?symbol=${symbol}`)
+          .then((res) => res.json())
+          .then((cases) => {
+            if (Array.isArray(cases) && cases.length > 0) {
+              const fetchedNotes = cases.map((c: any) => ({
+                date: (c.created_at || "").replace("T", " ").slice(0, 16) || "2026-07-28 10:00",
+                officer: c.lead_officer || "Surveillance Officer",
+                text: c.description || c.title,
+              }));
+              setNotes(fetchedNotes);
+            }
+          })
+          .catch(() => {});
       } catch (e: any) {
         console.error("Failed to load investigation workspace data", e);
         setError(e?.message || "Failed to load. Ensure backend is running.");
@@ -262,18 +297,19 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   });
 
   return (
-    <div className="flex flex-col h-[calc(100vh-5rem)] bg-slate-50 min-w-0">
+    <div className="flex flex-col h-full bg-slate-50 min-w-0">
 
       {/* ── STICKY HEADER ── */}
-      <div className="sticky top-0 z-40 bg-white border-b border-slate-200 px-4 py-2.5 shadow-sm">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-black text-slate-900 leading-none">{company}</h1>
-            <span className="font-mono text-sm text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+      <div className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+        {/* Company + Controls row */}
+        <div className="flex items-center justify-between px-5 py-3 gap-4 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="text-xl font-bold text-slate-900 leading-none">{company}</h1>
+            <span className="font-mono text-sm font-semibold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
               {detail.symbol}
             </span>
             {detail.isin && (
-              <span className="font-mono text-[10px] text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+              <span className="text-xs text-slate-500 font-mono bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                 ISIN: {detail.isin}
               </span>
             )}
@@ -281,20 +317,20 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className={cn(
-              "px-2 py-1 text-[10px] font-bold uppercase rounded border",
+              "px-3 py-1.5 text-xs font-semibold rounded-lg border",
               analysisStatus === "Active"
                 ? "bg-rose-50 text-rose-700 border-rose-200"
                 : "bg-emerald-50 text-emerald-700 border-emerald-200"
             )}>
-              {analysisStatus} Case
+              {analysisStatus === "Active" ? "Active Case" : "Case Closed"}
             </span>
             <Button
               onClick={() => setAnalysisStatus((p) => (p === "Active" ? "Completed" : "Active"))}
               className={cn(
-                "h-7 text-[10px] px-2 font-bold",
+                "h-9 px-4 text-sm font-medium",
                 analysisStatus === "Active"
                   ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                  : "bg-slate-200 text-slate-800"
+                  : "bg-slate-200 text-slate-800 hover:bg-slate-300"
               )}
             >
               {analysisStatus === "Active" ? "Mark Safe" : "Reopen"}
@@ -303,52 +339,56 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         </div>
 
         {/* 5-parameter PVASF metric strip */}
-        <div className="flex gap-1.5 min-w-0 overflow-x-auto pb-0.5">
-          <div className="flex items-center bg-slate-900 border border-slate-700 rounded px-3 py-1.5 shrink-0 gap-2 mr-1">
-            <div className="text-[9px] text-slate-400 font-bold uppercase">PVASF Score</div>
-            <div className={cn("text-lg font-black", scoreColor(metrics.final_score))}>{metrics.final_score}</div>
+        <div className="flex items-stretch gap-3 px-5 pb-3 overflow-x-auto">
+          {/* PVASF Score tile */}
+          <div className="flex flex-col justify-center bg-slate-900 rounded-xl px-4 py-2 shrink-0 min-w-[100px] gap-0.5">
+            <div className="text-xs text-slate-400 font-medium">PVASF Score</div>
+            <div className={cn("text-2xl font-black leading-none", scoreColor(metrics.final_score))}>{metrics.final_score}</div>
+            <div className="text-xs text-slate-500">/ 100</div>
           </div>
           <ScoreChip
             label="Price Rise %"
             value={`${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`}
             rawScore={priceRiseRaw}
+            weight={25}
           />
           <ScoreChip
-            label="Price Z"
+            label="Price Z-Score"
             value={`${Number(metrics.price_z || 0).toFixed(2)}σ`}
             rawScore={priceZRaw}
+            weight={20}
           />
           <ScoreChip
-            label="Volume Z"
+            label="Volume Z-Score"
             value={`${Number(metrics.volume_z || 0).toFixed(2)}σ`}
             rawScore={volumeZRaw}
+            weight={25}
           />
           <ScoreChip
             label="Band Hits"
             value={`${metrics.band_hit_days}d`}
             rawScore={bandRaw}
+            weight={15}
           />
           <ScoreChip
-            label="180D Highs"
+            label="180D New Highs"
             value={`${metrics.new_high_days}d`}
             rawScore={newHighRaw}
+            weight={15}
           />
-          <div className="flex items-center ml-1 text-[9px] text-slate-400 shrink-0 font-mono">
-            threshold: 10=Med · 15=High
-          </div>
         </div>
       </div>
 
       {/* ── TAB BAR ── */}
-      <div className="flex items-center px-4 bg-white border-b border-slate-200 overflow-x-auto shrink-0">
+      <div className="flex items-center px-5 bg-white border-b border-slate-200 overflow-x-auto shrink-0">
         {TABS.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
             className={cn(
-              "whitespace-nowrap px-4 py-2.5 text-xs font-bold transition-all border-b-2",
+              "whitespace-nowrap px-4 py-3 text-sm font-medium transition-all border-b-2",
               activeTab === tab
-                ? "border-blue-600 text-blue-700 bg-blue-50/50"
+                ? "border-blue-600 text-blue-700"
                 : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
             )}
           >
@@ -358,145 +398,148 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       </div>
 
       {/* ── MAIN CONTENT AREA ── */}
-      <div className="flex-1 overflow-y-auto p-4 flex gap-4 min-h-0">
-        <div className="flex-1 space-y-4 max-w-5xl">
+      <div className="flex-1 overflow-y-auto p-5 flex gap-5 min-h-0">
+        <div className="flex-1 space-y-5 min-w-0">
 
           {/* TAB: OVERVIEW */}
           {activeTab === "Overview" && (
-            <div className="space-y-4">
-              {/* Score Summary Row */}
-              <div className="grid grid-cols-5 gap-2">
-                {[
-                  { label: "Price Rise %", val: `+${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, score: priceRiseRaw, weight: 25, icon: <TrendingUp className="w-3 h-3" /> },
-                  { label: "Price Z-Score", val: `${Number(metrics.price_z || 0).toFixed(2)}σ`, score: priceZRaw, weight: 20, icon: <Activity className="w-3 h-3" /> },
-                  { label: "Volume Z-Score", val: `${Number(metrics.volume_z || 0).toFixed(2)}σ`, score: volumeZRaw, weight: 25, icon: <BarChart2 className="w-3 h-3" /> },
-                  { label: "Band Persistence", val: `${metrics.band_hit_days}d / 15`, score: bandRaw, weight: 15, icon: <Zap className="w-3 h-3" /> },
-                  { label: "180D New High", val: `${metrics.new_high_days}d / 15`, score: newHighRaw, weight: 15, icon: <AlertTriangle className="w-3 h-3" /> },
-                ].map((p) => (
-                  <Card key={p.label} className="!flex-row items-center p-3 gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 text-[9px] font-bold uppercase text-slate-500 mb-1">
-                        {p.icon}{p.label}
-                      </div>
-                      <div className="font-black text-sm text-slate-900 truncate">{p.val}</div>
-                      <div className="text-[9px] font-mono text-slate-400 mt-0.5">wt: {p.weight} · raw: {p.score}/5</div>
-                    </div>
-                    <div className={cn(
-                      "text-lg font-black w-8 text-right",
-                      p.score === 5 ? "text-rose-600" : p.score >= 3 ? "text-amber-600" : p.score >= 1 ? "text-blue-600" : "text-slate-300"
-                    )}>
-                      {((p.weight * p.score) / 5).toFixed(0)}
-                    </div>
-                  </Card>
-                ))}
-              </div>
+            <div className="space-y-5">
 
-              <div className="grid gap-4 md:grid-cols-2">
-                <Card>
-                  <SectionHeader icon={<BarChart2 className="w-3 h-3" />} title="PVASF Score Contribution by Parameter" subtitle="weighted contribution / final score" />
-                  <div className="p-4 flex-1">
-                    <AlertDriversChart breakdown={score_breakdown} />
-                  </div>
-                </Card>
-                <Card>
-                  <SectionHeader icon={<AlertTriangle className="w-3 h-3" />} title="Alert Event Trail" />
-                  <div className="p-4 flex-1">
-                    <Timeline items={alertHistory} />
-                  </div>
-                </Card>
-              </div>
-
-              {/* Market & Demographics Summary (Section 5 Output Compliance) */}
+              {/* Market Summary — top of Overview */}
               {summary && (
                 <Card>
-                  <SectionHeader title="Market Summary & Participant Demographics" subtitle="Section 5 Outputs · Unique PANs, Price/Volume Baselines" />
-                  <div className="p-3 grid grid-cols-5 gap-3">
+                  <SectionHeader title="Market Summary & Participant Demographics" subtitle="Unique PANs, Price/Volume Baselines" />
+                  <div className="p-5 grid grid-cols-5 gap-4">
                     {[
-                      { label: "T-180 Close (Base)", value: `₹${Number(summary.start_price || 0).toFixed(2)}` },
-                      { label: "Latest Close", value: `₹${Number(summary.latest_close || 0).toFixed(2)}` },
-                      { label: "Price Change (15D vs T-180)", value: `${Number(summary.price_change_pct || 0) >= 0 ? "+" : ""}${Number(summary.price_change_pct || 0).toFixed(2)}%` },
-                      { label: "Avg 15D Volume", value: Number(summary.avg_15d_volume || 0).toLocaleString("en-IN") },
-                      { label: "Unique PAN Holders", value: `${participants ? participants.volume_share.length * 28 + 14 : 142} Active PANs` },
+                      { label: "T-180 Base Close", value: `₹${Number(summary.start_price || 0).toFixed(2)}` },
+                      { label: "Latest Close (T-0)", value: `₹${Number(summary.latest_close || 0).toFixed(2)}` },
+                      { label: "Net C-C Return (180D)", value: `${Number(summary.price_change_pct || 0) >= 0 ? "+" : ""}${Number(summary.price_change_pct || 0).toFixed(2)}%` },
+                      { label: "Peak 15D Surge High", value: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%` },
+                      { label: "Active Unique PANs", value: `${participants ? participants.volume_share.length * 28 + 14 : 142} Active` },
                     ].map((item) => (
-                      <div key={item.label} className="bg-slate-50 border border-slate-200 rounded p-2.5">
-                        <div className="text-[9px] text-slate-400 font-bold uppercase mb-1">{item.label}</div>
-                        <div className="text-sm font-black text-slate-900 font-mono">{item.value}</div>
+                      <div key={item.label} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+                        <div className="text-xs text-slate-400 font-medium mb-1.5">{item.label}</div>
+                        <div className="text-base font-bold text-slate-900 font-mono">{item.value}</div>
                       </div>
                     ))}
                   </div>
                 </Card>
               )}
 
-              {/* Shareholder Statistics & Corporate Announcements Grid (Section 5 Spec Compliance) */}
-              <div className="grid grid-cols-2 gap-4">
+              {/* Score Contribution + Alert Trail */}
+              <div className="grid gap-5 md:grid-cols-2">
+                <Card>
+                  <SectionHeader icon={<BarChart2 className="w-4 h-4" />} title="PVASF Score Contribution" subtitle="weighted contribution / final score" />
+                  <div className="p-5 flex-1">
+                    <AlertDriversChart breakdown={score_breakdown} />
+                  </div>
+                </Card>
+                <Card>
+                  <SectionHeader icon={<AlertTriangle className="w-4 h-4" />} title="Alert Event Trail" />
+                  <div className="p-5 flex-1">
+                    <Timeline items={alertHistory} />
+                  </div>
+                </Card>
+              </div>
+
+              {/* Shareholder & Corporate Actions (10-Table Shareholding & Corporate Actions Integration) */}
+              <div className="grid grid-cols-2 gap-5">
                 <Card>
                   <SectionHeader
-                    icon={<UserCircle className="w-3 h-3" />}
-                    title="Shareholder Statistics & Ownership Pattern"
-                    subtitle="Promoter vs Public Float & Top 1% Concentration · Sec 5"
+                    icon={<UserCircle className="w-4 h-4" />}
+                    title="Enterprise Shareholding Results (FMSH, FSHG, FPRH)"
+                    subtitle="Quarterly Shareholding Master & Category Distribution"
                   />
-                  <div className="p-4 space-y-3">
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Promoter & Promoter Group</span>
-                        <span className="font-mono font-bold text-slate-900">54.20%</span>
+                  <div className="p-5 space-y-4">
+                    {/* Demographics Summary */}
+                    <div className="grid grid-cols-2 gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                      <div>
+                        <div className="text-xs text-slate-500 font-medium">15-Day Active PANs</div>
+                        <div className="text-base font-bold text-slate-900 font-mono">
+                          {detail.shareholders?.unique_pans_15d ?? 0} PANs
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-blue-600 h-2 rounded-full" style={{ width: "54.2%" }} />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Top 1% Non-Promoter Concentration</span>
-                        <span className="font-mono font-bold text-amber-700">28.50%</span>
-                      </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-amber-500 h-2 rounded-full" style={{ width: "28.5%" }} />
+                      <div>
+                        <div className="text-xs text-slate-500 font-medium">180-Day Est. PAN Base</div>
+                        <div className="text-base font-bold text-slate-900 font-mono">
+                          {detail.shareholders?.unique_pans_180d ?? 0} PANs
+                        </div>
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Public Float (Retail & HNI)</span>
-                        <span className="font-mono font-bold text-emerald-700">17.30%</span>
+                    {/* Quarter-by-Quarter Shareholding History */}
+                    {shBreakdown && shBreakdown.quarterly_history && shBreakdown.quarterly_history.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quarterly Shareholding Distribution (FACT_MAIN_SHLDNG)</div>
+                        <div className="border border-slate-200 rounded-lg overflow-hidden">
+                          <table className="w-full text-xs">
+                            <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+                              <tr>
+                                <th className="px-2.5 py-1.5 text-left">Quarter</th>
+                                <th className="px-2.5 py-1.5 text-right">Promoter %</th>
+                                <th className="px-2.5 py-1.5 text-right">Public %</th>
+                                <th className="px-2.5 py-1.5 text-right">Pledged %</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 bg-white">
+                              {shBreakdown.quarterly_history.map((q: any) => (
+                                <tr key={q.quarter} className="hover:bg-slate-50">
+                                  <td className="px-2.5 py-1.5 font-bold font-mono text-slate-800">{q.quarter} ({q.date})</td>
+                                  <td className="px-2.5 py-1.5 text-right font-mono font-medium text-slate-700">{q.promoter_pct}%</td>
+                                  <td className="px-2.5 py-1.5 text-right font-mono font-medium text-blue-700">{q.public_pct}%</td>
+                                  <td className="px-2.5 py-1.5 text-right font-mono font-semibold text-rose-600">{q.pledged_pct}%</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                        <div className="bg-emerald-500 h-2 rounded-full" style={{ width: "17.3%" }} />
-                      </div>
-                    </div>
+                    )}
 
-                    <div className="mt-3 pt-2 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-500 font-mono">
-                      <span>Promoter Pledge: 0.00%</span>
-                      <span>Quarterly Shift: 0.00%</span>
-                      <span>Free Float: High</span>
-                    </div>
+                    {/* Promoter Entity List */}
+                    {shBreakdown && shBreakdown.promoter_group && shBreakdown.promoter_group.length > 0 && (
+                      <div className="pt-2 border-t border-slate-100 text-xs">
+                        <div className="text-slate-500 font-semibold mb-1">Promoter Entity (FACT_PROM_SHLDR_DTLS):</div>
+                        <div className="flex justify-between items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
+                          <span className="font-semibold text-slate-800">{shBreakdown.promoter_group[0].name}</span>
+                          <span className="font-mono text-slate-600">{shBreakdown.promoter_group[0].shares.toLocaleString("en-IN")} shares ({shBreakdown.promoter_group[0].share_pct}%)</span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </Card>
 
                 <Card>
                   <SectionHeader
-                    icon={<Zap className="w-3 h-3" />}
-                    title="Corporate Announcements (Last 15 Days)"
-                    subtitle="Exchange filings & disclosure timeline · Sec 5"
+                    icon={<Zap className="w-4 h-4" />}
+                    title="Corporate Actions & Disclosures (FCAC & FCDF)"
+                    subtitle="Official Corporate Actions & Price Dilution Factors"
                   />
-                  <div className="p-3 space-y-2 max-h-[190px] overflow-y-auto">
-                    {[
-                      { date: "2026-07-20", category: "Clarification", title: "Clarification on Spurt in Price and Volume filed with Exchange", status: "Verified" },
-                      { date: "2026-07-15", category: "Board Meeting", title: "Intimation of Board Meeting for Q1 Unaudited Financial Results", status: "Filed" },
-                      { date: "2026-07-08", category: "General", title: "Press Release regarding new strategic distribution partnership", status: "Filed" },
-                    ].map((event, idx) => (
-                      <div key={idx} className="bg-slate-50 border border-slate-200 rounded p-2 text-xs flex justify-between items-start gap-2">
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[9px] font-mono font-bold bg-blue-100 text-blue-800 px-1 rounded">{event.date}</span>
-                            <span className="text-[9px] font-bold uppercase text-slate-500">{event.category}</span>
+                  <div className="p-4 space-y-3">
+                    {corpActions && corpActions.length > 0 ? (
+                      corpActions.map((ca, idx) => (
+                        <div key={idx} className="bg-slate-50 border border-slate-200 rounded-lg p-3 space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-mono font-bold text-slate-700">{ca.record_date}</span>
+                              <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">{ca.category}</span>
+                            </div>
+                            <span className="text-xs font-mono font-semibold text-slate-600 bg-white border border-slate-200 px-2 py-0.5 rounded-full">
+                              Dilution Factor: {ca.dilution_factor}×
+                            </span>
                           </div>
-                          <p className="text-[11px] font-medium text-slate-800 leading-snug">{event.title}</p>
+                          <p className="text-sm font-semibold text-slate-800 leading-snug">{ca.purpose}</p>
+                          {ca.bonus_ratio && (
+                            <div className="text-xs font-mono font-medium text-emerald-700">Ratio: {ca.bonus_ratio}</div>
+                          )}
                         </div>
-                        <span className="text-[9px] font-bold font-mono bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded shrink-0">{event.status}</span>
+                      ))
+                    ) : (
+                      <div className="p-6 text-center text-slate-500 bg-slate-50 border border-slate-200 rounded-lg">
+                        <p className="text-sm font-semibold text-slate-700">No Corporate Actions Recorded</p>
+                        <p className="text-xs text-slate-500 mt-1">No dividend, bonus, or stock split actions recorded in FCAC for {symbol}.</p>
                       </div>
-                    ))}
+                    )}
                   </div>
                 </Card>
               </div>
@@ -505,29 +548,29 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
           {/* TAB: 180-Day Chart */}
           {activeTab === "180-Day Chart" && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <Card>
                 <SectionHeader
-                  icon={<TrendingUp className="w-3 h-3" />}
+                  icon={<TrendingUp className="w-4 h-4" />}
                   title="Price Movement — 180 Day Window"
                   subtitle="Yellow band = last 15 trading days (PVASF observation window)"
                 />
-                <div className="p-4">
+                <div className="p-5">
                   <PriceChart history={history} />
                 </div>
               </Card>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-5">
                 <Card>
-                  <SectionHeader icon={<BarChart2 className="w-3 h-3" />} title="Daily Traded Volume" />
-                  <div className="p-4"><VolumeChart history={history} /></div>
+                  <SectionHeader icon={<BarChart2 className="w-4 h-4" />} title="Daily Traded Volume" />
+                  <div className="p-5"><VolumeChart history={history} /></div>
                 </Card>
                 <Card>
                   <SectionHeader
-                    icon={<Activity className="w-3 h-3" />}
+                    icon={<Activity className="w-4 h-4" />}
                     title="Rolling 15-Day Avg Volume"
                     subtitle="line = 15D MA · bars = daily vol"
                   />
-                  <div className="p-4"><RollingVolumeChart history={history} /></div>
+                  <div className="p-5"><RollingVolumeChart history={history} /></div>
                 </Card>
               </div>
             </div>
@@ -575,13 +618,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </div>
 
               {/* Counterparty + PnL */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-5">
                 <Card>
-                  <SectionHeader title="Counterparty Concentration" subtitle="top 5 pairs · Sec 4.3" />
+                  <SectionHeader title="Counterparty Concentration" subtitle="top 5 pairs" />
                   <DataTable
                     headers={["Counterparty Pair", "Volume", "Share %"]}
                     rows={participants.counterparty_pairs.map((p) => [
-                      <span key={p.pair} className="font-mono text-[10px]">{p.pair}</span>,
+                      <span key={p.pair} className="font-mono text-xs font-medium text-slate-800">{p.pair}</span>,
                       Number(p.volume || 0).toLocaleString("en-IN"),
                       `${Number(p.share_pct || 0).toFixed(2)}%`,
                     ])}
@@ -610,16 +653,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </div>
 
               {/* Reversal Pairs + Circular Loops */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-5">
                 <Card>
                   <SectionHeader
                     title="Trade Reversal Ratio"
-                    subtitle="RTR = 2×min(A→B, B→A)/gross · Sec 4.4"
+                    subtitle="RTR = 2×min(A→B, B→A)/gross"
                   />
                   <DataTable
                     headers={["Pair", "Gross Volume", "Reversal %"]}
                     rows={(participants.reversal_pairs ?? []).map((p) => [
-                      <span key={p.pair} className="font-mono text-[10px]">{p.pair}</span>,
+                      <span key={p.pair} className="font-mono text-xs font-medium text-slate-800">{p.pair}</span>,
                       Number(p.volume || 0).toLocaleString("en-IN"),
                       <span key="rtr" className={Number(p.reversal_ratio || 0) >= 80 ? "text-rose-600 font-bold" : Number(p.reversal_ratio || 0) >= 50 ? "text-amber-600 font-bold" : "text-slate-600"}>
                         {Number(p.reversal_ratio || 0).toFixed(1)}%
@@ -630,12 +673,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <Card>
                   <SectionHeader
                     title="Circular Trade Loops"
-                    subtitle="Detected cycles ≥3 hops · Sec 4.5"
+                    subtitle="Detected cycles ≥3 hops"
                   />
                   <DataTable
                     headers={["Cycle Path", "Rotated Vol", "Gross Vol"]}
                     rows={(participants.circular_loops ?? []).map((p) => [
-                      <span key={p.loop} className="font-mono text-[10px] break-all">{p.loop}</span>,
+                      <span key={p.loop} className="font-mono text-xs text-slate-700 leading-normal break-all">{p.loop}</span>,
                       p.volume.toLocaleString("en-IN"),
                       p.gross_volume.toLocaleString("en-IN"),
                     ])}
@@ -673,19 +716,19 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       trdVal.toLocaleString("en-IN"),
                       <span key="flags" className="flex gap-1 flex-wrap">
                         {isSameBrokerWash && (
-                          <span className="bg-rose-100 text-rose-700 text-[9px] font-bold px-1 rounded">WASH-SB</span>
+                          <span className="bg-rose-100 text-rose-700 text-xs font-semibold px-2 py-0.5 rounded">WASH-SB</span>
                         )}
                         {isDiffBrokerWash && (
-                          <span className="bg-orange-100 text-orange-700 text-[9px] font-bold px-1 rounded">WASH-DB</span>
+                          <span className="bg-orange-100 text-orange-700 text-xs font-semibold px-2 py-0.5 rounded">WASH-DB</span>
                         )}
                         {!isSameBrokerWash && !isDiffBrokerWash && (
-                          <span className="text-slate-300 text-[9px]">—</span>
+                          <span className="text-slate-300 text-xs">—</span>
                         )}
                       </span>,
                       <button
                         key={i}
                         onClick={() => setSelectedTrade(t)}
-                        className="text-[10px] bg-slate-100 border border-slate-200 px-2 py-0.5 rounded hover:bg-slate-200 font-mono"
+                        className="text-xs bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg hover:bg-slate-200 font-medium text-slate-700 transition-colors"
                       >
                         View
                       </button>,
@@ -724,12 +767,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         </div>
 
         {/* ── RIGHT SIDEBAR: CASE DOSSIER ── */}
-        <div className="w-64 shrink-0 hidden lg:flex flex-col gap-3">
-          <div className="border border-slate-200 bg-white rounded shadow-sm p-3 space-y-3">
-            <div className="text-[10px] font-bold uppercase text-slate-500 border-b border-slate-100 pb-1 flex items-center gap-1">
-              <FolderLock className="w-3 h-3" /> Case Dossier
+        <div className="w-72 shrink-0 hidden lg:flex flex-col gap-4 sticky top-0 self-start">
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-slate-800 px-4 py-3 flex items-center gap-2">
+              <FolderLock className="w-4 h-4 text-slate-400" />
+              <span className="text-sm font-semibold text-white">Case Dossier</span>
             </div>
-            <div className="space-y-1.5">
+            <div className="p-4 space-y-3">
               {[
                 { label: "Scrip", val: detail.symbol },
                 { label: "Risk Level", val: risk, colored: true },
@@ -738,38 +782,47 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 { label: "ISIN", val: detail.isin || "—" },
                 { label: "Analyst", val: currentUser.name },
               ].map((item) => (
-                <div key={item.label} className="flex justify-between items-center text-[11px]">
-                  <span className="text-slate-500 font-bold">{item.label}</span>
+                <div key={item.label} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
+                  <span className="text-sm text-slate-500">{item.label}</span>
                   <span className={cn(
-                    "font-mono font-bold",
+                    "text-sm font-semibold",
                     item.colored
                       ? risk === "High" ? "text-rose-600" : risk === "Medium" ? "text-amber-600" : "text-emerald-600"
-                      : "text-slate-800"
+                      : "text-slate-900"
                   )}>
                     {item.val}
                   </span>
                 </div>
               ))}
             </div>
-            <Button className="w-full h-7 text-[10px] uppercase font-bold" variant="outline">
-              Generate Report
-            </Button>
+            <div className="px-4 pb-4">
+              <Button className="w-full h-9 text-sm font-medium" variant="outline">
+                Generate Report
+              </Button>
+            </div>
           </div>
 
           {/* Scoring legend */}
-          <div className="border border-slate-200 bg-white rounded shadow-sm p-3">
-            <div className="text-[10px] font-bold uppercase text-slate-500 border-b border-slate-100 pb-1 mb-2">
-              PVASF Score Legend
-            </div>
-            <div className="space-y-1 text-[10px] font-mono">
-              <div className="flex justify-between"><span className="text-rose-600 font-bold">HIGH RISK</span><span className="text-slate-500">≥ 15</span></div>
-              <div className="flex justify-between"><span className="text-amber-600 font-bold">MEDIUM</span><span className="text-slate-500">10 – 14</span></div>
-              <div className="flex justify-between"><span className="text-emerald-600 font-bold">LOW</span><span className="text-slate-500">&lt; 10</span></div>
-              <div className="border-t border-slate-100 pt-1 mt-1 text-slate-400 text-[9px]">
-                5 params · max 5 pts each<br />
-                Price Rise 25% · Vol Z 25%<br />
-                Price Z 20% · Band 15% · High 15%
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm p-4">
+            <div className="text-sm font-semibold text-slate-800 mb-3">PVASF Score Legend</div>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-rose-600">High Risk</span>
+                <span className="text-sm text-slate-600 font-mono">≥ 15 pts</span>
               </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-amber-600">Medium</span>
+                <span className="text-sm text-slate-600 font-mono">10 – 14 pts</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium text-emerald-600">Low</span>
+                <span className="text-sm text-slate-600 font-mono">&lt; 10 pts</span>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400 space-y-0.5">
+              <div>5 parameters · max 5 pts each</div>
+              <div>Price Rise 25% · Vol Z 25%</div>
+              <div>Price Z 20% · Band 15% · High 15%</div>
             </div>
           </div>
         </div>
@@ -779,15 +832,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       {selectedPan && (
         <>
           <div
-            className="fixed inset-0 z-50 bg-slate-900/20 backdrop-blur-[1px]"
+            className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px]"
             onClick={() => setSelectedPan(null)}
           />
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-100">
-              <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                <UserCircle className="w-4 h-4 text-blue-600" /> CLIENT 360° PROFILE
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
+              <div className="flex items-center gap-2 font-semibold text-slate-900">
+                <UserCircle className="w-5 h-5 text-blue-600" />
+                Client 360° Profile
               </div>
-              <button onClick={() => setSelectedPan(null)} className="p-1 hover:bg-slate-200 rounded text-slate-500">
+              <button onClick={() => setSelectedPan(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
                 <X className="w-4 h-4" />
               </button>
             </div>
