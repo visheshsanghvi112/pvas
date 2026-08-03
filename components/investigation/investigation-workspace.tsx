@@ -81,25 +81,28 @@ function rawScoreForNewHighDays(d: number) {
 
 function ScoreChip({ label, value, rawScore, weight }: { label: string; value: string; rawScore: number; weight: number }) {
   const chipBg =
-    rawScore === 5 ? "bg-rose-50 border-rose-200"
-    : rawScore >= 3 ? "bg-amber-50 border-amber-200"
-    : rawScore >= 1 ? "bg-blue-50 border-blue-100"
-    : "bg-slate-50 border-slate-200";
+    rawScore === 5 ? "bg-rose-50/80 border-rose-300/90 shadow-xs hover:border-rose-400"
+    : rawScore >= 3 ? "bg-amber-50/80 border-amber-300/90 shadow-xs hover:border-amber-400"
+    : rawScore >= 1 ? "bg-blue-50/80 border-blue-200/90 shadow-xs hover:border-blue-300"
+    : "bg-white border-slate-200/90 shadow-2xs hover:border-slate-300";
   const valColor =
-    rawScore === 5 ? "text-rose-700"
-    : rawScore >= 3 ? "text-amber-700"
-    : rawScore >= 1 ? "text-blue-700"
-    : "text-slate-400";
-  const scoreColor =
-    rawScore === 5 ? "text-rose-600" : rawScore >= 3 ? "text-amber-600" : rawScore >= 1 ? "text-blue-600" : "text-slate-300";
+    rawScore === 5 ? "text-rose-700 font-black"
+    : rawScore >= 3 ? "text-amber-700 font-black"
+    : rawScore >= 1 ? "text-blue-700 font-extrabold"
+    : "text-slate-800 font-extrabold";
+  const scoreBadgeBg =
+    rawScore === 5 ? "bg-rose-100 text-rose-700 border-rose-200"
+    : rawScore >= 3 ? "bg-amber-100 text-amber-800 border-amber-200"
+    : rawScore >= 1 ? "bg-blue-100 text-blue-800 border-blue-200"
+    : "bg-slate-100 text-slate-600 border-slate-200";
 
   return (
-    <div className={cn("flex-1 min-w-[110px] border rounded-xl p-3 flex flex-col gap-1", chipBg)}>
-      <div className="text-xs font-semibold text-slate-500">{label}</div>
-      <div className={cn("text-lg font-black leading-none", valColor)}>{value}</div>
-      <div className="flex items-center justify-between mt-1">
-        <span className="text-xs text-slate-400">Wt: {weight}%</span>
-        <span className={cn("text-xs font-bold font-mono", scoreColor)}>Score {rawScore}/5</span>
+    <div className={cn("flex-1 min-w-[115px] border rounded-2xl p-3 flex flex-col justify-between gap-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md", chipBg)}>
+      <div className="text-[11px] font-extrabold tracking-wider uppercase text-slate-500">{label}</div>
+      <div className={cn("text-lg font-black tracking-tight leading-none font-mono", valColor)}>{value}</div>
+      <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60">
+        <span className="text-[10px] font-semibold text-slate-400">Wt: {weight}%</span>
+        <span className={cn("text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border", scoreBadgeBg)}>Score {rawScore}/5</span>
       </div>
     </div>
   );
@@ -108,24 +111,24 @@ function ScoreChip({ label, value, rawScore, weight }: { label: string; value: s
 function DataTable({ headers, rows }: { headers: string[]; rows: (string | React.ReactNode)[][] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full text-xs text-left">
-        <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase">
+      <table className="w-full text-xs text-left border-collapse">
+        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-extrabold uppercase tracking-wider">
           <tr>
             {headers.map((h, i) => (
-              <th key={i} className="px-3 py-2">{h}</th>
+              <th key={i} className="px-3.5 py-2.5">{h}</th>
             ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={headers.length} className="px-3 py-4 text-center text-slate-400 italic">No records found</td>
+              <td colSpan={headers.length} className="px-3.5 py-4 text-center text-slate-400 italic font-medium">No records found</td>
             </tr>
           ) : (
             rows.map((r, ri) => (
-              <tr key={ri} className="hover:bg-slate-50/80 transition-colors">
+              <tr key={ri} className="hover:bg-blue-50/30 transition-colors">
                 {r.map((cell, ci) => (
-                  <td key={ci} className="px-3 py-2 text-slate-700">{cell}</td>
+                  <td key={ci} className="px-3.5 py-2.5 text-slate-700 font-medium">{cell}</td>
                 ))}
               </tr>
             ))
@@ -138,12 +141,12 @@ function DataTable({ headers, rows }: { headers: string[]; rows: (string | React
 
 function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: React.ReactNode }) {
   return (
-    <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-      <div className="flex items-center gap-2">
-        {icon && <span className="text-slate-500">{icon}</span>}
+    <div className="px-4 py-3 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/80">
+      <div className="flex items-center gap-2.5">
+        {icon && <span className="text-slate-600">{icon}</span>}
         <div>
-          <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wide">{title}</h3>
-          {subtitle && <p className="text-[11px] text-slate-500">{subtitle}</p>}
+          <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">{title}</h3>
+          {subtitle && <p className="text-[11px] font-semibold text-slate-500">{subtitle}</p>}
         </div>
       </div>
     </div>
@@ -152,7 +155,7 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("border border-slate-200 bg-white rounded-xl shadow-sm flex flex-col overflow-hidden", className)}>
+    <div className={cn("border border-slate-200/90 bg-white rounded-2xl shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 flex flex-col overflow-hidden", className)}>
       {children}
     </div>
   );
@@ -341,10 +344,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {/* 5-parameter PVASF metric strip */}
         <div className="flex items-stretch gap-3 px-5 pb-3 overflow-x-auto">
           {/* PVASF Score tile */}
-          <div className="flex flex-col justify-center bg-slate-900 rounded-xl px-4 py-2 shrink-0 min-w-[100px] gap-0.5">
-            <div className="text-xs text-slate-400 font-medium">PVASF Score</div>
-            <div className={cn("text-2xl font-black leading-none", scoreColor(metrics.final_score))}>{metrics.final_score}</div>
-            <div className="text-xs text-slate-500">/ 100</div>
+          <div className="flex flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl px-4 py-3 shrink-0 min-w-[115px] border border-slate-800 shadow-md">
+            <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">PVASF Score</div>
+            <div className={cn("text-3xl font-black leading-none font-mono my-0.5", scoreColor(metrics.final_score))}>{metrics.final_score}</div>
+            <div className="text-[10px] font-semibold text-slate-500">/ 100</div>
           </div>
           <ScoreChip
             label="Price Rise %"
@@ -379,22 +382,24 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         </div>
       </div>
 
-      {/* ── TAB BAR ── */}
-      <div className="flex items-center px-5 bg-white border-b border-slate-200 overflow-x-auto shrink-0">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "whitespace-nowrap px-4 py-3 text-sm font-medium transition-all border-b-2",
-              activeTab === tab
-                ? "border-blue-600 text-blue-700"
-                : "border-transparent text-slate-500 hover:text-slate-900 hover:bg-slate-50"
-            )}
-          >
-            {tab}
-          </button>
-        ))}
+      {/* ── TAB BAR (Modern Segmented Control) ── */}
+      <div className="flex items-center px-5 py-2.5 bg-slate-100/70 border-b border-slate-200/90 overflow-x-auto shrink-0">
+        <div className="bg-slate-200/60 p-1 rounded-xl inline-flex gap-1 border border-slate-200/90 shadow-2xs">
+          {TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={cn(
+                "whitespace-nowrap px-4 py-2 text-xs font-extrabold transition-all rounded-lg cursor-pointer",
+                activeTab === tab
+                  ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+              )}
+            >
+              {tab}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* ── MAIN CONTENT AREA ── */}
@@ -409,7 +414,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               {summary && (
                 <Card>
                   <SectionHeader title="Market Summary & Participant Demographics" subtitle="Unique PANs, Price/Volume Baselines" />
-                  <div className="p-5 grid grid-cols-5 gap-4">
+                  <div className="p-4 md:p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
                     {[
                       { label: "T-180 Base Close", value: `₹${Number(summary.start_price || 0).toFixed(2)}` },
                       { label: "Latest Close (T-0)", value: `₹${Number(summary.latest_close || 0).toFixed(2)}` },
@@ -417,9 +422,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       { label: "Peak 15D Surge High", value: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%` },
                       { label: "Active Unique PANs", value: `${participants ? participants.volume_share.length * 28 + 14 : 142} Active` },
                     ].map((item) => (
-                      <div key={item.label} className="bg-slate-50 border border-slate-200 rounded-lg p-3">
-                        <div className="text-xs text-slate-400 font-medium mb-1.5">{item.label}</div>
-                        <div className="text-base font-bold text-slate-900 font-mono">{item.value}</div>
+                      <div key={item.label} className="bg-slate-50/80 border border-slate-200/90 hover:bg-white hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all">
+                        <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider mb-1">{item.label}</div>
+                        <div className="text-base font-black text-slate-900 font-mono tracking-tight">{item.value}</div>
                       </div>
                     ))}
                   </div>
@@ -768,12 +773,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
         {/* ── RIGHT SIDEBAR: CASE DOSSIER ── */}
         <div className="w-72 shrink-0 hidden lg:flex flex-col gap-4 sticky top-0 self-start">
-          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-            <div className="bg-slate-800 px-4 py-3 flex items-center gap-2">
-              <FolderLock className="w-4 h-4 text-slate-400" />
-              <span className="text-sm font-semibold text-white">Case Dossier</span>
+          <div className="bg-white border border-slate-200/90 rounded-2xl shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] overflow-hidden">
+            <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 px-4 py-3.5 flex items-center gap-2 border-b border-slate-800">
+              <FolderLock className="w-4 h-4 text-blue-400" />
+              <span className="text-xs font-black uppercase tracking-wider text-white">Case Dossier</span>
             </div>
-            <div className="p-4 space-y-3">
+            <div className="p-4 space-y-2">
               {[
                 { label: "Scrip", val: detail.symbol },
                 { label: "Risk Level", val: risk, colored: true },
@@ -782,12 +787,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 { label: "ISIN", val: detail.isin || "—" },
                 { label: "Analyst", val: currentUser.name },
               ].map((item) => (
-                <div key={item.label} className="flex justify-between items-center py-1 border-b border-slate-50 last:border-0">
-                  <span className="text-sm text-slate-500">{item.label}</span>
+                <div key={item.label} className="flex justify-between items-center py-2 px-2.5 rounded-lg border-b border-slate-100 last:border-0 hover:bg-slate-50/80 transition-colors">
+                  <span className="text-xs font-semibold text-slate-500">{item.label}</span>
                   <span className={cn(
-                    "text-sm font-semibold",
+                    "text-xs font-bold font-mono",
                     item.colored
-                      ? risk === "High" ? "text-rose-600" : risk === "Medium" ? "text-amber-600" : "text-emerald-600"
+                      ? risk === "High" ? "text-rose-600 font-extrabold" : risk === "Medium" ? "text-amber-600 font-extrabold" : "text-emerald-600 font-extrabold"
                       : "text-slate-900"
                   )}>
                     {item.val}
@@ -795,8 +800,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </div>
               ))}
             </div>
-            <div className="px-4 pb-4">
-              <Button className="w-full h-9 text-sm font-medium" variant="outline">
+            <div className="px-4 pb-4 pt-1">
+              <Button className="w-full h-9 text-xs font-extrabold rounded-xl border border-slate-300 bg-white text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs" variant="outline">
                 Generate Report
               </Button>
             </div>

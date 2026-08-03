@@ -38,11 +38,11 @@ export function MetricCard({
   };
 
   const bgStyles = {
-    slate: "bg-white hover:bg-slate-50/80 border-slate-200",
-    blue: "bg-white hover:bg-blue-50/40 border-slate-200",
-    amber: "bg-white hover:bg-amber-50/40 border-slate-200",
-    red: "bg-white hover:bg-rose-50/40 border-slate-200",
-    green: "bg-white hover:bg-emerald-50/40 border-slate-200"
+    slate: "bg-white hover:bg-slate-50/80 border-slate-200/90",
+    blue: "bg-white hover:bg-blue-50/40 border-slate-200/90",
+    amber: "bg-white hover:bg-amber-50/40 border-slate-200/90",
+    red: "bg-white hover:bg-rose-50/40 border-slate-200/90",
+    green: "bg-white hover:bg-emerald-50/40 border-slate-200/90"
   };
 
   const badgeDots = {
@@ -57,10 +57,10 @@ export function MetricCard({
     <Card
       onClick={onClick}
       className={cn(
-        "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border-t-4",
+        "cursor-pointer transition-all duration-200 hover:-translate-y-0.5 border-t-4 border-slate-200/90",
         borderAccents[tone],
         bgStyles[tone],
-        active ? "ring-2 ring-blue-500 border-blue-500 shadow-md bg-blue-50/20" : "shadow-xs hover:shadow-md"
+        active ? "ring-2 ring-blue-500/30 border-blue-500 shadow-md bg-blue-50/20" : "shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-md"
       )}
     >
       <CardContent className="p-4 md:p-5 min-w-0">
