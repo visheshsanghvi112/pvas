@@ -385,7 +385,7 @@ class SurveillanceEngine:
                 return 0.0
             return float((latest - mu) / sigma)
         # --- 2.2 Price Z-Score ---
-        price_roll = rolling_mean_pct_change(close)
+        price_roll = close.rolling(recent).mean()
         price_z = zscore_latest(price_roll)
         price_z_score = self.score_zscore(price_z)
 
@@ -410,13 +410,14 @@ class SurveillanceEngine:
 
         # --- Section 3: Weighted Final Score (0.0 to 100.0) ---
         w = self.config.weights
-        final_score = sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
+        raw_weighted = sum(w.get(key, 0.0) * score for key, score in {
             "price_rise": price_rise_score,
             "price_z": price_z_score,
             "volume_z": volume_z_score,
             "band_persistence": band_score,
             "new_high": new_high_score,
         }.items())
+        final_score = round((raw_weighted / 5.0) * 100.0, 2)
 
         return MarketMetricsResult(
             ticker=ticker,
