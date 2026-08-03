@@ -75,18 +75,16 @@ def run_empirical_verification():
     print(f"  P5 (New High Score)       : {res.new_high_score} / 5  [Expect 5 for days >= 10]")
     
     # Expected weighted sum calculation:
-    w1, w2, w3, w4, w5 = 0.25, 0.25, 0.20, 0.15, 0.15
-    expected_raw_weighted = (
+    w1, w2, w3, w4, w5 = 25.0, 20.0, 25.0, 15.0, 15.0
+    expected_final_score = round((
         w1 * res.price_rise_score +
         w2 * res.price_z_score +
         w3 * res.volume_z_score +
         w4 * res.band_score +
         w5 * res.new_high_score
-    )
-    expected_final_score = round((expected_raw_weighted / 5.0) * 100.0, 2)
+    ) / 5.0, 2)
     
     print("\n[COMPOSITE RISK SCORE VERIFICATION]")
-    print(f"  Raw Weighted Sum (0 to 5) : {expected_raw_weighted:.2f}")
     print(f"  Engine Final Score (0-100): {res.final_score:.2f}")
     print(f"  Expected Scaled Score     : {expected_final_score:.2f}")
     

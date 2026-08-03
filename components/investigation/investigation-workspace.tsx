@@ -44,8 +44,8 @@ type Tab = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
 function scoreZone(score: number): "High" | "Medium" | "Low" {
-  if (score >= 75) return "High";
-  if (score >= 60) return "Medium";
+  if (score >= 15) return "High";
+  if (score >= 10) return "Medium";
   return "Low";
 }
 function scoreColor(score: number) {

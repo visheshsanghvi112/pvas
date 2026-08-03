@@ -190,9 +190,9 @@ export default function SystemGuidePage() {
               <strong className="text-slate-900 font-semibold">What it does: </strong>
               Computes a final Composite Anomaly Score (0 to 100) and categorizes stocks into risk tiers:
               <ul className="list-disc list-inside mt-1.5 space-y-1 font-medium text-slate-700">
-                <li><span className="text-rose-700 font-bold">High Risk (Score &ge; 75)</span>: Immediate priority regulatory review.</li>
-                <li><span className="text-amber-700 font-bold">Medium Risk (Score 60 to 74)</span>: Secondary surveillance monitoring.</li>
-                <li><span className="text-emerald-700 font-bold">Low Risk (Score &lt; 60)</span>: Baseline standard monitoring.</li>
+                <li><span className="text-rose-700 font-bold">High Risk (Score &ge; 15)</span>: Immediate priority regulatory review.</li>
+                <li><span className="text-amber-700 font-bold">Medium Risk (Score 10 to 14)</span>: Secondary surveillance monitoring.</li>
+                <li><span className="text-emerald-700 font-bold">Low Risk (Score &lt; 10)</span>: Baseline standard monitoring.</li>
               </ul>
             </div>
             <div>

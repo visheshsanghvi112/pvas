@@ -201,9 +201,10 @@ class EODSurveillanceService:
         return [s for s in scrips if s["watchlist"]]
 
     def _risk_and_status(self, score: float) -> tuple[str, str]:
-        if score >= 75.0:
+        thresh = self.config.threshold
+        if score >= thresh:
             return "High", "Open"
-        if score >= 60.0:
+        if score >= 10.0:
             return "Medium", "Under review"
         return "Low", "Normal"
 

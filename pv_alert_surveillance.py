@@ -410,14 +410,13 @@ class SurveillanceEngine:
 
         # --- Section 3: Weighted Final Score (0.0 to 100.0) ---
         w = self.config.weights
-        raw_weighted = sum(w.get(key, 0.0) * score for key, score in {
+        final_score = round(sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
             "price_rise": price_rise_score,
             "price_z": price_z_score,
             "volume_z": volume_z_score,
             "band_persistence": band_score,
             "new_high": new_high_score,
-        }.items())
-        final_score = round(raw_weighted / 5.0, 2)
+        }.items()), 2)
 
         return MarketMetricsResult(
             ticker=ticker,
