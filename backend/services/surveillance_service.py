@@ -14,8 +14,7 @@ from pv_alert_surveillance import (
     SurveillanceEngine,
     clean_historical_data,
     MarketMetricsResult,
-    ParticipantAuditResult,
-    FactTradesAuditResult
+    ParticipantAuditResult
 )
 
 class EODSurveillanceService:
