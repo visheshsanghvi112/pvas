@@ -479,7 +479,7 @@ export function AlertsTable({
                     <div className="flex items-center gap-2">
                       <span className={cn(
                         "text-sm font-bold w-7 text-right tabular-nums",
-                        alert.score >= 15 ? "text-rose-600" : alert.score >= 10 ? "text-amber-600" : "text-emerald-600"
+                        alert.score >= 75 ? "text-rose-600" : alert.score >= 60 ? "text-amber-600" : "text-emerald-600"
                       )}>
                         {alert.score}
                       </span>
@@ -487,9 +487,9 @@ export function AlertsTable({
                         <div
                           className={cn(
                             "h-full rounded-full transition-all",
-                            alert.score >= 15 ? "bg-rose-500" : alert.score >= 10 ? "bg-amber-400" : "bg-emerald-500"
+                            alert.score >= 75 ? "bg-rose-500" : alert.score >= 60 ? "bg-amber-400" : "bg-emerald-500"
                           )}
-                          style={{ width: `${Math.min((alert.score / 25) * 100, 100)}%` }}
+                          style={{ width: `${Math.min(alert.score, 100)}%` }}
                         />
                       </div>
                     </div>

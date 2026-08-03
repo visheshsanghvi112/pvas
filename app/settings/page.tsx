@@ -83,7 +83,7 @@ export default function SettingsPage() {
   const [wHigh, setWHigh] = useState(15);
 
   // Thresholds state
-  const [watchlistScore, setWatchlistScore] = useState(15);
+  const [watchlistScore, setWatchlistScore] = useState(60);
 
   // Save & Modal states
   const [saving, setSaving] = useState(false);

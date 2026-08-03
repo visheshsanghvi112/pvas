@@ -148,11 +148,11 @@ export default function DashboardPage() {
                 {loading ? "—" : highRiskCount}
               </span>
               <span className="text-xs font-semibold text-rose-700 bg-rose-100 px-2 py-0.5 rounded border border-rose-200">
-                Score ≥ 15
+                Score ≥ 75
               </span>
             </div>
             <div className="mt-2 text-[11px] text-slate-500 flex items-center gap-1.5">
-              <span>{medRiskCount} Medium (10–14)</span>
+              <span>{medRiskCount} Medium (60–74)</span>
               <span className="text-slate-300">•</span>
               <span>{lowRiskCount} Normal</span>
             </div>
