@@ -75,7 +75,7 @@ class EODSurveillanceService:
                 AggClntSecDay.Acsd_Sell_Tot_Val.label("SellValue"),
                 AggClntSecDay.Acsd_Pos_Cont_Val.label("PosContVal"),
                 AggClntSecDay.Acsd_Neg_Cont_Val.label("NegContVal"),
-                AggClntSecDay.Acsd_Wash_Trd_Qty.label("WashVolume")
+                (AggClntSecDay.Acsd_Buy_Wash_Qty + AggClntSecDay.Acsd_Sell_Wash_Qty).label("WashVolume")
             ).join(DimExchClntDtls, AggClntSecDay.Acsd_Clnt_Token == DimExchClntDtls.Decl_Exch_Clnt_Token)\
              .join(AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date))
 
