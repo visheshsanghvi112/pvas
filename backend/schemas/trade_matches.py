@@ -124,7 +124,7 @@ class FactTradeDetail(FactTradeBase):
 
 # ── Filter schema (used by query endpoints) ───────────────────────────────────
 
-class FactTradesFilter(BaseModel):
+class TradeMatchesFilter(BaseModel):
     symbol:         Optional[str]  = Field(None, description="Filter by NSE symbol e.g. ALPHATECH")
     date_from:      Optional[date] = Field(None, description="Inclusive start date (YYYY-MM-DD)")
     date_to:        Optional[date] = Field(None, description="Inclusive end date (YYYY-MM-DD)")
