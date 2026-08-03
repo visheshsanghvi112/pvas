@@ -31,6 +31,7 @@ class EODSurveillanceService:
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
         """Loads EOD OHLCV data directly from the aggregate table AGG_SEC_DAY."""
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import AggSecDay
@@ -47,15 +48,18 @@ class EODSurveillanceService:
             ).order_by(AggSecDay.Asd_Symbol, AggSecDay.Asd_Date)
 
             df = pd.read_sql(q.statement, db.bind)
-            db.close()
             if not df.empty and len(df) > 10:
                 return clean_historical_data(df)
         except Exception as e:
             print(f"[surveillance_service] DB EOD load error from AGG_SEC_DAY: {e}")
+        finally:
+            if db:
+                db.close()
         return None
 
     def _load_db_trades(self) -> Optional[pd.DataFrame]:
         """Loads participant trade aggregates directly from AGG_CLNT_SEC_DAY + DECL in the database."""
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import AggClntSecDay, DimExchClntDtls, AggSecDay
@@ -76,7 +80,6 @@ class EODSurveillanceService:
              .join(AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date))
 
             df = pd.read_sql(q.statement, db.bind)
-            db.close()
             if not df.empty:
                 pos = df["PosContVal"].fillna(0.0)
                 neg = df["NegContVal"].fillna(0.0)
@@ -85,6 +88,9 @@ class EODSurveillanceService:
                 return df
         except Exception as e:
             print(f"[surveillance_service] DB aggregate trades load error from AGG_CLNT_SEC_DAY: {e}")
+        finally:
+            if db:
+                db.close()
         return None
 
     def _generate_sample_teradata_eod(self, days: int = 260) -> pd.DataFrame:
@@ -298,6 +304,7 @@ class EODSurveillanceService:
         promoter_pct = 0.0
         public_pct = 0.0
 
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import AggClntSecDay, AggSecDay, FactMainShldng
@@ -331,10 +338,11 @@ class EODSurveillanceService:
                 promoter_pct = float(sh_prom.Fshg_Tot_Shares_Pct or 0.0)
             if sh_pub:
                 public_pct = float(sh_pub.Fshg_Tot_Shares_Pct or 0.0)
-
-            db.close()
         except Exception as e:
             print(f"[surveillance_service] Shareholding DB lookup error: {e}")
+        finally:
+            if db:
+                db.close()
 
         return {
             "unique_pans_15d": unique_pans_15d,
@@ -442,6 +450,7 @@ class EODSurveillanceService:
 
     def get_scrip_shareholding_breakdown(self, ticker: str) -> Dict[str, Any]:
         """Queries full quarter-by-quarter Enterprise Data Warehouse shareholding tables (FMSH, FSHG, FPRH, FPUH)."""
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import FactMainShldng, FactPromShldrDtls, FactPubShldrDtls
@@ -450,7 +459,6 @@ class EODSurveillanceService:
             main_records = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).all()
             prom_records = db.query(FactPromShldrDtls).filter(FactPromShldrDtls.Fprh_Symbol == ticker).all()
             pub_records = db.query(FactPubShldrDtls).filter(FactPubShldrDtls.Fpuh_Symbol == ticker).all()
-            db.close()
 
             quarters = {}
             for r in main_records:
@@ -482,9 +490,13 @@ class EODSurveillanceService:
         except Exception as e:
             print(f"[surveillance_service] Shareholding breakdown error: {e}")
             return {"symbol": ticker, "quarterly_history": [], "promoter_group": []}
+        finally:
+            if db:
+                db.close()
 
     def get_scrip_corporate_actions(self, ticker: str) -> List[Dict[str, Any]]:
         """Queries official Enterprise Data Warehouse corporate actions & dilution factors (FCAC, FCDF)."""
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import FactCorpActions, FactCaDilFctr
@@ -492,7 +504,6 @@ class EODSurveillanceService:
             
             actions = db.query(FactCorpActions).filter(FactCorpActions.Fcac_Symbol == ticker).order_by(FactCorpActions.Fcac_Rec_Date.desc()).all()
             dilutions = {d.Fcdf_Corp_Action_Catg: float(d.Fcdf_Price_Adj_Factor or 1.0) for d in db.query(FactCaDilFctr).filter(FactCaDilFctr.Fcdf_Symbol == ticker).all()}
-            db.close()
 
             res = []
             for a in actions:
@@ -513,3 +524,6 @@ class EODSurveillanceService:
         except Exception as e:
             print(f"[surveillance_service] Corporate actions error: {e}")
             return []
+        finally:
+            if db:
+                db.close()
