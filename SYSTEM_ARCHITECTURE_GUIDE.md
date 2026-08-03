@@ -272,7 +272,7 @@ Audits execution channels (`Ftrd_Buy_CTCL_Algo_Flag`):
 The official PVASF framework is built on a **3-Tier Enterprise SEBI Data Warehouse Architecture**:
 1. **Dimension Layer (`DECL`, `DDCL`):** Legal entity demographics, PAN resolution, depository demat accounts, joint holders, and Power of Attorney (POA) hubs.
 2. **Fact Execution Layer (`FACT_TRADES`, `FMSH`, `FCAC`):** Millisecond trade match logs, order IDs (`Ftrd_Buy_Ord_Num`), same-broker wash trade flags, and legal evidence in court proceedings. (*Note: `FACT_TRADES` is retained for legal evidence and microsecond execution logs, but omitted from daily baseline OHLC/Close calculations*).
-3. **Aggregate Layer (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`):** Pre-calculated daily security closing prices (30-min VWAP), OHLC bars, client volume shares, LTP price push contributions (`Pos_Cont_Val`), daily wash trade totals, and buyer-seller PAN pair concentrations.
+3. **Aggregate Layer (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`):** Pre-calculated daily security closing prices (30-min VWAP), OHLC bars, client volume shares, positive/negative/net LTP price push contributions (`Acsd_Pos_Cont_Val` - `Acsd_Neg_Cont_Val`), daily wash trade totals, and buyer-seller PAN pair concentrations (`Appd_Pos_Contri` - `Appd_Neg_Contri`).
 
 ```
 ┌───────────────────────────────┐               ┌───────────────────────────────┐
@@ -497,6 +497,9 @@ The application enforces a **3-Click Investigation Journey** within a **Single C
 | `/api/v1/auth/login` | `POST` | `username`, `password` | `UserSessionDTO` | SHA-256 password authentication & bearer session token generation. |
 | `/api/v1/auth/users` | `GET`, `POST` | `username`, `role` | `List[SysUserDTO]` | Role-Based Access Control (RBAC) user account management (`SYS_USERS`). |
 | `/api/v1/auth/audit-logs` | `GET` | `username`, `action` | `List[SysAuditLogDTO]` | Immutable security audit trail logs (`SYS_AUDIT_LOGS`). |
+| `/api/aggregates/security/{symbol}` | `GET` | `symbol`, `start_date`, `end_date`, `limit` | `List[AggSecDaySchema]` | **Security daily aggregates: Official 30-min VWAP Close, OHLC bars, 52W High/Low & Circuit Limits (`AGG_SEC_DAY`).** |
+| `/api/aggregates/client` | `GET` | `cmp_token`, `clnt_token`, `target_date`, `limit` | `List[AggClntSecDaySchema]` | **Client security daily aggregates: Volume share, LTP push values & wash trade totals (`AGG_CLNT_SEC_DAY`).** |
+| `/api/aggregates/pan_pair` | `GET` | `cmp_token`, `buy_clnt_token`, `sell_clnt_token`, `target_date`, `limit` | `List[AggPanPairDaySchema]` | **Counterparty PAN pair daily aggregates: Matched volume, value & circular trade loops (`AGG_PAN_PAIR_DAY`).** |
 
 ---
 

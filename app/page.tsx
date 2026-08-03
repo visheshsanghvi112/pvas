@@ -73,33 +73,14 @@ export default function DashboardPage() {
             <Activity className="h-5 w-5 text-blue-600" />
           </div>
           <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-base font-bold text-slate-900">
-                Market Surveillance Dashboard
-              </h1>
-              <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                Teradata DWBIS Connected
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-2">
-              <span>PVASF Surveillance Engine v2.4</span>
-              <span className="text-slate-300">•</span>
-              <span>180D Baseline Window</span>
-              <span className="text-slate-300">•</span>
-              <span>15D Observation Horizon</span>
-            </p>
+            <h1 className="text-base font-bold text-slate-900">
+              Market Surveillance Dashboard
+            </h1>
           </div>
         </div>
 
         {/* Sync Controls */}
         <div className="flex items-center gap-3">
-          {lastRefresh && (
-            <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 bg-slate-100/80 px-3 py-1.5 rounded-lg border border-slate-200">
-              <Clock className="h-3.5 w-3.5 text-slate-400" />
-              <span>Synced at {lastRefresh}</span>
-            </div>
-          )}
           <button
             onClick={loadData}
             disabled={loading}

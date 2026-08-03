@@ -241,3 +241,74 @@ export async function fetchCorporateActions(scripId: string) {
   if (!res.ok) return [];
   return await res.json();
 }
+
+export interface AggSecDay {
+  Asd_Cmp_Token: number;
+  Asd_Symbol: string;
+  Asd_Date: string;
+  Asd_Open_Price: number;
+  Asd_High_Price: number;
+  Asd_Low_Price: number;
+  Asd_Close_Price: number;
+  Asd_Tot_Qty: number;
+  Asd_Tot_Val: number;
+  Asd_Tot_Trd_Cnt: number;
+  Asd_High_52W: number;
+  Asd_Low_52W: number;
+  Asd_Up_Ckt_Lmt: number;
+  Asd_Lwr_Ckt_Lmt: number;
+}
+
+export interface AggClntSecDay {
+  Acsd_Cmp_Token: number;
+  Acsd_Clnt_Token: number;
+  Acsd_Date: string;
+  Acsd_Tot_Buy_Qty: number;
+  Acsd_Tot_Sell_Qty: number;
+  Acsd_Pos_Cont_Val: number;
+  Acsd_Neg_Cont_Val?: number;
+  Acsd_Net_Cont_Val?: number;
+  Acsd_Wash_Trd_Qty: number;
+}
+
+export interface AggPanPairDay {
+  Appd_Cmp_Token: number;
+  Appd_Buy_Clnt_Token: number;
+  Appd_Sell_Clnt_Token: number;
+  Appd_Date: string;
+  Appd_Tot_Trd_Qty: number;
+  Appd_Tot_Trd_Val: number;
+  Appd_Pos_Contri: number;
+  Appd_Neg_Contri?: number;
+  Appd_Net_Contri?: number;
+}
+
+export async function fetchSecurityAggregates(symbol: string): Promise<AggSecDay[]> {
+  const cleanSym = symbol.toUpperCase();
+  const res = await fetch(`http://127.0.0.1:8000/api/v1/agg-trades/security/${cleanSym}`, { cache: "no-store" });
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function fetchClientAggregates(clntToken?: number, cmpToken?: number, targetDate?: string): Promise<AggClntSecDay[]> {
+  const url = new URL("http://127.0.0.1:8000/api/v1/agg-trades/client");
+  if (clntToken) url.searchParams.set("clnt_token", clntToken.toString());
+  if (cmpToken) url.searchParams.set("cmp_token", cmpToken.toString());
+  if (targetDate) url.searchParams.set("target_date", targetDate);
+  
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) return [];
+  return await res.json();
+}
+
+export async function fetchPanPairAggregates(buyClntToken?: number, cmpToken?: number, targetDate?: string): Promise<AggPanPairDay[]> {
+  const url = new URL("http://127.0.0.1:8000/api/v1/agg-trades/pan_pair");
+  if (buyClntToken) url.searchParams.set("buy_clnt_token", buyClntToken.toString());
+  if (cmpToken) url.searchParams.set("cmp_token", cmpToken.toString());
+  if (targetDate) url.searchParams.set("target_date", targetDate);
+  
+  const res = await fetch(url.toString(), { cache: "no-store" });
+  if (!res.ok) return [];
+  return await res.json();
+}
+

@@ -197,8 +197,6 @@ class MarketMetricsResult:
     new_high_days: int
     new_high_score: int
     final_score: float
-    price_mod_z: float = 0.0
-    volume_mod_z: float = 0.0
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -207,10 +205,8 @@ class MarketMetricsResult:
             "Price Rise Score": self.price_rise_score,
             "Price Z": round(self.price_z, 2),
             "Price Z Score": self.price_z_score,
-            "Price Mod Z": round(self.price_mod_z, 2),
             "Volume Z": round(self.volume_z, 2),
             "Volume Z Score": self.volume_z_score,
-            "Volume Mod Z": round(self.volume_mod_z, 2),
             "Band Hit Days (15d)": self.band_hit_days,
             "Band Score": self.band_score,
             "180d New Highs (15d)": self.new_high_days,
@@ -372,7 +368,7 @@ class SurveillanceEngine:
 
         # Helper rolling calculators
         def rolling_mean_pct_change(c: pd.Series) -> pd.Series:
-            return (c.pct_change() * 100).rolling(recent).mean()
+            return (c.pct_change(fill_method=None) * 100).rolling(recent).mean()
 
         def rolling_mean_volume(v: pd.Series) -> pd.Series:
             return v.rolling(recent).mean()
@@ -388,32 +384,14 @@ class SurveillanceEngine:
             if sigma < 1e-6 or np.isnan(sigma):
                 return 0.0
             return float((latest - mu) / sigma)
-
-        def modified_zscore_latest(series: pd.Series) -> float:
-            series_clean = series.dropna()
-            if len(series_clean) < lookback + 1:
-                return 0.0
-            latest = series_clean.iloc[-1]
-            background = series_clean.iloc[-(lookback + 1):-1]
-            med = background.median()
-            mad = np.median(np.abs(background - med))
-            if mad < 1e-6 or np.isnan(mad):
-                sigma = background.std()
-                if sigma < 1e-6 or np.isnan(sigma):
-                    return 0.0
-                return float((latest - med) / sigma)
-            return float(0.6745 * (latest - med) / mad)
-
         # --- 2.2 Price Z-Score ---
         price_roll = rolling_mean_pct_change(close)
         price_z = zscore_latest(price_roll)
-        price_mod_z = modified_zscore_latest(price_roll)
         price_z_score = self.score_zscore(price_z)
 
         # --- 2.3 Volume Z-Score ---
         vol_roll = rolling_mean_volume(volume)
         volume_z = zscore_latest(vol_roll)
-        volume_mod_z = modified_zscore_latest(vol_roll)
         volume_z_score = self.score_zscore(volume_z)
 
         # --- 2.4 Price Band Persistence (Upper Circuit Only) ---
@@ -452,9 +430,7 @@ class SurveillanceEngine:
             band_score=band_score,
             new_high_days=new_high_days,
             new_high_score=new_high_score,
-            final_score=final_score,
-            price_mod_z=price_mod_z,
-            volume_mod_z=volume_mod_z
+            final_score=final_score
         )
 
     def analyze_participants(self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float) -> ParticipantAuditResult:
@@ -630,6 +606,11 @@ class SurveillanceEngine:
         init_col = "Ftrd_Init_Clnt_Token" if "Ftrd_Init_Clnt_Token" in df_sorted.columns else None
         
         # Buy Side
+        buy_ltp = np.where(
+            df_sorted[init_col] == df_sorted["Ftrd_Buy_Exch_Clnt_Token"] if init_col else True,
+            price_impact,
+            0.0
+        )
         buy_df = pd.DataFrame({
             "Ticker": df_sorted[ticker_col],
             "Date": df_sorted[date_col],
@@ -639,14 +620,17 @@ class SurveillanceEngine:
             "SellVolume": 0.0,
             "BuyValue": df_sorted["Ftrd_Trd_Val"] if "Ftrd_Trd_Val" in df_sorted.columns else (df_sorted["Ftrd_Trd_Qty"] * df_sorted["Ftrd_Trd_Price"]),
             "SellValue": 0.0,
-            "LTPContribution": np.where(
-                df_sorted[init_col] == df_sorted["Ftrd_Buy_Exch_Clnt_Token"] if init_col else True,
-                price_impact,
-                0.0
-            )
+            "PosLTPContribution": np.where(buy_ltp > 0, buy_ltp, 0.0),
+            "NegLTPContribution": np.where(buy_ltp < 0, np.abs(buy_ltp), 0.0),
+            "LTPContribution": buy_ltp
         })
         
         # Sell Side
+        sell_ltp = np.where(
+            df_sorted[init_col] == df_sorted["Ftrd_Sell_Exch_Clnt_Token"] if init_col else False,
+            price_impact,
+            0.0
+        )
         sell_df = pd.DataFrame({
             "Ticker": df_sorted[ticker_col],
             "Date": df_sorted[date_col],
@@ -656,11 +640,9 @@ class SurveillanceEngine:
             "SellVolume": df_sorted["Ftrd_Trd_Qty"],
             "BuyValue": 0.0,
             "SellValue": df_sorted["Ftrd_Trd_Val"] if "Ftrd_Trd_Val" in df_sorted.columns else (df_sorted["Ftrd_Trd_Qty"] * df_sorted["Ftrd_Trd_Price"]),
-            "LTPContribution": np.where(
-                df_sorted[init_col] == df_sorted["Ftrd_Sell_Exch_Clnt_Token"] if init_col else False,
-                price_impact,
-                0.0
-            )
+            "PosLTPContribution": np.where(sell_ltp > 0, sell_ltp, 0.0),
+            "NegLTPContribution": np.where(sell_ltp < 0, np.abs(sell_ltp), 0.0),
+            "LTPContribution": sell_ltp
         })
         
         combined = pd.concat([buy_df, sell_df], ignore_index=True)
@@ -670,6 +652,8 @@ class SurveillanceEngine:
             "SellVolume": "sum",
             "BuyValue": "sum",
             "SellValue": "sum",
+            "PosLTPContribution": "sum",
+            "NegLTPContribution": "sum",
             "LTPContribution": "sum"
         })
         return grouped

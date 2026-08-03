@@ -30,93 +30,61 @@ class EODSurveillanceService:
         self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
-        """Loads EOD OHLCV data directly from AGG_SEC_DAY (falling back to FACT_TRADES) in the database."""
+        """Loads EOD OHLCV data directly from the aggregate table AGG_SEC_DAY."""
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import AggSecDay, FactTrades
-            from sqlalchemy import func
+            from backend.db.models import AggSecDay
 
             db = SessionLocal()
-            # 1. Primary path: Query official EOD aggregate table AGG_SEC_DAY
-            try:
-                q = db.query(
-                    AggSecDay.Asd_Symbol.label("Ticker"),
-                    AggSecDay.Asd_Date.label("Date"),
-                    AggSecDay.Asd_Open_Price.label("Open"),
-                    AggSecDay.Asd_High_Price.label("High"),
-                    AggSecDay.Asd_Low_Price.label("Low"),
-                    AggSecDay.Asd_Close_Price.label("Close"),
-                    AggSecDay.Asd_Tot_Qty.label("Volume")
-                ).order_by(AggSecDay.Asd_Symbol, AggSecDay.Asd_Date)
-
-                df = pd.read_sql(q.statement, db.bind)
-                if not df.empty and len(df) > 10:
-                    db.close()
-                    return clean_historical_data(df)
-            except Exception as ex_asd:
-                print(f"[surveillance_service] AGG_SEC_DAY lookup fallback to FACT_TRADES: {ex_asd}")
-
-            # 2. Fallback path: Group FACT_TRADES if AGG_SEC_DAY has no data
             q = db.query(
-                FactTrades.Ftrd_Symbol.label("Ticker"),
-                FactTrades.Ftrd_Trd_Date.label("Date"),
-                func.min(FactTrades.Ftrd_Trd_Price).label("Low"),
-                func.max(FactTrades.Ftrd_Trd_Price).label("High"),
-                func.sum(FactTrades.Ftrd_Trd_Qty).label("Volume"),
-                func.avg(FactTrades.Ftrd_Trd_Price).label("Close")
-            ).group_by(FactTrades.Ftrd_Symbol, FactTrades.Ftrd_Trd_Date).order_by(FactTrades.Ftrd_Symbol, FactTrades.Ftrd_Trd_Date)
+                AggSecDay.Asd_Symbol.label("Ticker"),
+                AggSecDay.Asd_Date.label("Date"),
+                AggSecDay.Asd_Open_Price.label("Open"),
+                AggSecDay.Asd_High_Price.label("High"),
+                AggSecDay.Asd_Low_Price.label("Low"),
+                AggSecDay.Asd_Close_Price.label("Close"),
+                AggSecDay.Asd_Tot_Qty.label("Volume")
+            ).order_by(AggSecDay.Asd_Symbol, AggSecDay.Asd_Date)
 
             df = pd.read_sql(q.statement, db.bind)
             db.close()
-            if not df.empty and len(df) > 100:
-                df["Open"] = df["Low"]
+            if not df.empty and len(df) > 10:
                 return clean_historical_data(df)
         except Exception as e:
-            print(f"[surveillance_service] DB EOD load fallback: {e}")
+            print(f"[surveillance_service] DB EOD load error from AGG_SEC_DAY: {e}")
         return None
 
     def _load_db_trades(self) -> Optional[pd.DataFrame]:
-        """Loads participant trade logs directly from FACT_TRADES + DECL in the database."""
+        """Loads participant trade aggregates directly from AGG_CLNT_SEC_DAY + DECL in the database."""
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactTrades, DimExchClntDtls
-            from sqlalchemy.orm import aliased
+            from backend.db.models import AggClntSecDay, DimExchClntDtls, AggSecDay
 
             db = SessionLocal()
-            BuyClnt = aliased(DimExchClntDtls, name="buy_clnt")
-            SellClnt = aliased(DimExchClntDtls, name="sell_clnt")
-
             q = db.query(
-                FactTrades.Ftrd_Symbol.label("Ticker"),
-                FactTrades.Ftrd_Trd_Date.label("Date"),
-                BuyClnt.Decl_Clnt_Pan.label("PAN"),
-                SellClnt.Decl_Clnt_Pan.label("CounterpartyPAN"),
-                FactTrades.Ftrd_Trd_Qty.label("BuyVolume"),
-                FactTrades.Ftrd_Trd_Qty.label("SellVolume"),
-                FactTrades.Ftrd_Trd_Val.label("BuyValue"),
-                FactTrades.Ftrd_Trd_Val.label("SellValue"),
-                FactTrades.Ftrd_LTP_Chng_Indc.label("LTPIndc"),
-                FactTrades.Ftrd_Same_Broker_Wash_Flag.label("WashFlag")
-            ).join(BuyClnt, FactTrades.Ftrd_Buy_Exch_Clnt_Token == BuyClnt.Decl_Exch_Clnt_Token)\
-             .join(SellClnt, FactTrades.Ftrd_Sell_Exch_Clnt_Token == SellClnt.Decl_Exch_Clnt_Token)
+                AggSecDay.Asd_Symbol.label("Ticker"),
+                AggClntSecDay.Acsd_Date.label("Date"),
+                DimExchClntDtls.Decl_Clnt_Pan.label("PAN"),
+                AggClntSecDay.Acsd_Buy_Tot_Qty.label("BuyVolume"),
+                AggClntSecDay.Acsd_Sell_Tot_Qty.label("SellVolume"),
+                AggClntSecDay.Acsd_Buy_Tot_Val.label("BuyValue"),
+                AggClntSecDay.Acsd_Sell_Tot_Val.label("SellValue"),
+                AggClntSecDay.Acsd_Pos_Cont_Val.label("PosContVal"),
+                AggClntSecDay.Acsd_Neg_Cont_Val.label("NegContVal"),
+                AggClntSecDay.Acsd_Wash_Trd_Qty.label("WashVolume")
+            ).join(DimExchClntDtls, AggClntSecDay.Acsd_Clnt_Token == DimExchClntDtls.Decl_Exch_Clnt_Token)\
+             .join(AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date))
 
             df = pd.read_sql(q.statement, db.bind)
             db.close()
-            if not df.empty and len(df) > 100:
-                df["LTPContribution"] = df["LTPIndc"].apply(
-                    lambda x: 1.0 if x == "U" else (-1.0 if x == "D" else 0.0)
-                )
+            if not df.empty:
+                pos = df["PosContVal"].fillna(0.0)
+                neg = df["NegContVal"].fillna(0.0)
+                df["LTPContribution"] = pos - neg
+                df["CounterpartyPAN"] = "MULTIPLE"
                 return df
         except Exception as e:
-            print(f"[surveillance_service] DB trades load fallback: {e}")
-            # Retry mechanism
-            try:
-                db = SessionLocal()
-                # Dummy query to ensure connection stability
-                db.execute("SELECT 1")
-                db.close()
-            except:
-                pass
+            print(f"[surveillance_service] DB aggregate trades load error from AGG_CLNT_SEC_DAY: {e}")
         return None
 
     def _generate_sample_teradata_eod(self, days: int = 260) -> pd.DataFrame:
@@ -411,15 +379,21 @@ class EODSurveillanceService:
         final_close = float(df_t["Close"].iloc[-1]) if not df_t.empty else 100.0
         total_vol = float(df_t["Volume"].tail(15).sum()) if not df_t.empty else 1000000.0
         
+        # Actual 15-day Net Stock Price Movement (Close_T - Close_{T-15}) per PVASF_CORE_SPEC 4.1
+        if len(df_t) >= 15:
+            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-15]))
+        else:
+            scrip_15d_price_change = 1.0
+        scrip_15d_price_change = max(scrip_15d_price_change, 1e-4)
+
         part_res: ParticipantAuditResult = self.engine.analyze_participants(
             ticker, self.current_trades_df, final_close, total_vol
         )
         
-        ltp_total = sum(abs(row["LTPContribution"]) for row in part_res.ltp_contributors) or 1.0
         return {
             "ticker": ticker,
             "ltp_contributors": [
-                {"participant": row["PAN"], "contribution": round(abs(row["LTPContribution"]) * 100 / ltp_total, 2)}
+                {"participant": row["PAN"], "contribution": round((row["LTPContribution"] / scrip_15d_price_change) * 100, 2)}
                 for row in part_res.ltp_contributors
             ],
             "volume_share": [

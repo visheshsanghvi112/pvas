@@ -31,7 +31,8 @@ from backend.db.models import (
     FactMstrSharehldg, FactMainShldng, FactPromShldrDtls, FactPubShldrDtls,
     FactDvrShldng, FactDrHolding, FactLkdinShldng, FactCmpExchShldng,
     FactCorpActions, FactCaDilFctr,
-    SysUser, SysAuditLog, ForensicCase
+    SysUser, SysAuditLog, ForensicCase,
+    AggSecDay, AggClntSecDay, AggPanPairDay
 )
 from backend.security import hash_password
 
@@ -888,6 +889,132 @@ def seed_database(db: Session) -> dict:
         db.bulk_save_objects(trade_rows)
         db.commit()
 
+    print("[seed] Generating AGG_SEC_DAY rows …")
+    from sqlalchemy import func
+    asd_query = db.query(
+        FactTrades.Ftrd_Symbol.label("symbol"),
+        FactTrades.Ftrd_Trd_Date.label("date"),
+        FactTrades.Ftrd_Cmp_Token.label("cmp_token"),
+        FactTrades.Ftrd_Trd_Prd_Token.label("prd_token"),
+        func.min(FactTrades.Ftrd_Trd_Price).label("low_p"),
+        func.max(FactTrades.Ftrd_Trd_Price).label("high_p"),
+        func.avg(FactTrades.Ftrd_Trd_Price).label("close_p"),
+        func.sum(FactTrades.Ftrd_Trd_Qty).label("tot_qty"),
+        func.sum(FactTrades.Ftrd_Trd_Val).label("tot_val"),
+        func.count(FactTrades.Ftrd_Trd_Num).label("tot_cnt"),
+        func.sum(FactTrades.Ftrd_Same_Broker_Wash_Flag).label("wash_cnt")
+    ).group_by(FactTrades.Ftrd_Symbol, FactTrades.Ftrd_Trd_Date, FactTrades.Ftrd_Cmp_Token, FactTrades.Ftrd_Trd_Prd_Token).all()
+
+    asd_objects = []
+    for r in asd_query:
+        c_price = Decimal(str(round(float(r.close_p or 0), 2)))
+        h_price = Decimal(str(round(float(r.high_p or 0), 2)))
+        l_price = Decimal(str(round(float(r.low_p or 0), 2)))
+        prev_close = Decimal(str(round(float(r.close_p or 0) * 0.98, 2)))
+        asd_objects.append(AggSecDay(
+            Asd_Date=r.date,
+            Asd_Symbol=r.symbol,
+            Asd_Cmp_Token=r.cmp_token,
+            Asd_Trd_Prd_Token=r.prd_token,
+            Asd_Open_Price=l_price,
+            Asd_High_Price=h_price,
+            Asd_Low_Price=l_price,
+            Asd_Close_Price=c_price,
+            Asd_Prev_Close_Price=prev_close,
+            Asd_Tot_Qty=Decimal(str(r.tot_qty or 0)),
+            Asd_Tot_Val=Decimal(str(r.tot_val or 0)),
+            Asd_Tot_Cnt=r.tot_cnt,
+            Asd_Tot_Wash_Qty=Decimal(str((r.wash_cnt or 0) * 100.0)),
+            Asd_Tot_Wash_Cnt=r.wash_cnt or 0,
+            Asd_Low_Crct_Price=Decimal(str(round(float(prev_close) * 0.90, 2))),
+            Asd_Upp_Crct_Price=Decimal(str(round(float(prev_close) * 1.10, 2))),
+            Asd_52_Week_High_Price=Decimal(str(round(float(h_price) * 1.15, 2))),
+            Asd_52_Week_Low_Price=Decimal(str(round(float(l_price) * 0.85, 2))),
+        ))
+        if len(asd_objects) >= 1000:
+            db.bulk_save_objects(asd_objects)
+            db.commit()
+            asd_objects.clear()
+    if asd_objects:
+        db.bulk_save_objects(asd_objects)
+        db.commit()
+
+    print("[seed] Generating AGG_CLNT_SEC_DAY rows …")
+    acsd_query = db.query(
+        FactTrades.Ftrd_Trd_Date.label("date"),
+        FactTrades.Ftrd_Cmp_Token.label("cmp_token"),
+        FactTrades.Ftrd_Buy_Exch_Clnt_Token.label("clnt_token"),
+        func.sum(FactTrades.Ftrd_Trd_Qty).label("buy_qty"),
+        func.sum(FactTrades.Ftrd_Trd_Val).label("buy_val"),
+        func.count(FactTrades.Ftrd_Trd_Num).label("buy_cnt")
+    ).group_by(FactTrades.Ftrd_Trd_Date, FactTrades.Ftrd_Cmp_Token, FactTrades.Ftrd_Buy_Exch_Clnt_Token).all()
+
+    acsd_objects = []
+    for r in acsd_query:
+        b_qty = float(r.buy_qty or 0)
+        b_val = float(r.buy_val or 0)
+        acsd_objects.append(AggClntSecDay(
+            Acsd_Date=r.date,
+            Acsd_Cmp_Token=r.cmp_token,
+            Acsd_Exch_Clnt_Token=r.clnt_token,
+            Acsd_Clnt_Token=r.clnt_token,
+            Acsd_Buy_Tot_Qty=Decimal(str(round(b_qty, 2))),
+            Acsd_Sell_Tot_Qty=Decimal(str(round(b_qty * 0.8, 2))),
+            Acsd_Buy_Tot_Val=Decimal(str(round(b_val, 2))),
+            Acsd_Sell_Tot_Val=Decimal(str(round(b_val * 0.8, 2))),
+            Acsd_Buy_Tot_Cnt=r.buy_cnt,
+            Acsd_Pos_Cont_Val=Decimal(str(round(b_val * 0.05, 2))),
+            Acsd_Neg_Cont_Val=Decimal(str(round(b_val * 0.015, 2))),
+        ))
+        if len(acsd_objects) >= 1000:
+            db.bulk_save_objects(acsd_objects)
+            db.commit()
+            acsd_objects.clear()
+    if acsd_objects:
+        db.bulk_save_objects(acsd_objects)
+        db.commit()
+
+    print("[seed] Generating AGG_PAN_PAIR_DAY rows …")
+    appd_query = db.query(
+        FactTrades.Ftrd_Trd_Date.label("date"),
+        FactTrades.Ftrd_Cmp_Token.label("cmp_token"),
+        FactTrades.Ftrd_Buy_Exch_Clnt_Token.label("buy_clnt"),
+        FactTrades.Ftrd_Sell_Exch_Clnt_Token.label("sell_clnt"),
+        FactTrades.Ftrd_Buy_Exch_TM_Token.label("tm_token"),
+        FactTrades.Ftrd_Sell_Exch_TM_Token.label("cpty_tm_token"),
+        func.sum(FactTrades.Ftrd_Trd_Qty).label("pair_qty"),
+        func.sum(FactTrades.Ftrd_Trd_Val).label("pair_val"),
+        func.count(FactTrades.Ftrd_Trd_Num).label("pair_cnt")
+    ).group_by(FactTrades.Ftrd_Trd_Date, FactTrades.Ftrd_Cmp_Token, FactTrades.Ftrd_Buy_Exch_Clnt_Token, FactTrades.Ftrd_Sell_Exch_Clnt_Token, FactTrades.Ftrd_Buy_Exch_TM_Token, FactTrades.Ftrd_Sell_Exch_TM_Token).all()
+
+    appd_objects = []
+    for r in appd_query:
+        p_qty = float(r.pair_qty or 0)
+        p_val = float(r.pair_val or 0)
+        appd_objects.append(AggPanPairDay(
+            Appd_Date=r.date,
+            Appd_Cmp_Token=r.cmp_token,
+            Appd_Exch_Clnt_Token=r.buy_clnt,
+            Appd_Clnt_Token=r.buy_clnt,
+            Appd_Exch_TM_Token=r.tm_token,
+            Appd_TM_Token=r.tm_token,
+            Appd_Cpty_Exch_Clnt_Token=r.sell_clnt,
+            Appd_Cpty_Clnt_Token=r.sell_clnt,
+            Appd_Cpty_Exch_TM_Token=r.cpty_tm_token,
+            Appd_Cpty_TM_Token=r.cpty_tm_token,
+            Appd_Buy_Tot_Qty=Decimal(str(round(p_qty, 2))),
+            Appd_Buy_Tot_Val=Decimal(str(round(p_val, 2))),
+            Appd_Buy_Tot_Cnt=r.pair_cnt,
+            Appd_Pos_Contri=Decimal(str(round(p_val * 0.02, 2))),
+        ))
+        if len(appd_objects) >= 1000:
+            db.bulk_save_objects(appd_objects)
+            db.commit()
+            appd_objects.clear()
+    if appd_objects:
+        db.bulk_save_objects(appd_objects)
+        db.commit()
+
     count_decl = db.query(DimExchClntDtls).count()
     count_ddcl = db.query(DimDepClntDtls).count()
     count_ftrd = db.query(FactTrades).count()
@@ -897,13 +1024,19 @@ def seed_database(db: Session) -> dict:
     count_usr  = db.query(SysUser).count()
     count_log  = db.query(SysAuditLog).count()
     count_case = db.query(ForensicCase).count()
+    count_asd  = db.query(AggSecDay).count()
+    count_acsd = db.query(AggClntSecDay).count()
+    count_appd = db.query(AggPanPairDay).count()
 
-    print(f"[seed] Done. DECL={count_decl}, DDCL={count_ddcl}, FTRD={count_ftrd}, FMSH={count_fmsh}, FSHG={count_fshg}, FCAC={count_fcac}")
+    print(f"[seed] Done. DECL={count_decl}, DDCL={count_ddcl}, FTRD={count_ftrd}, ASD={count_asd}, ACSD={count_acsd}, APPD={count_appd}")
     return {
         "status": "seeded",
         "DIM_EXCH_CLNT_DTLS": count_decl,
         "DIM_DEP_CLNT_DTLS":  count_ddcl,
         "FACT_TRADES":        count_ftrd,
+        "AGG_SEC_DAY":        count_asd,
+        "AGG_CLNT_SEC_DAY":   count_acsd,
+        "AGG_PAN_PAIR_DAY":   count_appd,
         "FACT_MSTR_SHAREHLDG": count_fmsh,
         "FACT_MAIN_SHLDNG": count_fshg,
         "FACT_CORP_ACTIONS": count_fcac,
@@ -911,3 +1044,4 @@ def seed_database(db: Session) -> dict:
         "SYS_AUDIT_LOGS": count_log,
         "FORENSIC_CASES": count_case
     }
+

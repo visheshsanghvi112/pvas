@@ -221,7 +221,7 @@ export function AlertsTable({
     >
       <div
         className={cn(
-          "flex items-center gap-1.5 text-xs font-semibold text-slate-400 group-hover:text-slate-200 transition-colors",
+          "flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider group-hover:text-slate-900 transition-colors",
           align === "right" && "justify-end"
         )}
       >
@@ -389,11 +389,11 @@ export function AlertsTable({
       {/* ── Table Scroll Container (Single Scroll Container) ── */}
       <div className="flex-1 overflow-auto bg-white">
         <table className="w-full border-collapse" style={{ minWidth: 960 }}>
-          <thead className="sticky top-0 z-10 shadow-xs">
-            <tr className="bg-slate-800 text-white">
+          <thead className="sticky top-0 z-10 shadow-2xs">
+            <tr className="bg-slate-50/95 backdrop-blur-xs text-slate-600 uppercase text-[11px] font-bold tracking-wider border-y border-slate-200">
               <th className="px-4 py-3 text-left" style={{ minWidth: 200 }}>
                 <div
-                  className="flex items-center gap-1.5 text-xs font-semibold text-slate-400 cursor-pointer hover:text-slate-200 transition-colors"
+                  className="flex items-center gap-1.5 text-xs font-bold text-slate-600 uppercase tracking-wider cursor-pointer hover:text-slate-900 transition-colors"
                   onClick={() => handleSort("symbol")}
                 >
                   Security Master
@@ -406,10 +406,10 @@ export function AlertsTable({
               <ThCell field="volume_z" label="Volume Z-Score" minWidth={120} />
               <ThCell field="band_hit_days" label="Circuit Hits" minWidth={100} />
               <ThCell field="new_high_days" label="180D New Highs" minWidth={120} />
-              <th className="px-4 py-3 text-xs font-semibold text-slate-400" style={{ minWidth: 110 }}>
+              <th className="px-4 py-3 text-xs font-bold text-slate-600 uppercase tracking-wider" style={{ minWidth: 110 }}>
                 Case Status
               </th>
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-400" style={{ minWidth: 120 }}>
+              <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider" style={{ minWidth: 120 }}>
                 Action Workspace
               </th>
             </tr>

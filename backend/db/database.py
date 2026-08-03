@@ -73,3 +73,11 @@ def init_db() -> None:
     # Import models so SQLAlchemy registers them on Base.metadata
     from backend.db import models  # noqa: F401 — side-effect import
     Base.metadata.create_all(bind=engine)
+
+
+def reset_database() -> None:
+    """Drop all existing tables and recreate all 19 system tables clean."""
+    from backend.db import models  # noqa: F401 — side-effect import
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+

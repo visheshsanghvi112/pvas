@@ -20,7 +20,7 @@ export const metricHelp = {
   shareholding:
     "Shareholding output includes unique PAN holders on T day and T-180, average unique PAN trading over 15 and 180 days, promoter shares, and top 1% shareholder holdings.",
   ltpContribution:
-    "LTP Contribution: top unique PAN who contributed to price movement of the scrip in past 15 days. Formula: net LTP contribution of each entity over 15 trading days / net LTP movement in scrip over 15 trading days.",
+    "Net LTP Contribution: Top unique PAN entities who contributed to price movement of the scrip over the past 15 days. Formula: Net LTP contribution of each entity (Acsd_Pos_Cont_Val - Acsd_Neg_Cont_Val) over 15 trading days / net LTP movement in scrip over 15 trading days.",
   volumeContributors:
     "Volume Share: It provides details of top unique PAN who significantly contributed to total volume of the scrip in past 15 days, beyond the given threshold.",
   counterparty:

@@ -442,12 +442,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </Card>
               </div>
 
-              {/* Shareholder & Corporate Actions (10-Table Shareholding & Corporate Actions Integration) */}
+              {/* Shareholder & Corporate Actions Integration */}
               <div className="grid grid-cols-2 gap-5">
                 <Card>
                   <SectionHeader
                     icon={<UserCircle className="w-4 h-4" />}
-                    title="Enterprise Shareholding Results (FMSH, FSHG, FPRH)"
+                    title="Enterprise Shareholding Results"
                     subtitle="Quarterly Shareholding Master & Category Distribution"
                   />
                   <div className="p-5 space-y-4">
@@ -470,7 +470,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     {/* Quarter-by-Quarter Shareholding History */}
                     {shBreakdown && shBreakdown.quarterly_history && shBreakdown.quarterly_history.length > 0 && (
                       <div className="space-y-2">
-                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quarterly Shareholding Distribution (FACT_MAIN_SHLDNG)</div>
+                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider">Quarterly Shareholding Distribution</div>
                         <div className="border border-slate-200 rounded-lg overflow-hidden">
                           <table className="w-full text-xs">
                             <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
@@ -499,7 +499,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     {/* Promoter Entity List */}
                     {shBreakdown && shBreakdown.promoter_group && shBreakdown.promoter_group.length > 0 && (
                       <div className="pt-2 border-t border-slate-100 text-xs">
-                        <div className="text-slate-500 font-semibold mb-1">Promoter Entity (FACT_PROM_SHLDR_DTLS):</div>
+                        <div className="text-slate-500 font-semibold mb-1">Promoter Entity Summary:</div>
                         <div className="flex justify-between items-center bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-lg">
                           <span className="font-semibold text-slate-800">{shBreakdown.promoter_group[0].name}</span>
                           <span className="font-mono text-slate-600">{shBreakdown.promoter_group[0].shares.toLocaleString("en-IN")} shares ({shBreakdown.promoter_group[0].share_pct}%)</span>
@@ -512,7 +512,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <Card>
                   <SectionHeader
                     icon={<Zap className="w-4 h-4" />}
-                    title="Corporate Actions & Disclosures (FCAC & FCDF)"
+                    title="Corporate Actions & Disclosures"
                     subtitle="Official Corporate Actions & Price Dilution Factors"
                   />
                   <div className="p-4 space-y-3">
@@ -580,7 +580,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           {activeTab === "Participants" && !participants && (
             <Card>
               <div className="p-8 text-sm text-slate-500 text-center">
-                Participant data not available. The backend requires FACT_TRADES participant records for this scrip.
+                Participant data not available for this scrip.
               </div>
             </Card>
           )}
@@ -591,8 +591,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <Card>
                   <SectionHeader
                     icon={<TrendingUp className="w-3 h-3" />}
-                    title="Upward LTP Contribution"
-                    subtitle="Buy-aggressive trades only · Sec 4.1"
+                    title="Net LTP Contribution %"
+                    subtitle="Net price push (Pos - Neg) / 15D stock price movement · Sec 4.1"
                   />
                   <div className="p-4 flex-1">
                     <LtpChart ltpContributors={participants.ltp_contributors} />

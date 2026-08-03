@@ -153,23 +153,21 @@ export function RollingVolumeChart({ history = [] }: { history?: PricePoint[] })
 }
 
 /**
- * LTP Upward Contribution Chart (Module 3 — Section 4.1).
- * Per PVASF spec: only buy-aggressive / upward (+) LTP moves count.
- * Negative contributors are filtered out.
+ * Net LTP Contribution Chart (Module 3 — Section 4.1).
+ * Per PVASF spec: calculates net LTP contribution (Pos - Neg) divided by 15-day stock price change.
  */
 export function LtpChart({ ltpContributors = [] }: { ltpContributors?: Array<{ participant: string; contribution: number }> }) {
-  const upwardOnly = (ltpContributors ?? []).filter((p) => p.contribution > 0);
-  if (upwardOnly.length === 0)
-    return <div className="text-slate-500 text-xs p-4">No upward LTP contributors in this window.</div>;
+  if (!ltpContributors || ltpContributors.length === 0)
+    return <div className="text-slate-500 text-xs p-4">No LTP contributors in this window.</div>;
 
   return (
     <div className="w-full min-w-0 h-[220px] overflow-hidden">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={upwardOnly} layout="vertical" margin={{ top: 5, right: 25, left: 0, bottom: 5 }}>
-          <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 10 }} unit="%" domain={[0, "auto"]} />
+        <BarChart data={ltpContributors} layout="vertical" margin={{ top: 5, right: 25, left: 0, bottom: 5 }}>
+          <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 10 }} unit="%" domain={["auto", "auto"]} />
           <YAxis dataKey="participant" type="category" stroke="#475569" tick={{ fontSize: 10 }} width={80} />
           <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="contribution" name="LTP Contribution %" fill="#2563eb" radius={[0, 5, 5, 0]} />
+          <Bar dataKey="contribution" name="Net LTP Contribution %" fill="#2563eb" radius={[0, 5, 5, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>

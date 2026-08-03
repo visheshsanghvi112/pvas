@@ -14,6 +14,7 @@ import {
   ChevronDown,
   LayoutDashboard,
   CheckCircle2,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWatchlist, type ScripSummary } from "@/lib/api";
@@ -23,6 +24,7 @@ const nav = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
   { key: "compare", href: "/compare", label: "Compare", icon: GitCompare },
   { key: "cases", href: "/cases", label: "Cases", icon: FolderLock },
+  { key: "guide", href: "/guide", label: "Guide", icon: BookOpen },
   { key: "settings", href: "/settings", label: "Admin", icon: Settings },
 ];
 

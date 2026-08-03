@@ -465,7 +465,8 @@
 | `Acsd_Sell_Tot_Qty` | Decimal(20,3) | N | Daily Total Sell Quantity |
 | `Acsd_Buy_Tot_Val` | Decimal(20,2) | N | Daily Total Buy Value |
 | `Acsd_Sell_Tot_Val` | Decimal(20,2) | N | Daily Total Sell Value |
-| `Acsd_Pos_Cont_Val` | Decimal(20,2) | N | Positive Price Contribution Value (LTP Push) |
+| `Acsd_Pos_Cont_Val` | Decimal(20,2) | N | Positive Price Contribution Value (Upward LTP Push) |
+| `Acsd_Neg_Cont_Val` | Decimal(20,2) | N | Negative Price Contribution Value (Downward LTP Push) |
 | `Acsd_Buy_Wash_Qty` | Decimal(20,3) | N | Buy-Side Wash Trade Quantity |
 
 ---
@@ -479,10 +480,10 @@
 | `Appd_Cmp_Token` | BigInt | Y | Company / Security Token |
 | `Appd_Exch_Clnt_Token` | BigInt | Y | Buyer Client Exchange Token (FK → DECL) |
 | `Appd_Cpty_Exch_Clnt_Token` | BigInt | Y | Seller Counterparty Client Token (FK → DECL) |
-| `Appd_Buy_Tot_Qty` | Decimal(20,3) | N | Matched Buy Quantity for PAN Pair |
-| `Appd_Buy_Tot_Val` | Decimal(20,2) | N | Matched Buy Value for PAN Pair |
-| `Appd_Buy_Tot_Cnt` | BigInt | N | Total Trade Execution Count for PAN Pair |
+| `Appd_Matched_Qty` | Decimal(20,3) | N | Total Matched Quantity Between Pair |
+| `Appd_Matched_Val` | Decimal(20,2) | N | Total Matched Turnover Value Between Pair |
 | `Appd_Pos_Contri` | Decimal(15,6) | N | Positive Price Push Contribution for Pair |
+| `Appd_Neg_Contri` | Decimal(15,6) | N | Negative Price Push Contribution for Pair |
 
 ---
 
