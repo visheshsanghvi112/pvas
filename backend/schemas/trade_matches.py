@@ -27,23 +27,23 @@ class FactTradeBase(BaseModel):
     Ftrd_Trd_Price:             Decimal
     Ftrd_Trd_Qty:               Decimal
     Ftrd_Trd_Val:               Decimal
-    Ftrd_Buy_Exch_TM_Token:     int
-    Ftrd_Buy_Exch_Clnt_Token:   int
-    Ftrd_Sell_Exch_TM_Token:    int
-    Ftrd_Sell_Exch_Clnt_Token:  int
-    Ftrd_Buy_Acct_Type:         int
-    Ftrd_Sell_Acct_Type:        int
-    Ftrd_Same_Broker_Wash_Flag: int
-    Ftrd_Diff_Broker_Wash_Flag: int
+    Ftrd_Buy_Exch_TM_Token:     int = 0
+    Ftrd_Buy_Exch_Clnt_Token:   int = 0
+    Ftrd_Sell_Exch_TM_Token:    int = 0
+    Ftrd_Sell_Exch_Clnt_Token:  int = 0
+    Ftrd_Buy_Acct_Type:         int = 1
+    Ftrd_Sell_Acct_Type:        int = 1
+    Ftrd_Same_Broker_Wash_Flag: int = 0
+    Ftrd_Diff_Broker_Wash_Flag: int = 0
     Ftrd_Buy_CTCL_Algo_Flag:    Optional[int] = None
     Ftrd_Sell_CTCL_Algo_Flag:   Optional[int] = None
     Ftrd_Buy_CTCL_Inet_DMA_Flag:Optional[int] = None
     Ftrd_Sell_CTCL_Inet_DMA_Flag:Optional[int] = None
-    Ftrd_LTP_Chng_Indc:         str
-    Ftrd_Last_Trd_Price:        Decimal
-    Ftrd_Init_Side_Type:        int
-    Ftrd_Trd_Mod_Flag:          int
-    Ftrd_Trd_Can_Flag:          int
+    Ftrd_LTP_Chng_Indc:         str = "N"
+    Ftrd_Last_Trd_Price:        Decimal = Decimal("0.0")
+    Ftrd_Init_Side_Type:        int = 1
+    Ftrd_Trd_Mod_Flag:          int = 0
+    Ftrd_Trd_Can_Flag:          int = 0
 
     model_config = {"from_attributes": True}
 
