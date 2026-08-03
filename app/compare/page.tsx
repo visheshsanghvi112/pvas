@@ -44,7 +44,7 @@ function MetricCard({ detail, accent }: { detail: ScripDetail; accent: "blue" | 
       </div>
 
       <Link
-        href={`/investigations/${detail.symbol}`}
+        href={`/analysis/${detail.symbol}`}
         className="mt-4 flex items-center justify-center gap-2 w-full h-9 rounded-lg border border-slate-200 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
       >
         Open Full Analysis <ArrowRight className="h-4 w-4" />

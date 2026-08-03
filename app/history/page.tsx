@@ -146,7 +146,7 @@ export default function HistoryPage() {
                   filtered.map((row, idx) => (
                     <tr key={`${row.symbol}-${idx}`} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 py-4 font-sans font-bold">
-                        <Link href={`/investigations/${row.symbol}`} className="text-blue-600 hover:underline font-mono">
+                        <Link href={`/analysis/${row.symbol}`} className="text-blue-600 hover:underline font-mono">
                           {row.symbol}
                         </Link>
                       </td>

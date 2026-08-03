@@ -172,7 +172,7 @@ export default function DashboardPage() {
               <>
                 <div className="mt-2.5 flex items-baseline justify-between">
                   <Link
-                    href={`/investigations/${topMover.symbol}`}
+                    href={`/analysis/${topMover.symbol}`}
                     className="text-base font-black text-slate-900 hover:text-violet-700 hover:underline flex items-center gap-1 leading-none font-mono"
                   >
                     {topMover.symbol} <ChevronRight className="h-3.5 w-3.5 text-violet-500" />
@@ -205,7 +205,7 @@ export default function DashboardPage() {
               <>
                 <div className="mt-2.5 flex items-baseline justify-between">
                   <Link
-                    href={`/investigations/${topVolume.symbol}`}
+                    href={`/analysis/${topVolume.symbol}`}
                     className="text-base font-black text-slate-900 hover:text-amber-700 hover:underline flex items-center gap-1 leading-none font-mono"
                   >
                     {topVolume.symbol} <ChevronRight className="h-3.5 w-3.5 text-amber-500" />

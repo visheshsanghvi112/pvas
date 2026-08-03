@@ -251,7 +251,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3 text-slate-500">
         <div className="h-6 w-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-        <p className="text-xs font-semibold">Loading Investigation Workspace…</p>
+        <p className="text-xs font-semibold">Loading Scrip Analysis Workspace…</p>
       </div>
     );
   }

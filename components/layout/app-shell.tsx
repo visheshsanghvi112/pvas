@@ -85,7 +85,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleAlertClick = (alertItem: AlertItem) => {
     setAlerts((prev) => prev.map((a) => (a.id === alertItem.id ? { ...a, read: true } : a)));
     setNotificationsOpen(false);
-    router.push(`/investigations/${alertItem.symbol}`);
+    router.push(`/analysis/${alertItem.symbol}`);
   };
 
   const handleMarkAllRead = () => {
@@ -124,7 +124,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleSelectSymbol = (symbol: string) => {
     setSearchOpen(false);
     setSearchQuery("");
-    router.push(`/investigations/${symbol}`);
+    router.push(`/analysis/${symbol}`);
   };
 
   const userInitials = currentUser.name.slice(0, 2).toUpperCase();

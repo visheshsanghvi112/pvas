@@ -458,7 +458,7 @@ export function AlertsTable({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <Link
-                            href={`/investigations/${alert.symbol}`}
+                            href={`/analysis/${alert.symbol}`}
                             className="font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline"
                           >
                             {alert.symbol}
@@ -595,12 +595,12 @@ export function AlertsTable({
                   <td className="px-4 py-3.5">
                     <div className="flex items-center justify-end gap-2">
                       <Link
-                        href={`/investigations/${alert.symbol}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors shadow-xs"
-                        title="Open Investigation Workspace"
+                        href={`/analysis/${alert.symbol}`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs"
+                        title="Open Scrip Analysis Workspace"
                       >
                         <Eye className="h-3.5 w-3.5" />
-                        Analyse
+                        Analyze Scrip
                       </Link>
                       <Link
                         href="/compare"
