@@ -417,7 +417,7 @@ class SurveillanceEngine:
             "band_persistence": band_score,
             "new_high": new_high_score,
         }.items())
-        final_score = round((raw_weighted / 5.0) * 100.0, 2)
+        final_score = round(raw_weighted / 5.0, 2)
 
         return MarketMetricsResult(
             ticker=ticker,
