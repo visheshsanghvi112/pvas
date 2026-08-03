@@ -738,7 +738,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </Card>
               {trades.length === 0 && (
                 <div className="p-6 text-center text-slate-500 text-xs">
-                  No trade records available. Backend requires FACT_TRADES data for this scrip.
+                  No trade records available for this scrip.
                 </div>
               )}
             </div>

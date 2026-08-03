@@ -1,7 +1,7 @@
 """
-backend/schemas/fact_trades.py
+backend/schemas/trade_matches.py
 ────────────────────────────────────────────────────────────────────────────
-Pydantic v2 schemas for the FACT_TRADES (FTRD) table.
+Pydantic v2 schemas for trade execution match endpoints.
 """
 
 from __future__ import annotations

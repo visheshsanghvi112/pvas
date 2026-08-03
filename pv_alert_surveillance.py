@@ -37,51 +37,7 @@ MAPPING_RULES = {
     "LTPContribution": ["ltpcontribution", "ltp_contribution", "price_impact", "price_contrib"]
 }
 
-FACT_TRADES_COLUMNS = [
-    "Ftrd_Trd_Date", "Ftrd_Trd_Num", "Ftrd_Exch_Token", "Ftrd_Seg_Token", "Ftrd_Sess_Type",
-    "Ftrd_Trd_Tmst", "Ftrd_Trd_Time", "Ftrd_Cmp_Token", "Ftrd_Buy_Exch_TM_Token", "Ftrd_Buy_Trdr_Token",
-    "Ftrd_Buy_Exch_Clnt_Token", "Ftrd_Sell_Exch_TM_Token", "Ftrd_Sell_Trdr_Token", "Ftrd_Sell_Exch_Clnt_Token",
-    "Ftrd_Trd_Prd_Token", "Ftrd_Symbol", "Ftrd_Series", "Ftrd_Sub_Seg_Code", "Ftrd_Lot_Qty",
-    "Ftrd_Tick_Price", "Ftrd_Exch_Trd_Prd_Num", "Ftrd_Trd_Qty", "Ftrd_Trd_Price", "Ftrd_Trd_Val",
-    "Ftrd_Buy_Ord_Num", "Ftrd_Buy_Acct_Type", "Ftrd_Buy_CA_Catg", "Ftrd_Buy_CP_Token", "Ftrd_Buy_CP_Flag",
-    "Ftrd_Buy_CTCL_Ref", "Ftrd_Buy_IP_Addr", "Ftrd_Sell_Ord_Num", "Ftrd_Sell_CA_Catg", "Ftrd_Sell_Acct_Type",
-    "Ftrd_Sell_CP_Token", "Ftrd_Sell_CP_Flag", "Ftrd_Sell_CTCL_Ref", "Ftrd_Sell_IP_Addr", "Ftrd_Buy_Ord_Tmst",
-    "Ftrd_Buy_Ord_Price", "Ftrd_Buy_Ord_Qty", "Ftrd_Buy_Trig_Price", "Ftrd_Buy_Book_Type", "Ftrd_Buy_Price_Type",
-    "Ftrd_Buy_Mkt_Flag", "Ftrd_Buy_Stop_Flag", "Ftrd_Buy_Time_Type", "Ftrd_Buy_Trig_Type", "Ftrd_Buy_FOK_Flag",
-    "Ftrd_Buy_Qty_Type", "Ftrd_Buy_Ord_Type", "Ftrd_Sell_Ord_Tmst", "Ftrd_Sell_Ord_Price", "Ftrd_Sell_Ord_Qty",
-    "Ftrd_Sell_Trig_Price", "Ftrd_Sell_Book_Type", "Ftrd_Sell_Price_Type", "Ftrd_Sell_MKt_Flag", "Ftrd_Sell_Stop_Flag",
-    "Ftrd_Sell_Time_Type", "Ftrd_Sell_Trig_Type", "Ftrd_Sell_FOK_Flag", "Ftrd_Sell_Qty_Type", "Ftrd_Sell_Ord_Type",
-    "Ftrd_Buy_Spread_Indc", "Ftrd_Sell_Spread_Indc", "Ftrd_Buy_Spread_Flag", "Ftrd_Sell_Spread_Flag",
-    "Ftrd_Trd_Mod_Flag", "Ftrd_Trd_Can_Flag", "Ftrd_Buy_Orig_Clnt_Id", "Ftrd_BOrig_Exch_Clnt_Token",
-    "Ftrd_Buy_Orig_Cp_Flag", "Ftrd_Buy_Orig_Cp_Id", "Ftrd_Buy_Orig_CP_Token", "Ftrd_Sell_Orig_Clnt_Id",
-    "Ftrd_SOrig_Exch_Clnt_Token", "Ftrd_Sell_Orig_Cp_Flag", "Ftrd_Sell_Orig_Cp_Id", "Ftrd_Sell_Orig_CP_Token",
-    "Ftrd_Init_Side_Type", "Ftrd_Init_Clnt_Token", "Ftrd_Same_Broker_Wash_Flag", "Ftrd_Diff_Broker_Wash_Flag",
-    "Ftrd_Buy_Sell_Diff_Time", "Ftrd_Buy_Sell_Diff_Price", "Ftrd_Buy_Sell_Diff_Qty", "Ftrd_Last_Trd_Price",
-    "Ftrd_LTP_Chng_Indc", "Ftrd_Buy_CTCL_Inet_DMA_Flag", "Ftrd_Buy_CTCL_Algo_Flag", "Ftrd_Buy_CTCL_Pin",
-    "Ftrd_Buy_CTCL_State", "Ftrd_Buy_CTCL_Zone", "Ftrd_Sell_CTCL_Inet_DMA_Flag", "Ftrd_Sell_CTCL_Algo_Flag",
-    "Ftrd_Sell_CTCL_Pin", "Ftrd_Sell_CTCL_State", "Ftrd_Sell_CTCL_Zone", "Ftrd_Best_Bid_Price",
-    "Ftrd_Best_Ask_Price", "Ftrd_Best_Bid_Qty", "Ftrd_Best_Ask_Qty", "Ftrd_Best_Bid_Ord_Cnt",
-    "Ftrd_Best_Ask_Ord_Cnt", "Ftrd_Bid_Pdg_Ord_Cnt", "Ftrd_Ask_Pdg_Ord_Cnt", "Ftrd_Bid_Pdg_Ord_Qty",
-    "Ftrd_Ask_Pdg_Ord_Qty", "Ftrd_Bid_Pdg_Ord_Val", "Ftrd_Ask_Pdg_Ord_Val", "Ftrd_Buy_Prev_Rmng_Qty",
-    "Ftrd_Sell_Prev_Rmng_Qty", "Ftrd_Last_Estd_Hi_Price", "Ftrd_Last_Estd_Low_Price", "Ftrd_Hi_Hit_Flag",
-    "Ftrd_Low_Hit_Flag", "Ftrd_Last_Hi_Trd_Num", "Ftrd_Last_Low_Trd_Num", "FTRD_BUY_ALGO_ID",
-    "FTRD_SELL_ALGO_ID", "FTRD_BUY_ALGO_CATG_TYPE", "FTRD_SELL_ALGO_CATG_TYPE"
-]
 
-
-def normalize_fact_trades_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Renames case-insensitive/spaced/underscored columns to standard FACT_TRADES columns."""
-    df = df.copy()
-    col_map = {}
-    existing_cols = {c.lower().replace("_", "").replace(" ", ""): c for c in df.columns}
-    
-    for std in FACT_TRADES_COLUMNS:
-        std_key = std.lower().replace("_", "").replace(" ", "")
-        if std_key in existing_cols:
-            col_map[existing_cols[std_key]] = std
-            
-    df.rename(columns=col_map, inplace=True)
-    return df
 
 
 def normalize_columns(df: pd.DataFrame, standard_cols: List[str]) -> pd.DataFrame:
@@ -227,43 +183,6 @@ class ParticipantAuditResult:
 
 
 @dataclass
-class FactTradesAuditResult:
-    """Advanced exchange trade compliance findings (FACT_TRADES)."""
-    same_broker_wash_count: int = 0
-    same_broker_wash_volume: float = 0.0
-    diff_broker_wash_count: int = 0
-    diff_broker_wash_volume: float = 0.0
-    self_trade_count: int = 0
-    self_trade_volume: float = 0.0
-    
-    algo_buy_count: int = 0
-    algo_buy_pct: float = 0.0
-    algo_sell_count: int = 0
-    algo_sell_pct: float = 0.0
-    dma_buy_count: int = 0
-    dma_buy_pct: float = 0.0
-    dma_sell_count: int = 0
-    dma_sell_pct: float = 0.0
-    internet_buy_count: int = 0
-    internet_buy_pct: float = 0.0
-    internet_sell_count: int = 0
-    internet_sell_pct: float = 0.0
-    
-    avg_bid_ask_spread: float = 0.0
-    avg_buy_sell_diff_time_sec: float = 0.0
-    avg_buy_sell_diff_price: float = 0.0
-    avg_buy_sell_diff_qty: float = 0.0
-    
-    avg_bid_pdg_qty: float = 0.0
-    avg_ask_pdg_qty: float = 0.0
-    avg_bid_pdg_val: float = 0.0
-    avg_ask_pdg_val: float = 0.0
-    
-    avg_order_imbalance: float = 0.0
-    top_otr_contributors: List[Dict[str, Any]] = field(default_factory=list)
-
-
-@dataclass
 class ScripSurveillanceReport:
     """Full integrated compliance report for a stock."""
     ticker: str
@@ -273,7 +192,6 @@ class ScripSurveillanceReport:
     announcements: List[Dict[str, Any]] = field(default_factory=list)
     market_summary: Dict[str, Any] = field(default_factory=dict)
     watchlist: bool = False
-    fact_trades_audit: Optional[FactTradesAuditResult] = None
 
 
 # ----------------------------------------------------------------------
@@ -582,306 +500,6 @@ class SurveillanceEngine:
             circular_loops=top_loops
         )
 
-    def transform_fact_trades_to_client_trades(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Transforms a FACT_TRADES format DataFrame to client-centric transaction log."""
-        df_sorted = df.sort_values(["Ftrd_Symbol" if "Ftrd_Symbol" in df.columns else "Ticker", 
-                                    "Ftrd_Trd_Tmst" if "Ftrd_Trd_Tmst" in df.columns else ("Ftrd_Trd_Date" if "Ftrd_Trd_Date" in df.columns else "Date")])
-        
-        ticker_col = "Ftrd_Symbol" if "Ftrd_Symbol" in df_sorted.columns else (
-            "Ticker" if "Ticker" in df_sorted.columns else (
-                "Ftrd_Trd_Prd_Token" if "Ftrd_Trd_Prd_Token" in df_sorted.columns else "Ftrd_Cmp_Token"
-            )
-        )
-        date_col = "Ftrd_Trd_Date" if "Ftrd_Trd_Date" in df_sorted.columns else (
-            "Date" if "Date" in df_sorted.columns else "Ftrd_Trd_Tmst"
-        )
-        
-        if "Ftrd_Last_Trd_Price" in df_sorted.columns:
-            last_price = df_sorted["Ftrd_Last_Trd_Price"].fillna(df_sorted["Ftrd_Trd_Price"])
-        else:
-            last_price = df_sorted.groupby(ticker_col)["Ftrd_Trd_Price"].shift(1).fillna(df_sorted["Ftrd_Trd_Price"])
-            
-        price_impact = df_sorted["Ftrd_Trd_Price"] - last_price
-        
-        init_col = "Ftrd_Init_Clnt_Token" if "Ftrd_Init_Clnt_Token" in df_sorted.columns else None
-        
-        # Buy Side
-        buy_ltp = np.where(
-            df_sorted[init_col] == df_sorted["Ftrd_Buy_Exch_Clnt_Token"] if init_col else True,
-            price_impact,
-            0.0
-        )
-        buy_df = pd.DataFrame({
-            "Ticker": df_sorted[ticker_col],
-            "Date": df_sorted[date_col],
-            "PAN": df_sorted["Ftrd_Buy_Exch_Clnt_Token"],
-            "CounterpartyPAN": df_sorted["Ftrd_Sell_Exch_Clnt_Token"].fillna("UNKNOWN"),
-            "BuyVolume": df_sorted["Ftrd_Trd_Qty"],
-            "SellVolume": 0.0,
-            "BuyValue": df_sorted["Ftrd_Trd_Val"] if "Ftrd_Trd_Val" in df_sorted.columns else (df_sorted["Ftrd_Trd_Qty"] * df_sorted["Ftrd_Trd_Price"]),
-            "SellValue": 0.0,
-            "PosLTPContribution": np.where(buy_ltp > 0, buy_ltp, 0.0),
-            "NegLTPContribution": np.where(buy_ltp < 0, np.abs(buy_ltp), 0.0),
-            "LTPContribution": buy_ltp
-        })
-        
-        # Sell Side
-        sell_ltp = np.where(
-            df_sorted[init_col] == df_sorted["Ftrd_Sell_Exch_Clnt_Token"] if init_col else False,
-            price_impact,
-            0.0
-        )
-        sell_df = pd.DataFrame({
-            "Ticker": df_sorted[ticker_col],
-            "Date": df_sorted[date_col],
-            "PAN": df_sorted["Ftrd_Sell_Exch_Clnt_Token"],
-            "CounterpartyPAN": df_sorted["Ftrd_Buy_Exch_Clnt_Token"].fillna("UNKNOWN"),
-            "BuyVolume": 0.0,
-            "SellVolume": df_sorted["Ftrd_Trd_Qty"],
-            "BuyValue": 0.0,
-            "SellValue": df_sorted["Ftrd_Trd_Val"] if "Ftrd_Trd_Val" in df_sorted.columns else (df_sorted["Ftrd_Trd_Qty"] * df_sorted["Ftrd_Trd_Price"]),
-            "PosLTPContribution": np.where(sell_ltp > 0, sell_ltp, 0.0),
-            "NegLTPContribution": np.where(sell_ltp < 0, np.abs(sell_ltp), 0.0),
-            "LTPContribution": sell_ltp
-        })
-        
-        combined = pd.concat([buy_df, sell_df], ignore_index=True)
-        
-        grouped = combined.groupby(["Ticker", "Date", "PAN", "CounterpartyPAN"], as_index=False).agg({
-            "BuyVolume": "sum",
-            "SellVolume": "sum",
-            "BuyValue": "sum",
-            "SellValue": "sum",
-            "PosLTPContribution": "sum",
-            "NegLTPContribution": "sum",
-            "LTPContribution": "sum"
-        })
-        return grouped
-
-    def analyze_fact_trades(self, ticker: str, df_ft: pd.DataFrame) -> FactTradesAuditResult:
-        """Perform advanced exchange-level compliance audits on FACT_TRADES data."""
-        if df_ft.empty or ticker not in df_ft["Ftrd_Symbol" if "Ftrd_Symbol" in df_ft.columns else "Ticker"].values:
-            return FactTradesAuditResult()
-
-        ticker_col = "Ftrd_Symbol" if "Ftrd_Symbol" in df_ft.columns else "Ticker"
-        df = df_ft[df_ft[ticker_col] == ticker].copy()
-        total_trades = len(df)
-        if total_trades == 0:
-            return FactTradesAuditResult()
-
-        # Helper algorithms for parsing flags
-        def parse_algo_flag(series: pd.Series) -> pd.Series:
-            def check_val(val):
-                if pd.isna(val):
-                    return False
-                val_str = str(val).split('.')[0].strip()
-                if len(val_str) >= 13:
-                    # NSE / MCX: 13th digit (index 12) is '0'
-                    return val_str[12] == '0'
-                if val_str in ['1', '3', 'Y', 'YES', 'true', 'TRUE', '1.0']:
-                    return True
-                return False
-            return series.apply(check_val)
-
-        def parse_inet_dma_flag(series: pd.Series) -> Tuple[pd.Series, pd.Series]:
-            is_inet = []
-            is_dma = []
-            for val in series:
-                if pd.isna(val):
-                    is_inet.append(False)
-                    is_dma.append(False)
-                    continue
-                val_str = str(val).split('.')[0].strip()
-                if len(val_str) >= 12:
-                    if val_str[:12] == '1' * 12:
-                        is_inet.append(True)
-                        is_dma.append(False)
-                    elif val_str[:12] == '2' * 12:
-                        is_inet.append(False)
-                        is_dma.append(True)
-                    elif len(val_str) >= 14 and val_str[13] in ['1', '2']:
-                        is_inet.append(False)
-                        is_dma.append(True)
-                    else:
-                        if all(c == '1' for c in val_str):
-                            is_inet.append(True)
-                            is_dma.append(False)
-                        else:
-                            is_inet.append(False)
-                            is_dma.append(False)
-                else:
-                    if val_str in ['1', 'I', 'INET', 'INTERNET', '1.0']:
-                        is_inet.append(True)
-                        is_dma.append(False)
-                    elif val_str in ['2', 'D', 'DMA', '2.0']:
-                        is_inet.append(False)
-                        is_dma.append(True)
-                    else:
-                        is_inet.append(False)
-                        is_dma.append(False)
-            return pd.Series(is_inet, index=series.index), pd.Series(is_dma, index=series.index)
-
-        def parse_diff_time(val):
-            if pd.isna(val):
-                return 0.0
-            if isinstance(val, (int, float)):
-                return float(val)
-            s = str(val).strip()
-            try:
-                td = pd.to_timedelta(s)
-                return td.total_seconds()
-            except Exception:
-                try:
-                    return float(s)
-                except ValueError:
-                    return 0.0
-
-        # Wash Trade Audits
-        def get_series(col_name, default_val=np.nan):
-            if col_name in df.columns:
-                return df[col_name]
-            return pd.Series([default_val] * total_trades, index=df.index)
-
-        same_broker_flag = get_series("Ftrd_Same_Broker_Wash_Flag", 0)
-        buy_tm = get_series("Ftrd_Buy_Exch_TM_Token", -1)
-        sell_tm = get_series("Ftrd_Sell_Exch_TM_Token", -2)
-        buy_clnt = get_series("Ftrd_Buy_Exch_Clnt_Token", -3)
-        sell_clnt = get_series("Ftrd_Sell_Exch_Clnt_Token", -4)
-        qty = get_series("Ftrd_Trd_Qty", 0.0)
-
-        same_broker = (same_broker_flag.fillna(0) == 1) | (
-            (buy_tm.fillna(-1) == sell_tm.fillna(-2)) &
-            (buy_clnt.fillna(-3) == sell_clnt.fillna(-4))
-        )
-        same_broker_wash_count = int(same_broker.sum())
-        same_broker_wash_volume = float(qty.loc[same_broker].sum())
-
-        diff_broker_flag = get_series("Ftrd_Diff_Broker_Wash_Flag", 0)
-        diff_broker = (diff_broker_flag.fillna(0) == 1)
-        diff_broker_wash_count = int(diff_broker.sum())
-        diff_broker_wash_volume = float(qty.loc[diff_broker].sum())
-
-        self_trade = (buy_clnt.fillna(-3) == sell_clnt.fillna(-4))
-        self_trade_count = int(self_trade.sum())
-        self_trade_volume = float(qty.loc[self_trade].sum())
-
-        # Order Execution & Channel Distribution
-        algo_buy = parse_algo_flag(get_series("Ftrd_Buy_CTCL_Algo_Flag", "111111111111111"))
-        algo_sell = parse_algo_flag(get_series("Ftrd_Sell_CTCL_Algo_Flag", "111111111111111"))
-        inet_buy, dma_buy = parse_inet_dma_flag(get_series("Ftrd_Buy_CTCL_Inet_DMA_Flag", ""))
-        inet_sell, dma_sell = parse_inet_dma_flag(get_series("Ftrd_Sell_CTCL_Inet_DMA_Flag", ""))
-
-        algo_buy_count = int(algo_buy.sum())
-        algo_buy_pct = (algo_buy_count / total_trades) * 100.0
-        algo_sell_count = int(algo_sell.sum())
-        algo_sell_pct = (algo_sell_count / total_trades) * 100.0
-
-        dma_buy_count = int(dma_buy.sum())
-        dma_buy_pct = (dma_buy_count / total_trades) * 100.0
-        dma_sell_count = int(dma_sell.sum())
-        dma_sell_pct = (dma_sell_count / total_trades) * 100.0
-
-        internet_buy_count = int(inet_buy.sum())
-        internet_buy_pct = (internet_buy_count / total_trades) * 100.0
-        internet_sell_count = int(inet_sell.sum())
-        internet_sell_pct = (internet_sell_count / total_trades) * 100.0
-
-        # Order Book Quality & Bid-Ask Spread Statistics
-        spread = get_series("Ftrd_Best_Ask_Price") - get_series("Ftrd_Best_Bid_Price")
-        avg_bid_ask_spread = float(spread.dropna().mean()) if not spread.dropna().empty else 0.0
-
-        avg_bid_pdg_qty = float(get_series("Ftrd_Bid_Pdg_Ord_Qty").dropna().mean()) if not get_series("Ftrd_Bid_Pdg_Ord_Qty").dropna().empty else 0.0
-        avg_ask_pdg_qty = float(get_series("Ftrd_Ask_Pdg_Ord_Qty").dropna().mean()) if not get_series("Ftrd_Ask_Pdg_Ord_Qty").dropna().empty else 0.0
-        avg_bid_pdg_val = float(get_series("Ftrd_Bid_Pdg_Ord_Val").dropna().mean()) if not get_series("Ftrd_Bid_Pdg_Ord_Val").dropna().empty else 0.0
-        avg_ask_pdg_val = float(get_series("Ftrd_Ask_Pdg_Ord_Val").dropna().mean()) if not get_series("Ftrd_Ask_Pdg_Ord_Val").dropna().empty else 0.0
-
-        # Order Match Statistics
-        avg_buy_sell_diff_time_sec = float(get_series("Ftrd_Buy_Sell_Diff_Time").apply(parse_diff_time).dropna().mean()) if not get_series("Ftrd_Buy_Sell_Diff_Time").apply(parse_diff_time).dropna().empty else 0.0
-        avg_buy_sell_diff_price = float(get_series("Ftrd_Buy_Sell_Diff_Price").dropna().mean()) if not get_series("Ftrd_Buy_Sell_Diff_Price").dropna().empty else 0.0
-        avg_buy_sell_diff_qty = float(get_series("Ftrd_Buy_Sell_Diff_Qty").dropna().mean()) if not get_series("Ftrd_Buy_Sell_Diff_Qty").dropna().empty else 0.0
-
-        # Spoofing & OTR (Order-to-Trade Ratio) Audits
-        top_otr = []
-        avg_order_imbalance = 0.0
-        
-        buy_ord_qty_col = "Ftrd_Buy_Ord_Qty" if "Ftrd_Buy_Ord_Qty" in df.columns else None
-        sell_ord_qty_col = "Ftrd_Sell_Ord_Qty" if "Ftrd_Sell_Ord_Qty" in df.columns else None
-        
-        if buy_ord_qty_col and sell_ord_qty_col:
-            buy_orders = df.copy()
-            if "Ftrd_Buy_Ord_Num" in buy_orders.columns:
-                buy_orders_unique = buy_orders.drop_duplicates(subset=["Ftrd_Buy_Ord_Num"])
-            else:
-                buy_orders_unique = buy_orders
-                
-            sell_orders = df.copy()
-            if "Ftrd_Sell_Ord_Num" in sell_orders.columns:
-                sell_orders_unique = sell_orders.drop_duplicates(subset=["Ftrd_Sell_Ord_Num"])
-            else:
-                sell_orders_unique = sell_orders
-                
-            buy_ord_sum = buy_orders_unique.groupby("Ftrd_Buy_Exch_Clnt_Token")["Ftrd_Buy_Ord_Qty"].sum().reset_index()
-            buy_ord_sum.columns = ["PAN", "OrderQty"]
-            
-            sell_ord_sum = sell_orders_unique.groupby("Ftrd_Sell_Exch_Clnt_Token")["Ftrd_Sell_Ord_Qty"].sum().reset_index()
-            sell_ord_sum.columns = ["PAN", "OrderQty"]
-            
-            total_ord = pd.concat([buy_ord_sum, sell_ord_sum]).groupby("PAN")["OrderQty"].sum().reset_index()
-            
-            buy_exec = df.groupby("Ftrd_Buy_Exch_Clnt_Token")["Ftrd_Trd_Qty"].sum().reset_index()
-            buy_exec.columns = ["PAN", "ExecQty"]
-            
-            sell_exec = df.groupby("Ftrd_Sell_Exch_Clnt_Token")["Ftrd_Trd_Qty"].sum().reset_index()
-            sell_exec.columns = ["PAN", "ExecQty"]
-            
-            total_exec = pd.concat([buy_exec, sell_exec]).groupby("PAN")["ExecQty"].sum().reset_index()
-            
-            otr_df = pd.merge(total_ord, total_exec, on="PAN", how="outer").fillna(0.0)
-            otr_df["OTR"] = otr_df["OrderQty"] / otr_df["ExecQty"].replace(0, 1.0)
-            
-            top_otr = otr_df[otr_df["OrderQty"] > 0].sort_values("OTR", ascending=False).head(5).to_dict("records")
-            for r in top_otr:
-                r["OrderQty"] = float(r["OrderQty"])
-                r["ExecQty"] = float(r["ExecQty"])
-                r["OTR"] = float(r["OTR"])
-
-            # Order Book Imbalance (OBI)
-            total_buy_ord_qty = buy_orders_unique["Ftrd_Buy_Ord_Qty"].sum()
-            total_sell_ord_qty = sell_orders_unique["Ftrd_Sell_Ord_Qty"].sum()
-            denom = total_buy_ord_qty + total_sell_ord_qty
-            avg_order_imbalance = float((total_buy_ord_qty - total_sell_ord_qty) / denom if denom > 0 else 0.0)
-
-        return FactTradesAuditResult(
-            same_broker_wash_count=same_broker_wash_count,
-            same_broker_wash_volume=same_broker_wash_volume,
-            diff_broker_wash_count=diff_broker_wash_count,
-            diff_broker_wash_volume=diff_broker_wash_volume,
-            self_trade_count=self_trade_count,
-            self_trade_volume=self_trade_volume,
-            algo_buy_count=algo_buy_count,
-            algo_buy_pct=round(algo_buy_pct, 2),
-            algo_sell_count=algo_sell_count,
-            algo_sell_pct=round(algo_sell_pct, 2),
-            dma_buy_count=dma_buy_count,
-            dma_buy_pct=round(dma_buy_pct, 2),
-            dma_sell_count=dma_sell_count,
-            dma_sell_pct=round(dma_sell_pct, 2),
-            internet_buy_count=internet_buy_count,
-            internet_buy_pct=round(internet_buy_pct, 2),
-            internet_sell_count=internet_sell_count,
-            internet_sell_pct=round(internet_sell_pct, 2),
-            avg_bid_ask_spread=round(avg_bid_ask_spread, 4),
-            avg_buy_sell_diff_time_sec=round(avg_buy_sell_diff_time_sec, 4),
-            avg_buy_sell_diff_price=round(avg_buy_sell_diff_price, 4),
-            avg_buy_sell_diff_qty=round(avg_buy_sell_diff_qty, 4),
-            avg_bid_pdg_qty=round(avg_bid_pdg_qty, 2),
-            avg_ask_pdg_qty=round(avg_ask_pdg_qty, 2),
-            avg_bid_pdg_val=round(avg_bid_pdg_val, 2),
-            avg_ask_pdg_val=round(avg_ask_pdg_val, 2),
-            avg_order_imbalance=round(avg_order_imbalance, 4),
-            top_otr_contributors=top_otr
-        )
-
     def run_pipeline(
         self,
         historical_df: pd.DataFrame,
@@ -913,62 +531,49 @@ class SurveillanceEngine:
 
         # 5. Clean, sanitize and estimate trades data
         trades_df_clean = pd.DataFrame()
-        fact_trades_df_clean = pd.DataFrame()
-        is_fact_trades = False
 
         if trades_df is not None and not trades_df.empty:
-            temp_ft_df = normalize_fact_trades_columns(trades_df)
-            if "Ftrd_Buy_Exch_Clnt_Token" in temp_ft_df.columns:
-                is_fact_trades = True
-                trades_df = temp_ft_df
-                date_col = "Ftrd_Trd_Date" if "Ftrd_Trd_Date" in trades_df.columns else (
-                    "Date" if "Date" in trades_df.columns else "Ftrd_Trd_Tmst"
-                )
-                trades_df[date_col] = pd.to_datetime(trades_df[date_col])
-                fact_trades_df_clean = trades_df
-                trades_df_clean = self.transform_fact_trades_to_client_trades(trades_df)
+            trades_df = normalize_columns(trades_df, ["Ticker", "Date", "PAN", "CounterpartyPAN", "BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution"])
+            req = ["Ticker", "Date", "PAN", "BuyVolume", "SellVolume"]
+            missing_req = [c for c in req if c not in trades_df.columns]
+            if missing_req:
+                print(f"[warning] Trade logs missing required columns {missing_req}. Skipping trade audits.", file=sys.stderr)
             else:
-                trades_df = normalize_columns(trades_df, ["Ticker", "Date", "PAN", "CounterpartyPAN", "BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution"])
-                req = ["Ticker", "Date", "PAN", "BuyVolume", "SellVolume"]
-                missing_req = [c for c in req if c not in trades_df.columns]
-                if missing_req:
-                    print(f"[warning] Trade logs missing required columns {missing_req}. Skipping trade audits.", file=sys.stderr)
+                trades_df["Date"] = pd.to_datetime(trades_df["Date"])
+                trades_df = trades_df.dropna(subset=["Ticker", "Date", "PAN"])
+                
+                # Default missing counterparty
+                if "CounterpartyPAN" not in trades_df.columns:
+                    trades_df["CounterpartyPAN"] = "UNKNOWN"
                 else:
-                    trades_df["Date"] = pd.to_datetime(trades_df["Date"])
-                    trades_df = trades_df.dropna(subset=["Ticker", "Date", "PAN"])
+                    trades_df["CounterpartyPAN"] = trades_df["CounterpartyPAN"].fillna("UNKNOWN")
                     
-                    # Default missing counterparty
-                    if "CounterpartyPAN" not in trades_df.columns:
-                        trades_df["CounterpartyPAN"] = "UNKNOWN"
-                    else:
-                        trades_df["CounterpartyPAN"] = trades_df["CounterpartyPAN"].fillna("UNKNOWN")
-                        
-                    # Merge with historical to estimate missing values
-                    df_m = pd.merge(trades_df, historical_df[["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"]], on=["Ticker", "Date"], how="left")
+                # Merge with historical to estimate missing values
+                df_m = pd.merge(trades_df, historical_df[["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"]], on=["Ticker", "Date"], how="left")
+                
+                # Fill missing BuyValue / SellValue
+                if "BuyValue" not in trades_df.columns:
+                    trades_df["BuyValue"] = trades_df["BuyVolume"] * df_m["Close"].fillna(0.0)
+                else:
+                    trades_df["BuyValue"] = trades_df["BuyValue"].fillna(trades_df["BuyVolume"] * df_m["Close"].fillna(0.0))
                     
-                    # Fill missing BuyValue / SellValue
-                    if "BuyValue" not in trades_df.columns:
-                        trades_df["BuyValue"] = trades_df["BuyVolume"] * df_m["Close"].fillna(0.0)
-                    else:
-                        trades_df["BuyValue"] = trades_df["BuyValue"].fillna(trades_df["BuyVolume"] * df_m["Close"].fillna(0.0))
-                        
-                    if "SellValue" not in trades_df.columns:
-                        trades_df["SellValue"] = trades_df["SellVolume"] * df_m["Close"].fillna(0.0)
-                    else:
-                        trades_df["SellValue"] = trades_df["SellValue"].fillna(trades_df["SellVolume"] * df_m["Close"].fillna(0.0))
-                        
-                    # Fill missing LTPContribution (Estimator fallback)
-                    if "LTPContribution" not in trades_df.columns:
-                        net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
-                        price_change = df_m["Close"] - df_m["Open"]
-                        trades_df["LTPContribution"] = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
-                    else:
-                        net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
-                        price_change = df_m["Close"] - df_m["Open"]
-                        estimated = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
-                        trades_df["LTPContribution"] = trades_df["LTPContribution"].fillna(estimated).fillna(0.0)
-                        
-                    trades_df_clean = trades_df
+                if "SellValue" not in trades_df.columns:
+                    trades_df["SellValue"] = trades_df["SellVolume"] * df_m["Close"].fillna(0.0)
+                else:
+                    trades_df["SellValue"] = trades_df["SellValue"].fillna(trades_df["SellVolume"] * df_m["Close"].fillna(0.0))
+                    
+                # Fill missing LTPContribution (Estimator fallback)
+                if "LTPContribution" not in trades_df.columns:
+                    net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
+                    price_change = df_m["Close"] - df_m["Open"]
+                    trades_df["LTPContribution"] = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
+                else:
+                    net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
+                    price_change = df_m["Close"] - df_m["Open"]
+                    estimated = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
+                    trades_df["LTPContribution"] = trades_df["LTPContribution"].fillna(estimated).fillna(0.0)
+                    
+                trades_df_clean = trades_df
 
         reports = []
         
@@ -985,12 +590,9 @@ class SurveillanceEngine:
                 total_exchange_vol = float(df_ticker["Volume"].iloc[-self.config.recent_days:].sum())
                 
                 part_res = ParticipantAuditResult()
-                fact_audit_res = None
                 
                 if not trades_df_clean.empty:
                     part_res = self.analyze_participants(ticker, trades_df_clean, final_close, total_exchange_vol)
-                    if is_fact_trades:
-                        fact_audit_res = self.analyze_fact_trades(ticker, fact_trades_df_clean)
 
                 # Shareholder details
                 ticker_sh = {}
@@ -1020,8 +622,7 @@ class SurveillanceEngine:
                     shareholding=ticker_sh,
                     announcements=ticker_ann,
                     market_summary=hist_summary,
-                    watchlist=(market_res.final_score >= self.config.threshold),
-                    fact_trades_audit=fact_audit_res
+                    watchlist=(market_res.final_score >= self.config.threshold)
                 )
                 reports.append(report)
             except Exception as e:
@@ -1135,42 +736,6 @@ def print_dashboard(report: ScripSurveillanceReport, threshold: float):
         print("    No trade records to calculate PnL.")
     print("=" * 72 + "\n")
 
-    if report.fact_trades_audit:
-        ft = report.fact_trades_audit
-        print("=" * 72)
-        print(" FACT_TRADES SYSTEM COMPLIANCE AUDIT ".center(72, "#"))
-        print("=" * 72)
-        print("Wash Trading & Self-Trading Risks:")
-        print(f"  - Same-Broker Wash Trades:   {ft.same_broker_wash_count:,} trades ({ft.same_broker_wash_volume:,.0f} shares)")
-        print(f"  - Different-Broker Wash:     {ft.diff_broker_wash_count:,} trades ({ft.diff_broker_wash_volume:,.0f} shares)")
-        print(f"  - Self-Trades (Wash Risk):   {ft.self_trade_count:,} trades ({ft.self_trade_volume:,.0f} shares)")
-        print("-" * 72)
-        print("Execution Channel Distribution:")
-        print(f"  - Algorithmic Trading:       Buy: {ft.algo_buy_pct:.2f}% ({ft.algo_buy_count:,} trades)")
-        print(f"                               Sell: {ft.algo_sell_pct:.2f}% ({ft.algo_sell_count:,} trades)")
-        print(f"  - Direct Market Access (DMA): Buy: {ft.dma_buy_pct:.2f}% ({ft.dma_buy_count:,} trades)")
-        print(f"                               Sell: {ft.dma_sell_pct:.2f}% ({ft.dma_sell_count:,} trades)")
-        print(f"  - Internet Trading:          Buy: {ft.internet_buy_pct:.2f}% ({ft.internet_buy_count:,} trades)")
-        print(f"                               Sell: {ft.internet_sell_pct:.2f}% ({ft.internet_sell_count:,} trades)")
-        print("-" * 72)
-        print("Order Book Quality & Matching Statistics:")
-        print(f"  - Average Bid-Ask Spread:    {ft.avg_bid_ask_spread:.4f}")
-        print(f"  - Average Order Match Delay: {ft.avg_buy_sell_diff_time_sec:.4f} seconds")
-        print(f"  - Avg Match Price / Qty Diff: Price Diff: {ft.avg_buy_sell_diff_price:.4f} | Qty Diff: {ft.avg_buy_sell_diff_qty:.2f}")
-        print(f"  - Avg Pending Bid (Depth):   Qty: {ft.avg_bid_pdg_qty:,.2f} | Val: {ft.avg_bid_pdg_val:,.2f}")
-        print(f"  - Avg Pending Ask (Depth):   Qty: {ft.avg_ask_pdg_qty:,.2f} | Val: {ft.avg_ask_pdg_val:,.2f}")
-        print(f"  - Avg Order Book Imbalance:  {ft.avg_order_imbalance:.4f} (positive = buy pressure)")
-        print("-" * 72)
-        print("Top 5 Spoofing Risk Contributors (Order-to-Trade Ratio):")
-        if ft.top_otr_contributors:
-            print("    " + f"{'PAN':<15} | {'Order Qty':<15} | {'Executed Qty':<15} | {'OTR':<10}")
-            for p in ft.top_otr_contributors:
-                print("    " + f"{p['PAN']:<15} | {p['OrderQty']:>15,} | {p['ExecQty']:>15,} | {p['OTR']:>9.2f}")
-        else:
-            print("    No OTR details available.")
-        print("=" * 72 + "\n")
-
-
 # ----------------------------------------------------------------------
 # CLI Application Wrapper
 # ----------------------------------------------------------------------
@@ -1254,7 +819,6 @@ def main():
                 "reversal_pairs": r.participant_audit.reversal_pairs,
                 "circular_loops": r.participant_audit.circular_loops
             },
-            "fact_trades_audit": asdict(r.fact_trades_audit) if r.fact_trades_audit else None,
             "shareholders": r.shareholding,
             "announcements": r.announcements,
             "market_summary": r.market_summary

@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.routers.surveillance import router as surveillance_router
-from backend.routers.fact_trades import router as fact_trades_router
+from backend.routers.trade_matches import router as trade_matches_router
 from backend.routers.clients import router as clients_router
 from backend.routers.auth import router as auth_router
 from backend.routers.cases import router as cases_router
@@ -63,7 +63,7 @@ app.add_middleware(
 
 # ── Routers ─────────────────────────────────────────────────────────────────
 app.include_router(surveillance_router)
-app.include_router(fact_trades_router)
+app.include_router(trade_matches_router)
 app.include_router(clients_router)
 app.include_router(auth_router)
 app.include_router(cases_router)

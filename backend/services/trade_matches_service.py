@@ -1,7 +1,7 @@
 """
-backend/services/fact_trades_service.py
+backend/services/trade_matches_service.py
 ────────────────────────────────────────────────────────────────────────────
-Business logic layer for FACT_TRADES.
+Business logic layer for trade execution matches.
 
 Orchestrates repository calls and computes derived aggregates.
 No SQLAlchemy or raw SQL here.
@@ -15,19 +15,19 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from backend.repositories.fact_trades_repo import FactTradesRepository
-from backend.schemas.fact_trades import FactTradesFilter
+from backend.repositories.trade_matches_repo import TradeMatchesRepository
+from backend.schemas.trade_matches import TradeMatchesFilter
 from backend.schemas.common import PaginationMeta, PagedResponse
 
 
-class FactTradesService:
+class TradeMatchesService:
 
     def __init__(self, db: Session) -> None:
-        self._repo = FactTradesRepository(db)
+        self._repo = TradeMatchesRepository(db)
 
     def list_trades(
         self,
-        filters: FactTradesFilter,
+        filters: TradeMatchesFilter,
         page: int,
         page_size: int,
     ) -> dict[str, Any]:

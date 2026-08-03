@@ -1,10 +1,9 @@
 """
-backend/repositories/fact_trades_repo.py
+backend/repositories/trade_matches_repo.py
 ────────────────────────────────────────────────────────────────────────────
 Data-access layer using AGG_PAN_PAIR_DAY, AGG_SEC_DAY, and AGG_CLNT_SEC_DAY.
 
-No queries touch FACT_TRADES directly. All trade metrics are pulled from the
-pre-aggregated daily warehouse tables.
+All trade metrics are pulled from the pre-aggregated daily warehouse tables.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ from sqlalchemy import func, text, Integer, case, Numeric
 from sqlalchemy.orm import Session
 
 from backend.db.models import AggSecDay, AggClntSecDay, AggPanPairDay
-from backend.schemas.fact_trades import FactTradesFilter
+from backend.schemas.trade_matches import TradeMatchesFilter
 
 
 @dataclass
@@ -51,7 +50,7 @@ class AggTradeRecord:
     Ftrd_Ask_Pdg_Ord_Qty: float = 0.0
 
 
-class FactTradesRepository:
+class TradeMatchesRepository:
 
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -89,7 +88,7 @@ class FactTradesRepository:
 
     def list_trades(
         self,
-        filters: FactTradesFilter,
+        filters: TradeMatchesFilter,
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[AggTradeRecord], int]:

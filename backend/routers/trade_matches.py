@@ -1,9 +1,9 @@
 """
-backend/routers/fact_trades.py
+backend/routers/trade_matches.py
 ────────────────────────────────────────────────────────────────────────────
-FastAPI router for FACT_TRADES (FTRD).
+FastAPI router for trade surveillance & match analytics.
 
-All endpoints consume the FactTradesService — no direct DB access here.
+All endpoints consume the TradeMatchesService — no direct DB access here.
 """
 
 from __future__ import annotations
@@ -15,21 +15,21 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.schemas.fact_trades import (
+from backend.schemas.trade_matches import (
     FactTradeBase,
     FactTradeDetail,
-    FactTradesFilter,
+    TradeMatchesFilter,
 )
-from backend.services.fact_trades_service import FactTradesService
+from backend.services.trade_matches_service import TradeMatchesService
 
 router = APIRouter(
     prefix="/api/v1/trades",
-    tags=["FACT_TRADES — Trade Surveillance"],
+    tags=["Trade Surveillance"],
 )
 
 
-def _get_service(db: Session = Depends(get_db)) -> FactTradesService:
-    return FactTradesService(db)
+def _get_service(db: Session = Depends(get_db)) -> TradeMatchesService:
+    return TradeMatchesService(db)
 
 
 # ── 1. Paginated filtered trade list ─────────────────────────────────────────
@@ -37,7 +37,7 @@ def _get_service(db: Session = Depends(get_db)) -> FactTradesService:
 @router.get(
     "/",
     summary="List trades with filters, pagination, and sorting",
-    response_description="Paginated trade records from FACT_TRADES",
+    response_description="Paginated trade records",
 )
 def list_trades(
     symbol:          Optional[str]  = Query(None, description="NSE symbol e.g. ALPHATECH"),
@@ -57,9 +57,9 @@ def list_trades(
     sort_dir:        Literal["asc", "desc"] = Query("desc"),
     page:            int            = Query(1, ge=1),
     page_size:       int            = Query(50, ge=1, le=500),
-    svc: FactTradesService = Depends(_get_service),
+    svc: TradeMatchesService = Depends(_get_service),
 ):
-    filters = FactTradesFilter(
+    filters = TradeMatchesFilter(
         symbol=symbol, date_from=date_from, date_to=date_to,
         sess_type=sess_type, sub_seg_code=sub_seg_code,
         acct_type=acct_type, wash_flag=wash_flag, algo_flag=algo_flag,
@@ -80,7 +80,7 @@ def list_trades(
     "/stats/daily",
     summary="Trade count and value per symbol per day",
 )
-def daily_stats(svc: FactTradesService = Depends(_get_service)):
+def daily_stats(svc: TradeMatchesService = Depends(_get_service)):
     return svc.get_symbol_daily_stats()
 
 
@@ -93,7 +93,7 @@ def daily_stats(svc: FactTradesService = Depends(_get_service)):
 def wash_trade_summary(
     date_from: Optional[date] = Query(None),
     date_to:   Optional[date] = Query(None),
-    svc: FactTradesService = Depends(_get_service),
+    svc: TradeMatchesService = Depends(_get_service),
 ):
     return svc.get_wash_trade_summary(date_from, date_to)
 
@@ -107,7 +107,7 @@ def wash_trade_summary(
 def algo_breakdown(
     date_from: Optional[date] = Query(None),
     date_to:   Optional[date] = Query(None),
-    svc: FactTradesService = Depends(_get_service),
+    svc: TradeMatchesService = Depends(_get_service),
 ):
     return svc.get_algo_breakdown(date_from, date_to)
 
@@ -124,7 +124,7 @@ def participant_trades(
     date_to:     Optional[date] = Query(None),
     page:        int = Query(1, ge=1),
     page_size:   int = Query(50, ge=1, le=500),
-    svc: FactTradesService = Depends(_get_service),
+    svc: TradeMatchesService = Depends(_get_service),
 ):
     result = svc.get_participant_trades(clnt_token, date_from, date_to, page, page_size)
     return {
@@ -147,7 +147,7 @@ def get_trade_detail(
     prd_token:  Optional[int] = Query(None, description="Product token"),
     exch_token: Optional[int] = Query(None, description="Exchange token"),
     seg_token:  Optional[int] = Query(None, description="Segment token"),
-    svc: FactTradesService = Depends(_get_service),
+    svc: TradeMatchesService = Depends(_get_service),
 ):
     trade = svc.get_trade_detail(
         trd_date, trd_num, cmp_token, prd_token, exch_token, seg_token
