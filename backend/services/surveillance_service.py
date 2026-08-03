@@ -300,26 +300,24 @@ class EODSurveillanceService:
 
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactTrades, FactMainShldng
+            from backend.db.models import AggClntSecDay, AggSecDay, FactMainShldng
             db = SessionLocal()
 
-            # Query real trade database FactTrades
-            trades = db.query(FactTrades).filter(FactTrades.Ftrd_Symbol == ticker).all()
-            if trades:
-                clients = set()
-                for t in trades:
-                    if t.Ftrd_Buy_Exch_Clnt_Token:
-                        clients.add(t.Ftrd_Buy_Exch_Clnt_Token)
-                    if t.Ftrd_Sell_Exch_Clnt_Token:
-                        clients.add(t.Ftrd_Sell_Exch_Clnt_Token)
+            # Query real trade aggregate database AGG_CLNT_SEC_DAY
+            clnt_records = db.query(AggClntSecDay).join(
+                AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date)
+            ).filter(AggSecDay.Asd_Symbol == ticker).all()
+
+            if clnt_records:
+                clients = set(r.Acsd_Clnt_Token for r in clnt_records if r.Acsd_Clnt_Token)
                 unique_pans_15d = len(clients)
                 unique_pans_180d = len(clients)
 
                 # Concentration
                 buy_vols: Dict[int, float] = {}
-                for t in trades:
-                    if t.Ftrd_Buy_Exch_Clnt_Token:
-                        buy_vols[t.Ftrd_Buy_Exch_Clnt_Token] = buy_vols.get(t.Ftrd_Buy_Exch_Clnt_Token, 0.0) + float(t.Ftrd_Trd_Qty or 0.0)
+                for r in clnt_records:
+                    if r.Acsd_Clnt_Token:
+                        buy_vols[r.Acsd_Clnt_Token] = buy_vols.get(r.Acsd_Clnt_Token, 0.0) + float(r.Acsd_Buy_Tot_Qty or 0.0)
                 tot_v = sum(buy_vols.values())
                 if tot_v > 0 and len(buy_vols) > 0:
                     sorted_vols = sorted(buy_vols.values(), reverse=True)

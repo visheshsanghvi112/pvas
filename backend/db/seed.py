@@ -789,10 +789,12 @@ def seed_database(db: Session) -> dict:
     _seed_forensic_cases(db)
     _seed_sh_and_ann(db)
 
-    if db.query(FactTrades).first() is not None and db.query(FactTrades).count() > 1000:
+    if db.query(AggSecDay).first() is not None and db.query(AggSecDay).count() > 50:
         count_decl = db.query(DimExchClntDtls).count()
         count_ddcl = db.query(DimDepClntDtls).count()
-        count_ftrd = db.query(FactTrades).count()
+        count_asd  = db.query(AggSecDay).count()
+        count_acsd = db.query(AggClntSecDay).count()
+        count_appd = db.query(AggPanPairDay).count()
         count_fmsh = db.query(FactMstrSharehldg).count()
         count_fshg = db.query(FactMainShldng).count()
         count_fcac = db.query(FactCorpActions).count()
@@ -803,7 +805,9 @@ def seed_database(db: Session) -> dict:
             "status": "already_seeded",
             "DIM_EXCH_CLNT_DTLS": count_decl,
             "DIM_DEP_CLNT_DTLS":  count_ddcl,
-            "FACT_TRADES":        count_ftrd,
+            "AGG_SEC_DAY":        count_asd,
+            "AGG_CLNT_SEC_DAY":   count_acsd,
+            "AGG_PAN_PAIR_DAY":   count_appd,
             "FACT_MSTR_SHAREHLDG": count_fmsh,
             "FACT_MAIN_SHLDNG": count_fshg,
             "FACT_CORP_ACTIONS": count_fcac,
