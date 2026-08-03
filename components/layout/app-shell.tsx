@@ -24,7 +24,6 @@ const nav = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
   { key: "compare", href: "/compare", label: "Compare", icon: GitCompare },
   { key: "cases", href: "/cases", label: "Cases", icon: FolderLock },
-  { key: "guide", href: "/guide", label: "Guide", icon: BookOpen },
   { key: "settings", href: "/settings", label: "Admin", icon: Settings },
 ];
 

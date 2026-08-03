@@ -86,10 +86,10 @@ function ScoreChip({ label, value, rawScore, weight }: { label: string; value: s
     : rawScore >= 1 ? "bg-blue-50/80 border-blue-200/90 shadow-xs hover:border-blue-300"
     : "bg-white border-slate-200/90 shadow-2xs hover:border-slate-300";
   const valColor =
-    rawScore === 5 ? "text-rose-700 font-black"
-    : rawScore >= 3 ? "text-amber-700 font-black"
-    : rawScore >= 1 ? "text-blue-700 font-extrabold"
-    : "text-slate-800 font-extrabold";
+    rawScore === 5 ? "text-rose-700 font-extrabold"
+    : rawScore >= 3 ? "text-amber-700 font-extrabold"
+    : rawScore >= 1 ? "text-blue-700 font-bold"
+    : "text-slate-900 font-bold";
   const scoreBadgeBg =
     rawScore === 5 ? "bg-rose-100 text-rose-700 border-rose-200"
     : rawScore >= 3 ? "bg-amber-100 text-amber-800 border-amber-200"
@@ -98,11 +98,11 @@ function ScoreChip({ label, value, rawScore, weight }: { label: string; value: s
 
   return (
     <div className={cn("flex-1 min-w-[115px] border rounded-2xl p-3 flex flex-col justify-between gap-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md", chipBg)}>
-      <div className="text-[11px] font-extrabold tracking-wider uppercase text-slate-500">{label}</div>
-      <div className={cn("text-lg font-black tracking-tight leading-none font-mono", valColor)}>{value}</div>
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className={cn("text-lg font-bold leading-none tracking-tight", valColor)}>{value}</div>
       <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-200/60">
-        <span className="text-[10px] font-semibold text-slate-400">Wt: {weight}%</span>
-        <span className={cn("text-[10px] font-bold font-mono px-1.5 py-0.5 rounded border", scoreBadgeBg)}>Score {rawScore}/5</span>
+        <span className="text-[11px] font-medium text-slate-400">Wt: {weight}%</span>
+        <span className={cn("text-[11px] font-semibold px-1.5 py-0.5 rounded border", scoreBadgeBg)}>Score {rawScore}/5</span>
       </div>
     </div>
   );
@@ -112,7 +112,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: (string | React
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs text-left border-collapse">
-        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-extrabold uppercase tracking-wider">
+        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-semibold">
           <tr>
             {headers.map((h, i) => (
               <th key={i} className="px-3.5 py-2.5">{h}</th>
@@ -145,8 +145,8 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
       <div className="flex items-center gap-2.5">
         {icon && <span className="text-slate-600">{icon}</span>}
         <div>
-          <h3 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">{title}</h3>
-          {subtitle && <p className="text-[11px] font-semibold text-slate-500">{subtitle}</p>}
+          <h3 className="text-xs font-bold text-slate-900">{title}</h3>
+          {subtitle && <p className="text-[11px] font-medium text-slate-500">{subtitle}</p>}
         </div>
       </div>
     </div>
@@ -345,7 +345,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         <div className="flex items-stretch gap-3 px-5 pb-3 overflow-x-auto">
           {/* PVASF Score tile */}
           <div className="flex flex-col justify-between bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-white rounded-2xl px-4 py-3 shrink-0 min-w-[115px] border border-slate-800 shadow-md">
-            <div className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">PVASF Score</div>
+            <div className="text-xs text-slate-400 font-medium">PVASF Score</div>
             <div className={cn("text-3xl font-black leading-none font-mono my-0.5", scoreColor(metrics.final_score))}>{metrics.final_score}</div>
             <div className="text-[10px] font-semibold text-slate-500">/ 100</div>
           </div>
@@ -390,10 +390,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               key={tab}
               onClick={() => setActiveTab(tab)}
               className={cn(
-                "whitespace-nowrap px-4 py-2 text-xs font-extrabold transition-all rounded-lg cursor-pointer",
+                "whitespace-nowrap px-4 py-2 text-xs font-bold transition-all rounded-lg cursor-pointer",
                 activeTab === tab
                   ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50 font-medium"
               )}
             >
               {tab}
@@ -423,8 +423,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       { label: "Active Unique PANs", value: `${participants ? participants.volume_share.length * 28 + 14 : 142} Active` },
                     ].map((item) => (
                       <div key={item.label} className="bg-slate-50/80 border border-slate-200/90 hover:bg-white hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all">
-                        <div className="text-[11px] text-slate-500 font-extrabold uppercase tracking-wider mb-1">{item.label}</div>
-                        <div className="text-base font-black text-slate-900 font-mono tracking-tight">{item.value}</div>
+                        <div className="text-xs text-slate-500 font-semibold mb-1">{item.label}</div>
+                        <div className="text-base font-bold text-slate-900 font-mono tracking-tight">{item.value}</div>
                       </div>
                     ))}
                   </div>
