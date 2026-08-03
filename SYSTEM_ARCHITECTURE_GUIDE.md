@@ -442,9 +442,125 @@ Depository client dimension table storing demat accounts (NSDL / CDSL), joint ho
 
 ---
 
-## 8. UI/UX Blueprint & Single Continuous Workspace Paradigm
+## 8. UI/UX Blueprint, Folder Structure & Page Code Architecture
 
-The application enforces a **3-Click Investigation Journey** within a **Single Continuous Workspace** (`/investigations/[symbol]`):
+The PVASF frontend is built with Next.js 15 App Router, Tailwind CSS, Recharts, and Lucide React icons, adhering to a **Single Continuous Workspace Paradigm** and a **3-Click Investigation Journey**.
+
+### 8.1 Complete Directory & File Structure Map
+
+```
+UI_PVASF/
+├── app/                                    # Next.js App Router Page Routes
+│   ├── layout.tsx                          # Root Layout with AppShell wrapper & theme provider
+│   ├── page.tsx                            # Dashboard / Watchlist Triage Page (Route: /)
+│   ├── globals.css                         # Global CSS tokens, dark theme variables & custom scrollbars
+│   ├── algo-ctcl/
+│   │   └── page.tsx                        # CTCL Terminal & HFT Algo Intelligence (Route: /algo-ctcl)
+│   ├── cases/
+│   │   └── page.tsx                        # Forensic Case Dossier Management (Route: /cases)
+│   ├── clients/
+│   │   └── page.tsx                        # Client 360° Directory & Identity Resolution (Route: /clients)
+│   ├── compare/
+│   │   └── page.tsx                        # Multi-Scrip Anomaly Comparison Matrix (Route: /compare)
+│   ├── guide/
+│   │   └── page.tsx                        # Architecture, Math Engine & Methodology Guide (Route: /guide)
+│   ├── history/
+│   │   └── page.tsx                        # Regulatory Alert Audit & Triage History Log (Route: /history)
+│   ├── investigations/
+│   │   └── [symbol]/
+│   │       └── page.tsx                    # Single Continuous Stock Workspace (Route: /investigations/[symbol])
+│   ├── members/
+│   │   └── page.tsx                        # Clearing Member & Broker Conduct Monitor (Route: /members)
+│   ├── settings/
+│   │   └── page.tsx                        # Weight Calibration & RBAC Management (Route: /settings)
+│   └── trades/
+│       └── page.tsx                        # Trade Execution Explorer & Order Book Matches (Route: /trades)
+│
+├── components/                             # Reusable React UI Components
+│   ├── layout/
+│   │   └── app-shell.tsx                   # Main Layout Shell, Sidebar Navigation & User RBAC Context
+│   ├── dashboard/
+│   │   ├── alerts-table.tsx                # High-Risk Watchlist Table with Inline Filters
+│   │   ├── filter-panel.tsx                # Risk Triage & Anomaly Score Range Filters
+│   │   └── kpi-card.tsx                    # Executive Dashboard Overview Stat Cards
+│   ├── investigation/
+│   │   ├── investigation-workspace.tsx    # 5-Tab Continuous Investigation Container Component
+│   │   ├── charts.tsx                      # 180-Day Dual-Axis Price & Volume Z-Score Visualizer
+│   │   └── timeline.tsx                    # Corporate Announcements & Dilution Timeline
+│   └── ui/
+│       ├── badge.tsx                       # Risk Severity Status Badges (High/Medium/Low)
+│       ├── button.tsx                      # Reusable Styled Buttons
+│       ├── card.tsx                        # Container Glassmorphism Cards
+│       ├── input.tsx                       # Styled Search & Text Filter Inputs
+│       ├── metric-card.tsx                 # Parameter Score Card (0, 1, 3, 5 Breakdown)
+│       └── metric-help.tsx                 # In-Context Formula Explanations & Tooltips
+│
+├── lib/                                    # State Management, API Connectors & Utilities
+│   ├── api.ts                              # Axios/Fetch API Client Layer for FastAPI Endpoints
+│   ├── user-context.tsx                    # User Session & Role-Based Access Control Context
+│   ├── metric-help.ts                      # Parameter Mathematical Formula References & Definitions
+│   ├── data.ts                             # Mock/Fallback Static Constants
+│   └── utils.ts                            # Classname merging (clsx + tailwind-merge)
+│
+└── backend/                                # FastAPI Python Backend Architecture
+    ├── main.py                             # FastAPI App Entrypoint, CORS & Router Inclusion
+    ├── security.py                         # Password Hashing & JWT/Bearer Token Auth
+    ├── routers/                            # REST Controller Layer
+    │   ├── surveillance.py                 # Watchlist, Scrip Scorecard & Weight Tuning Endpoints
+    │   ├── agg_trades.py                   # Security/Client/PAN-Pair Daily Aggregates (/api/aggregates/)
+    │   ├── fact_trades.py                  # Trade Execution Matches & Wash Trade Analytics
+    │   ├── clients.py                      # Client 360°, DECL (Exchange) & DDCL (Depository) Lookups
+    │   ├── cases.py                        # Forensic Case Dossier Persistence
+    │   └── auth.py                         # User Login & Audit Trail Logs
+    ├── services/                           # Business Domain Services
+    │   ├── surveillance_service.py         # 5-Metric Scoring Engine, Z-Scores & LTP Pusher Math
+    │   ├── agg_trades_service.py           # Pre-Calculated Daily Analytics Service
+    │   ├── fact_trades_service.py          # Raw Match Analytics & Wash Trade Detection
+    │   ├── client_service.py               # Identity Resolution across DECL + DDCL
+    │   ├── cases_service.py                # Dossier Workflow & Lifecycle Logic
+    │   └── auth_service.py                 # RBAC Management & Audit Logging
+    ├── repositories/                       # Data Access Layer (SQLAlchemy ORM)
+    │   ├── agg_trades_repo.py              # Aggregated Tables Data Access
+    │   ├── fact_trades_repo.py             # FACT_TRADES Querying
+    │   ├── dim_exch_clnt_repo.py           # DIM_EXCH_CLNT_DTLS Querying
+    │   ├── dim_dep_clnt_repo.py            # DIM_DEP_CLNT_DTLS Querying
+    │   └── cases_repo.py                   # FORENSIC_CASES Table Persistence
+    ├── schemas/                            # Pydantic DTO Serialization Specs
+    │   ├── agg_trades.py                   # Aggregated Daily Schemas
+    │   ├── fact_trades.py                  # Trade Execution Schemas
+    │   ├── dim_exch_clnt.py                # Exchange Client Account Schemas
+    │   ├── dim_dep_clnt.py                 # Depository Demat Account Schemas
+    │   ├── cases.py                        # Forensic Case Schemas
+    │   └── common.py                       # Base Response & Paginated DTO Wrappers
+    └── db/                                 # Database Engine & Persistence
+        ├── database.py                     # SQLAlchemy Engine & Session Factory
+        ├── models.py                       # Relational Table Definitions (16 Tables)
+        └── seed.py                         # Market Feed Generator (31,200 Trades)
+```
+
+---
+
+### 8.2 Page Code Reference & Functional Matrix
+
+| Route Path | File Location | Primary Purpose & Key Functionality | Main Components Used | API Endpoints Invoked |
+| :--- | :--- | :--- | :--- | :--- |
+| `/` | [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx) | **Executive Surveillance Dashboard**: Main triage workspace displaying high-risk scrips, executive KPI stat cards, composite risk heatmaps, and quick filtering by risk severity. | `KpiCard`, `AlertsTable`, `FilterPanel` | `/api/v1/surveillance/watchlist`, `/api/v1/surveillance/weights` |
+| `/investigations/[symbol]` | [`app/investigations/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/investigations/[symbol]/page.tsx) | **Single Continuous Stock Workspace**: 5-Tab deep dive for a selected stock (Overview, 5-Metric Breakdown, 180d OHLCV Chart, Trade Execution Matches, Participant Conduct Audit & Case Dossier creation). | `InvestigationWorkspace`, `Charts`, `Timeline`, `MetricCard` | `/api/v1/surveillance/scrip/{symbol}`, `/scrip/{symbol}/participants`, `/shareholding-breakdown`, `/corporate-actions` |
+| `/trades` | [`app/trades/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/trades/page.tsx) | **Trade Execution Explorer**: Full-featured execution match search with pagination, filtering by wash trade flag, HFT CTCL flag, date range, and order depth inspection modal. | `Badge`, `Input`, `Button`, Order Depth Modal | `/api/v1/trades/`, `/api/v1/trades/stats/daily`, `/api/v1/trades/analysis/wash-trades` |
+| `/clients` | [`app/clients/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/clients/page.tsx) | **Client 360° Directory**: Entity resolution lookup mapping Exchange Trading Accounts (`DECL`) with Depository Demat Accounts (`DDCL`) by PAN, displaying transaction volume & risk status. | `Badge`, `Input`, Client 360 Modal | `/api/v1/clients/exchange`, `/api/v1/clients/depository`, `/api/v1/clients/profile/{token}` |
+| `/cases` | [`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx) | **Forensic Case Management**: Case dossier triage workspace to track open regulatory investigations, assign investigators, record evidence notes, and advance case lifecycle states (NEW -> IN_REVIEW -> ESCALATED -> CLOSED). | Case Grid, Case Creator Modal | `/api/v1/cases/`, `/api/v1/cases/{case_id}` |
+| `/compare` | [`app/compare/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/compare/page.tsx) | **Multi-Scrip Comparison Matrix**: Side-by-side comparative analysis of up to 4 scrips across all 5 anomaly metrics, Z-Scores, price surge %, and participant concentration. | Comparison Radar/Bar Grid, Metric Cards | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/scrip/{symbol}` |
+| `/members` | [`app/members/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/members/page.tsx) | **Broker & Clearing Member Conduct**: Monitor trading member concentration, wash trade ratios, and HFT order-to-trade ratios across registered stock brokers. | Member Stat Cards, Broker Table | `/api/v1/trades/analysis/wash-trades`, `/api/v1/trades/analysis/algo-breakdown` |
+| `/algo-ctcl` | [`app/algo-ctcl/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/algo-ctcl/page.tsx) | **CTCL & Algo Intelligence**: Specialized dashboard auditing High-Frequency Trading (HFT) algorithms, CTCL terminal IDs, co-location latency anomalies, and automated spoofing patterns. | Algo Distribution Charts, Terminal Audit | `/api/v1/trades/analysis/algo-breakdown` |
+| `/history` | [`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx) | **Regulatory Audit & Alert History**: Immutable log of all historical alert triggers, past model weight changes, user actions, and investigation resolution archives. | History Table, Filter Toolbar | `/api/v1/auth/audit-logs`, `/api/v1/surveillance/watchlist` |
+| `/settings` | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx) | **System Settings & Model Tuning**: Interactive slider controls to calibrate metric weights ( \dots w_5$), set alert triage thresholds, manage system users, and assign RBAC roles. | Weight Tuning Sliders, User Table | `/api/v1/surveillance/weights`, `/api/v1/auth/users` |
+| `/guide` | [`app/guide/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/guide/page.tsx) | **Architecture & User Manual Guide**: In-app documentation hub explaining system architecture, mathematical formulas, scoring thresholds, schema definitions, and regulatory compliance. | Markdown Renderer, Interactive Nav | Static Spec / Inline Documentation |
+
+---
+
+### 8.3 Single Continuous Workspace Paradigm
+
+The application enforces a **3-Click Investigation Journey** within a **Single Continuous Workspace** ([`app/investigations/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/investigations/[symbol]/page.tsx)):
 
 ```
                          DASHBOARD / WATCHLIST
@@ -462,7 +578,7 @@ The application enforces a **3-Click Investigation Journey** within a **Single C
 │   • Clicking any Trade Match  --> Launches Order Book Depth Inspector Modal      │
 │   • Clicking any Client PAN   --> Launches Client 360° Profile Modal (DECL+DDCL) │
 │   • Clicking Case Dossier     --> Saves Pinned Evidence & Notes to Workspace    │
-│ └──────────────────────────────────────────────────────────────────────────────────┘
+└──────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
