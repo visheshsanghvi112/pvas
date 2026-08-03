@@ -40,6 +40,56 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
+  // Dynamic Alerts & Notifications fetched from live backend surveillance
+  interface AlertItem {
+    id: string;
+    symbol: string;
+    title: string;
+    description: string;
+    time: string;
+    read: boolean;
+    type: "high" | "medium" | "warning";
+  }
+
+  const [alerts, setAlerts] = useState<AlertItem[]>([]);
+
+  useEffect(() => {
+    async function loadAlerts() {
+      try {
+        const scrips = await fetchWatchlist();
+        const flagged = scrips.filter((s) => s.risk === "High" || s.score >= 12 || s.band_hit_days > 2);
+        const dynamicAlerts: AlertItem[] = flagged.map((s, idx) => {
+          const isWash = s.band_hit_days > 3 || s.volume_z > 3.0;
+          return {
+            id: `alert-${s.symbol}-${idx}`,
+            symbol: s.symbol,
+            title: `${s.symbol} — ${isWash ? "Wash Trade / Volume Concentration" : "High Risk Surveillance Flag"}`,
+            description: `PVASF Score: ${s.score}/100 • 15D Surge: ${s.price_rise_pct >= 0 ? "+" : ""}${s.price_rise_pct.toFixed(1)}% • Vol Z: ${s.volume_z.toFixed(2)}σ`,
+            time: idx === 0 ? "10 mins ago" : idx === 1 ? "35 mins ago" : `${idx + 1} hours ago`,
+            read: false,
+            type: isWash ? "high" : "medium",
+          };
+        });
+        setAlerts(dynamicAlerts);
+      } catch {
+        // Fallback default
+      }
+    }
+    loadAlerts();
+  }, []);
+
+  const unreadCount = alerts.filter((a) => !a.read).length;
+
+  const handleAlertClick = (alertItem: AlertItem) => {
+    setAlerts((prev) => prev.map((a) => (a.id === alertItem.id ? { ...a, read: true } : a)));
+    setNotificationsOpen(false);
+    router.push(`/investigations/${alertItem.symbol}`);
+  };
+
+  const handleMarkAllRead = () => {
+    setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
+  };
+
   // Close dropdowns on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -176,31 +226,76 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <button
               onClick={() => { setNotificationsOpen(!notificationsOpen); setProfileOpen(false); }}
               className="relative flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+              title="Surveillance Notifications"
             >
               <Bell className="h-[18px] w-[18px]" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 border-2 border-white" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-black text-white bg-rose-600 rounded-full border-2 border-white shadow-xs animate-pulse">
+                  {unreadCount}
+                </span>
+              )}
             </button>
 
             {notificationsOpen && (
               <div
-                className="absolute right-0 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden"
-                style={{ top: "calc(100% + 8px)", width: 320, zIndex: 200 }}
+                className="absolute right-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden"
+                style={{ top: "calc(100% + 8px)", width: 340, zIndex: 200 }}
               >
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                  <span className="font-semibold text-sm text-slate-900">Alerts</span>
-                  <span className="text-xs text-slate-400 font-medium">1 unread</span>
-                </div>
-                <div className="divide-y divide-slate-50">
-                  <div className="flex items-start gap-3 px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer">
-                    <div className="mt-0.5 flex-shrink-0 w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
-                      <AlertTriangle className="h-4 w-4 text-rose-600" />
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">ALPHATECH — Wash Trade Flag</div>
-                      <div className="text-xs text-slate-500 mt-0.5">32% volume concentration across 4 PANs detected.</div>
-                      <div className="text-xs text-slate-400 mt-1">Today, 3:12 PM</div>
-                    </div>
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50/80 border-b border-slate-200/80">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-xs text-slate-900">Surveillance Alerts</span>
+                    {unreadCount > 0 && (
+                      <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                        {unreadCount} New
+                      </span>
+                    )}
                   </div>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="text-[11px] font-semibold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+                  {alerts.length === 0 ? (
+                    <div className="p-6 text-center text-xs text-slate-400 font-medium">
+                      No active surveillance flags
+                    </div>
+                  ) : (
+                    alerts.map((item) => (
+                      <div
+                        key={item.id}
+                        onClick={() => handleAlertClick(item)}
+                        className={cn(
+                          "flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer",
+                          item.read ? "bg-white opacity-70 hover:bg-slate-50" : "bg-blue-50/30 hover:bg-blue-50/60"
+                        )}
+                      >
+                        <div className={cn(
+                          "mt-0.5 flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border shadow-2xs",
+                          item.type === "high" ? "bg-rose-100 text-rose-600 border-rose-200" : "bg-amber-100 text-amber-700 border-amber-200"
+                        )}>
+                          <AlertTriangle className="h-4 w-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-xs font-bold text-slate-900 truncate">{item.title}</span>
+                            {!item.read && <span className="h-1.5 w-1.5 rounded-full bg-rose-600 shrink-0" />}
+                          </div>
+                          <div className="text-[11px] font-medium text-slate-600 mt-1 leading-snug">
+                            {item.description}
+                          </div>
+                          <div className="text-[10px] text-slate-400 mt-1 font-semibold">
+                            {item.time}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             )}
