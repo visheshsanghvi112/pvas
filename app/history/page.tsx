@@ -66,11 +66,11 @@ export default function HistoryPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-slate-200 pb-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold text-blue-600 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-xs font-bold text-blue-600">
             <History className="h-4 w-4" />
             Audit Trail & History
           </div>
-          <h1 className="mt-1 text-3xl font-black tracking-tight text-slate-900">Analysis History Log</h1>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">Analysis History Log</h1>
           <p className="mt-1 text-xs text-slate-500">Archived surveillance analyses, broker queries, and final regulatory disposition outcomes.</p>
         </div>
         <div className="flex items-center gap-2">
@@ -119,7 +119,7 @@ export default function HistoryPage() {
         <CardContent>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-500 border-b border-slate-200">
+              <thead className="bg-slate-50 text-xs font-bold text-slate-700 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3.5">Scrip Symbol</th>
                   <th className="px-4 py-3.5">Investigation Title</th>

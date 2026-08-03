@@ -151,7 +151,7 @@ export default function TradeExplorerPage() {
             <div className="overflow-x-auto">
               {aggMode === "AGG_SEC_DAY" && (
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-600 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-xs font-bold border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3">Symbol</th>
                       <th className="px-4 py-3">Date</th>
@@ -188,7 +188,7 @@ export default function TradeExplorerPage() {
 
               {aggMode === "AGG_CLNT_SEC_DAY" && (
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-600 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-xs font-bold border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3">Company Token</th>
                       <th className="px-4 py-3">Client Token</th>
@@ -232,7 +232,7 @@ export default function TradeExplorerPage() {
 
               {aggMode === "AGG_PAN_PAIR_DAY" && (
                 <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-600 uppercase text-[11px] font-semibold tracking-wider border-b border-slate-200">
+                  <thead className="bg-slate-50 text-slate-700 text-xs font-bold border-b border-slate-200">
                     <tr>
                       <th className="px-4 py-3">Cmp Token</th>
                       <th className="px-4 py-3">Buyer Token</th>

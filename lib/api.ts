@@ -235,6 +235,28 @@ export async function fetchShareholdingBreakdown(scripId: string) {
   return await res.json();
 }
 
+export interface CaseRecord {
+  id: string;
+  case_number: string;
+  symbol: string;
+  pvasf_score: number;
+  risk_level: "High" | "Medium" | "Low";
+  status: "Open" | "Under review" | "Closed";
+  assigned_to: string;
+  created_at: string;
+  summary: string;
+}
+
+export async function fetchCases(): Promise<CaseRecord[]> {
+  try {
+    const res = await fetch("http://127.0.0.1:8000/api/v1/cases/", { cache: "no-store" });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchCorporateActions(scripId: string) {
   const cleanId = scripId.toUpperCase();
   const res = await fetch(`${API_BASE}/scrip/${cleanId}/corporate-actions`, { cache: "no-store" });

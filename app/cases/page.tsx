@@ -326,7 +326,7 @@ export default function ForensicCasesPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3">
-                        <span className={cn("px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider", statusStyles[c.status])}>
+                        <span className={cn("px-2.5 py-0.5 rounded-full border text-[11px] font-bold", statusStyles[c.status])}>
                           {c.status}
                         </span>
                       </td>
@@ -355,7 +355,7 @@ export default function ForensicCasesPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-xs font-bold text-blue-600">{selectedCase.case_id}</span>
-                  <span className={cn("px-2 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider", statusStyles[selectedCase.status])}>
+                  <span className={cn("px-2.5 py-0.5 rounded-full border text-[11px] font-bold", statusStyles[selectedCase.status])}>
                     {selectedCase.status}
                   </span>
                 </div>
@@ -383,7 +383,7 @@ export default function ForensicCasesPage() {
 
             {/* Case Summary Description */}
             <div className="space-y-1">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Investigative Summary & Findings</span>
+              <span className="text-xs font-bold text-slate-700">Investigative Summary & Findings</span>
               <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-100 leading-relaxed">
                 {selectedCase.description || "Detailed case findings and investigative notes logged by lead officer."}
               </p>
@@ -391,7 +391,7 @@ export default function ForensicCasesPage() {
 
             {/* Pinned Evidence Dossier Items */}
             <div className="space-y-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <Pin className="h-3.5 w-3.5 text-blue-600" /> Pinned Forensic Evidence ({selectedCase.evidence?.length || 0})
               </span>
               <div className="space-y-2">

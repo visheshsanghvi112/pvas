@@ -844,7 +844,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
               <div className="flex items-center gap-2 font-semibold text-slate-900">
                 <UserCircle className="w-5 h-5 text-blue-600" />
-                Client 360° Profile
+                Client 360 Intelligence
               </div>
               <button onClick={() => setSelectedPan(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
                 <X className="w-4 h-4" />
@@ -859,13 +859,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             ) : (
               <div className="p-4 space-y-4 overflow-y-auto flex-1">
                 <div className="border border-slate-200 rounded p-3 bg-slate-50">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Entity</div>
+                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Entity Details</div>
                   <div className="text-sm font-black text-slate-900 font-mono">{client360.pan}</div>
                   <div className="text-xs text-slate-500 font-mono mt-0.5">Client ID: {client360.clnt_id} · TM: {client360.tm_id}</div>
                 </div>
 
                 <div className="border border-slate-200 rounded p-3">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-2 border-b border-slate-100 pb-1">
+                  <div className="text-xs text-slate-700 font-bold mb-2 border-b border-slate-100 pb-1">
                     Terminals (DECL) — {client360.terminals.length} registered
                   </div>
                   <div className="text-xs space-y-1 font-mono">
@@ -882,7 +882,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </div>
 
                 <div className="border border-slate-200 rounded p-3">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-2 border-b border-slate-100 pb-1">
+                  <div className="text-xs text-slate-700 font-bold mb-2 border-b border-slate-100 pb-1">
                     Depository Accounts (DDCL) — {client360.depository_accounts.length}
                   </div>
                   <div className="text-xs space-y-1.5 font-mono">
@@ -929,42 +929,42 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               {/* Execution summary */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Exec Price</div>
-                  <div className="font-black text-slate-900">₹{Number(selectedTrade.Ftrd_Trd_Price || 0).toFixed(2)}</div>
+                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Exec Price</div>
+                  <div className="font-bold text-slate-900 font-mono">₹{Number(selectedTrade.Ftrd_Trd_Price || 0).toFixed(2)}</div>
                 </div>
                 <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Quantity</div>
-                  <div className="font-black text-slate-900">{Number(selectedTrade.Ftrd_Trd_Qty || 0).toLocaleString("en-IN")}</div>
+                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Quantity</div>
+                  <div className="font-bold text-slate-900 font-mono">{Number(selectedTrade.Ftrd_Trd_Qty || 0).toLocaleString("en-IN")}</div>
                 </div>
                 <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-[9px] text-slate-400 font-bold uppercase">Trade Value</div>
-                  <div className="font-black text-slate-900">₹{Number((selectedTrade as any).Ftrd_Trd_Val ?? (Number(selectedTrade.Ftrd_Trd_Qty || 0) * Number(selectedTrade.Ftrd_Trd_Price || 0))).toLocaleString("en-IN")}</div>
+                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Trade Value</div>
+                  <div className="font-bold text-slate-900 font-mono">₹{Number((selectedTrade as any).Ftrd_Trd_Val ?? (Number(selectedTrade.Ftrd_Trd_Qty || 0) * Number(selectedTrade.Ftrd_Trd_Price || 0))).toLocaleString("en-IN")}</div>
                 </div>
               </div>
 
               {/* Buy/Sell sides */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-emerald-50 border border-emerald-200 rounded p-2.5">
-                  <div className="text-[9px] font-bold text-emerald-700 uppercase mb-1">Buy Side</div>
+                  <div className="text-xs font-bold text-emerald-800 mb-1">Buy Side</div>
                   <div className="text-xs font-mono space-y-0.5">
                     <div>Token: <strong>{selectedTrade.Ftrd_Buy_Exch_Clnt_Token}</strong></div>
                     {(selectedTrade as any).Ftrd_Buy_Exch_TM_Token && (
                       <div>TM: {(selectedTrade as any).Ftrd_Buy_Exch_TM_Token}</div>
                     )}
                     {(selectedTrade as any).Ftrd_Buy_CTCL_Algo_Flag && (
-                      <div className="text-[9px] bg-violet-100 text-violet-700 px-1 rounded inline-block">ALGO</div>
+                      <div className="text-[10px] bg-violet-100 text-violet-700 px-1 rounded inline-block font-semibold">Algo</div>
                     )}
                   </div>
                 </div>
                 <div className="bg-rose-50 border border-rose-200 rounded p-2.5">
-                  <div className="text-[9px] font-bold text-rose-700 uppercase mb-1">Sell Side</div>
+                  <div className="text-xs font-bold text-rose-800 mb-1">Sell Side</div>
                   <div className="text-xs font-mono space-y-0.5">
                     <div>Token: <strong>{selectedTrade.Ftrd_Sell_Exch_Clnt_Token}</strong></div>
                     {(selectedTrade as any).Ftrd_Sell_Exch_TM_Token && (
                       <div>TM: {(selectedTrade as any).Ftrd_Sell_Exch_TM_Token}</div>
                     )}
                     {(selectedTrade as any).Ftrd_Sell_CTCL_Algo_Flag && (
-                      <div className="text-[9px] bg-violet-100 text-violet-700 px-1 rounded inline-block">ALGO</div>
+                      <div className="text-[10px] bg-violet-100 text-violet-700 px-1 rounded inline-block font-semibold">Algo</div>
                     )}
                   </div>
                 </div>
@@ -972,7 +972,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
               {/* Compliance flags */}
               <div className="bg-white border border-slate-200 rounded p-2.5">
-                <div className="text-[9px] font-bold text-slate-500 uppercase mb-1.5">Compliance Flags</div>
+                <div className="text-xs font-bold text-slate-700 mb-1.5">Compliance Flags</div>
                 <div className="flex gap-2 flex-wrap">
                   <span className={cn(
                     "text-[10px] font-bold px-2 py-0.5 rounded",

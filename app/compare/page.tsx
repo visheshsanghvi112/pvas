@@ -25,8 +25,8 @@ function MetricCard({ detail, accent }: { detail: ScripDetail; accent: "blue" | 
     <div className={`bg-white rounded-xl border-2 ${borderColor} p-5 shadow-sm`}>
       <div className="flex items-start justify-between mb-4">
         <div>
-          <div className={`text-xs font-bold ${labelColor} uppercase tracking-wider mb-1`}>{label}</div>
-          <div className="text-2xl font-black text-slate-900">{detail.symbol}</div>
+          <div className={`text-xs font-bold ${labelColor} mb-1`}>{label}</div>
+          <div className="text-2xl font-bold text-slate-900">{detail.symbol}</div>
           <div className="text-xs text-slate-500 mt-0.5">{detail.company || "Listed Security"}</div>
         </div>
         <RiskBadge risk={detail.risk} />

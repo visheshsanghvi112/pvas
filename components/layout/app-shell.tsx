@@ -17,7 +17,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchWatchlist, type ScripSummary } from "@/lib/api";
+import { fetchWatchlist, fetchCases, type ScripSummary, type CaseRecord } from "@/lib/api";
 import { useUser, type UserRole } from "@/lib/user-context";
 
 const nav = [
@@ -56,18 +56,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function loadAlerts() {
       try {
-        const scrips = await fetchWatchlist();
-        const flagged = scrips.filter((s) => s.risk === "High" || s.score >= 12 || s.band_hit_days > 2);
-        const dynamicAlerts: AlertItem[] = flagged.map((s, idx) => {
-          const isWash = s.band_hit_days > 3 || s.volume_z > 3.0;
+        const [cases, scrips] = await Promise.all([fetchCases(), fetchWatchlist()]);
+        const scripMap = new Map(scrips.map((s) => [s.symbol, s]));
+        
+        const dynamicAlerts: AlertItem[] = cases.map((c) => {
+          const scrip = scripMap.get(c.symbol);
+          const formattedDate = c.created_at ? new Date(c.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Today";
           return {
-            id: `alert-${s.symbol}-${idx}`,
-            symbol: s.symbol,
-            title: `${s.symbol} — ${isWash ? "Wash Trade / Volume Concentration" : "High Risk Surveillance Flag"}`,
-            description: `PVASF Score: ${s.score}/100 • 15D Surge: ${s.price_rise_pct >= 0 ? "+" : ""}${s.price_rise_pct.toFixed(1)}% • Vol Z: ${s.volume_z.toFixed(2)}σ`,
-            time: idx === 0 ? "10 mins ago" : idx === 1 ? "35 mins ago" : `${idx + 1} hours ago`,
-            read: false,
-            type: isWash ? "high" : "medium",
+            id: c.id,
+            symbol: c.symbol,
+            title: `${c.symbol} — ${c.case_number}`,
+            description: c.summary || `PVASF Score: ${c.pvasf_score}/100 • Status: ${c.status}`,
+            time: formattedDate,
+            read: c.status === "Closed",
+            type: c.risk_level === "High" ? "high" : "medium",
           };
         });
         setAlerts(dynamicAlerts);
