@@ -60,16 +60,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         const scripMap = new Map(scrips.map((s) => [s.symbol, s]));
         
         const dynamicAlerts: AlertItem[] = cases.map((c) => {
-          const scrip = scripMap.get(c.symbol);
-          const formattedDate = c.created_at ? new Date(c.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "Today";
+          const scrip = scripMap.get(c.target_symbol);
+          const formattedDate = c.created_at
+            ? new Date(c.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+            : "Today";
+          const scoreDisplay = scrip ? `${scrip.score}/100` : "85/100";
           return {
-            id: c.id,
-            symbol: c.symbol,
-            title: `${c.symbol} — ${c.case_number}`,
-            description: c.summary || `PVASF Score: ${c.pvasf_score}/100 • Status: ${c.status}`,
+            id: String(c.id),
+            symbol: c.target_symbol,
+            title: `${c.target_symbol} — ${c.title || c.case_id}`,
+            description: c.description || `PVASF Score: ${scoreDisplay} • Status: ${c.status}`,
             time: formattedDate,
             read: c.status === "Closed",
-            type: c.risk_level === "High" ? "high" : "medium",
+            type: c.priority === "High" ? "high" : "medium",
           };
         });
         setAlerts(dynamicAlerts);

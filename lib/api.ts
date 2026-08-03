@@ -236,15 +236,18 @@ export async function fetchShareholdingBreakdown(scripId: string) {
 }
 
 export interface CaseRecord {
-  id: string;
-  case_number: string;
-  symbol: string;
-  pvasf_score: number;
-  risk_level: "High" | "Medium" | "Low";
-  status: "Open" | "Under review" | "Closed";
-  assigned_to: string;
+  id: number | string;
+  case_id: string;
+  target_symbol: string;
+  title: string;
+  lead_officer: string;
+  status: string;
+  priority: "High" | "Medium" | "Low";
+  description?: string;
   created_at: string;
-  summary: string;
+  updated_at?: string;
+  closed_at?: string;
+  pinned_evidence_count?: number;
 }
 
 export async function fetchCases(): Promise<CaseRecord[]> {
