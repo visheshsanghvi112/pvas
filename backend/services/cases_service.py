@@ -26,10 +26,10 @@ from backend.schemas.cases import (
 
 # Valid status transitions: key = current, value = allowed next states
 _TRANSITIONS: dict[str, list[str]] = {
-    "Draft":              ["Open Investigation", "Closed"],
+    "Draft":              ["Open Investigation", "Pending Action", "Closed"],
     "Open Investigation": ["Pending Action", "Closed"],
     "Pending Action":     ["Open Investigation", "Closed"],
-    "Closed":             [],   # terminal
+    "Closed":             ["Open Investigation"],   # Re-open case dossier
 }
 
 

@@ -25,16 +25,22 @@ export default function DashboardPage() {
 
   const loadData = async () => {
     setLoading(true);
-    const data = await fetchWatchlist();
-    setScrips(data);
-    setLoading(false);
-    setLastRefresh(
-      new Date().toLocaleTimeString("en-IN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      })
-    );
+    try {
+      const data = await fetchWatchlist();
+      setScrips(data);
+    } catch (err) {
+      console.error("[Dashboard] Failed to load watchlist:", err);
+      // Retain existing scrips on transient error; don't wipe the table
+    } finally {
+      setLoading(false);
+      setLastRefresh(
+        new Date().toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        })
+      );
+    }
   };
 
   useEffect(() => {

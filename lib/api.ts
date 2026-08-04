@@ -156,7 +156,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
   const new_high_days: number  = m["new_high_days"]  ?? m["180d New Highs (15d)"] ?? 0;
   const final_score: number    = m["final_score"]    ?? m["Final Score"]    ?? 0;
 
-  const risk = final_score >= 60 ? "High" : final_score >= 33 ? "Medium" : "Low";
+  const risk = final_score >= 15 ? "High" : final_score >= 10 ? "Medium" : "Low";
 
   return {
     ticker: data.ticker ?? cleanId,
@@ -165,7 +165,7 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
     isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
     risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
     status: (data.status as "Open" | "Under review" | "Closed") ??
-            (final_score >= 60 ? "Open" : final_score >= 33 ? "Under review" : "Closed"),
+            (final_score >= 15 ? "Open" : final_score >= 10 ? "Under review" : "Closed"),
     metrics: { price_rise_pct, price_z, volume_z, band_hit_days, new_high_days, final_score },
     score_breakdown: data.score_breakdown ?? [],
     history: data.history ?? [],

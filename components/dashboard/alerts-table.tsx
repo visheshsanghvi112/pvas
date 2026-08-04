@@ -489,7 +489,7 @@ export function AlertsTable({
                             "h-full rounded-full transition-all",
                             alert.score >= 15 ? "bg-rose-500" : alert.score >= 10 ? "bg-amber-400" : "bg-emerald-500"
                           )}
-                          style={{ width: `${Math.min((alert.score / 25) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((alert.score / 100) * 100, 100)}%` }}
                         />
                       </div>
                     </div>

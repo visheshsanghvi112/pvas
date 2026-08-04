@@ -32,6 +32,7 @@ import {
   fetchClient360,
   fetchShareholdingBreakdown,
   fetchCorporateActions,
+  fetchCases,
   type ScripDetail,
   type ParticipantAudit,
   type TradeRow,
@@ -185,12 +186,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       setLoading(true);
       setError(null);
       try {
-        const [d, p, t, sh, ca] = await Promise.all([
+        const [d, p, t, sh, ca, cases] = await Promise.all([
           fetchScripDetail(symbol),
           fetchScripParticipants(symbol).catch(() => null),
           fetchTradeLog(symbol).catch(() => []),
           fetchShareholdingBreakdown(symbol).catch(() => null),
-          fetchCorporateActions(symbol).catch(() => [])
+          fetchCorporateActions(symbol).catch(() => []),
+          // Bug fix: use centralized fetchCases() instead of raw hardcoded fetch
+          fetchCases().catch(() => [])
         ]);
         setDetail(d);
         if (p) setParticipants(p);
@@ -199,20 +202,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         if (ca) setCorpActions(ca);
         setAnalysisStatus(d.status === "Closed" ? "Completed" : "Active");
 
-        // Fetch real case notes from DB
-        fetch(`http://127.0.0.1:8000/api/v1/cases/?symbol=${symbol}`)
-          .then((res) => res.json())
-          .then((cases) => {
-            if (Array.isArray(cases) && cases.length > 0) {
-              const fetchedNotes = cases.map((c: any) => ({
-                date: (c.created_at || "").replace("T", " ").slice(0, 16) || "2026-07-28 10:00",
-                officer: c.lead_officer || "Surveillance Officer",
-                text: c.description || c.title,
-              }));
-              setNotes(fetchedNotes);
-            }
-          })
-          .catch(() => {});
+        // Map case records for this symbol into timeline notes
+        const symbolCases = cases.filter((c: any) => c.target_symbol === symbol);
+        if (symbolCases.length > 0) {
+          const fetchedNotes = symbolCases.map((c: any) => ({
+            date: (c.created_at || "").replace("T", " ").slice(0, 16) || "Today",
+            officer: c.lead_officer || "Surveillance Officer",
+            text: c.description || c.title,
+          }));
+          setNotes(fetchedNotes);
+        }
       } catch (e: any) {
         console.error("Failed to load investigation workspace data", e);
         setError(e?.message || "Failed to load. Ensure backend is running.");
@@ -233,18 +232,39 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     }
   }, [selectedPan]);
 
-  const handleAddNote = (e: React.FormEvent) => {
+  const handleAddNote = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newNote.trim()) return;
-    setNotes([
-      {
-        date: new Date().toISOString().slice(0, 16).replace("T", " "),
-        officer: currentUser.name,
-        text: newNote,
-      },
-      ...notes,
-    ]);
+
+    const noteText = newNote.trim();
+    const optimisticNote = {
+      date: new Date().toISOString().slice(0, 16).replace("T", " "),
+      officer: currentUser.name,
+      text: noteText,
+    };
+
+    // Optimistic update: show immediately in UI
+    setNotes((prev) => [optimisticNote, ...prev]);
     setNewNote("");
+
+    // Persist to backend as a new Case record (Bug fix: notes were only saved in local state)
+    try {
+      await fetch("http://127.0.0.1:8000/api/v1/cases/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          target_symbol: symbol,
+          title: `Case Note — ${symbol}`,
+          lead_officer: currentUser.name,
+          status: "Draft",
+          priority: "Low",
+          description: noteText,
+        }),
+      });
+    } catch (err) {
+      console.warn("[InvestigationWorkspace] Failed to persist note to backend:", err);
+      // Note already shown in UI via optimistic update; user is not blocked
+    }
   };
 
   if (loading) {
@@ -420,7 +440,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       { label: "Latest Close (T-0)", value: `₹${Number(summary.latest_close || 0).toFixed(2)}` },
                       { label: "Net C-C Return (180D)", value: `${Number(summary.price_change_pct || 0) >= 0 ? "+" : ""}${Number(summary.price_change_pct || 0).toFixed(2)}%` },
                       { label: "Peak 15D Surge High", value: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%` },
-                      { label: "Active Unique PANs", value: `${participants ? participants.volume_share.length * 28 + 14 : 142} Active` },
+                      { label: "Active Unique PANs (15D)", value: detail.shareholders?.unique_pans_15d != null ? `${detail.shareholders.unique_pans_15d} Active` : "—" },
                     ].map((item) => (
                       <div key={item.label} className="bg-slate-50/80 border border-slate-200/90 hover:bg-white hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all">
                         <div className="text-xs text-slate-500 font-semibold mb-1">{item.label}</div>

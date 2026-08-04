@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -15,10 +15,14 @@ import {
   LayoutDashboard,
   CheckCircle2,
   BookOpen,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWatchlist, fetchCases, type ScripSummary, type CaseRecord } from "@/lib/api";
 import { useUser, type UserRole } from "@/lib/user-context";
+
+// Alert polling interval: refresh every 5 minutes
+const ALERT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 const nav = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -40,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  // Dynamic Alerts & Notifications fetched from live backend surveillance
+  // ── Alert / Notification Types ────────────────────────────────────────────
   interface AlertItem {
     id: string;
     symbol: string;
@@ -48,50 +52,100 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     description: string;
     time: string;
     read: boolean;
-    type: "high" | "medium" | "warning";
+    type: "high" | "medium" | "watchlist";
+    source: "watchlist" | "case";
   }
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
+  // Track read state separately so polling doesn't reset already-read items
+  const [readIds, setReadIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    async function loadAlerts() {
-      try {
-        const [cases, scrips] = await Promise.all([fetchCases(), fetchWatchlist()]);
-        const scripMap = new Map(scrips.map((s) => [s.symbol, s]));
-        
-        const dynamicAlerts: AlertItem[] = cases.map((c) => {
-          const scrip = scripMap.get(c.target_symbol);
+  const buildAlerts = useCallback(
+    (scrips: ScripSummary[], cases: CaseRecord[]): AlertItem[] => {
+      const now = new Date();
+
+      // ── 1. Watchlist-driven alerts: any scrip currently on the risk watchlist
+      //    Source of truth: scrips where watchlist === true (scored above threshold)
+      const watchlistAlerts: AlertItem[] = scrips
+        .filter((s) => s.watchlist)
+        .map((s) => ({
+          id: `wl-${s.symbol}`,
+          symbol: s.symbol,
+          title: `${s.symbol} — Surveillance Flag`,
+          description: `PVASF Score: ${s.score.toFixed(1)}/100 · Risk: ${s.risk} · ${s.price_rise_pct > 0 ? `↑${s.price_rise_pct.toFixed(1)}% price rise` : "Anomaly detected"}`,
+          time: now.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+          read: readIds.has(`wl-${s.symbol}`),
+          type: s.risk === "High" ? "high" : "medium",
+          source: "watchlist" as const,
+        }));
+
+      // ── 2. Case-driven alerts: open or under-review dossiers (not closed)
+      const caseAlerts: AlertItem[] = cases
+        .filter((c) => c.status !== "Closed")
+        .map((c) => {
           const formattedDate = c.created_at
             ? new Date(c.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
             : "Today";
-          const scoreDisplay = scrip ? `${scrip.score}/100` : "85/100";
           return {
-            id: String(c.id),
+            id: `case-${c.id}`,
             symbol: c.target_symbol,
             title: `${c.target_symbol} — ${c.title || c.case_id}`,
-            description: c.description || `PVASF Score: ${scoreDisplay} • Status: ${c.status}`,
+            description: c.description || `Case ${c.case_id} · ${c.status} · Priority: ${c.priority}`,
             time: formattedDate,
-            read: c.status === "Closed",
+            read: readIds.has(`case-${c.id}`),
             type: c.priority === "High" ? "high" : "medium",
+            source: "case" as const,
           };
         });
-        setAlerts(dynamicAlerts);
-      } catch {
-        // Fallback default
-      }
+
+      // ── 3. Merge: watchlist first, then cases. De-duplicate by symbol
+      //    (if a symbol has both a watchlist flag AND an open case, prefer the case entry)
+      const caseSymbols = new Set(caseAlerts.map((a) => a.symbol));
+      const dedupedWatchlist = watchlistAlerts.filter((a) => !caseSymbols.has(a.symbol));
+
+      // Sort: unread first, then by type (high before medium), then watchlist before case
+      const merged = [...dedupedWatchlist, ...caseAlerts].sort((a, b) => {
+        if (a.read !== b.read) return a.read ? 1 : -1;
+        const typePriority = { high: 0, medium: 1, watchlist: 2 };
+        return (typePriority[a.type] ?? 2) - (typePriority[b.type] ?? 2);
+      });
+
+      return merged;
+    },
+    [readIds]
+  );
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      const [cases, scrips] = await Promise.all([fetchCases(), fetchWatchlist()]);
+      setAlerts(buildAlerts(scrips, cases));
+    } catch (err) {
+      console.warn("[PVASF] Notification load failed:", err);
+      // Do not clear existing alerts on transient network errors
     }
+  }, [buildAlerts]);
+
+  // Load on mount, then poll every 5 min
+  useEffect(() => {
     loadAlerts();
-  }, []);
+    const interval = setInterval(loadAlerts, ALERT_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [loadAlerts]);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 
   const handleAlertClick = (alertItem: AlertItem) => {
+    const newReadIds = new Set(readIds);
+    newReadIds.add(alertItem.id);
+    setReadIds(newReadIds);
     setAlerts((prev) => prev.map((a) => (a.id === alertItem.id ? { ...a, read: true } : a)));
     setNotificationsOpen(false);
     router.push(`/analysis/${alertItem.symbol}`);
   };
 
   const handleMarkAllRead = () => {
+    const allIds = new Set(alerts.map((a) => a.id));
+    setReadIds(allIds);
     setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
   };
 
@@ -277,14 +331,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         onClick={() => handleAlertClick(item)}
                         className={cn(
                           "flex items-start gap-3 px-4 py-3 transition-colors cursor-pointer",
-                          item.read ? "bg-white opacity-70 hover:bg-slate-50" : "bg-blue-50/30 hover:bg-blue-50/60"
+                          item.read ? "bg-white opacity-60 hover:bg-slate-50" : "bg-blue-50/30 hover:bg-blue-50/70"
                         )}
                       >
                         <div className={cn(
                           "mt-0.5 flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center border shadow-2xs",
-                          item.type === "high" ? "bg-rose-100 text-rose-600 border-rose-200" : "bg-amber-100 text-amber-700 border-amber-200"
+                          item.type === "high"
+                            ? "bg-rose-100 text-rose-600 border-rose-200"
+                            : "bg-amber-100 text-amber-700 border-amber-200"
                         )}>
-                          <AlertTriangle className="h-4 w-4" />
+                          {item.source === "watchlist"
+                            ? <TrendingUp className="h-3.5 w-3.5" />
+                            : <AlertTriangle className="h-3.5 w-3.5" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
@@ -294,8 +352,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                           <div className="text-[11px] font-medium text-slate-600 mt-1 leading-snug">
                             {item.description}
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1 font-semibold">
-                            {item.time}
+                          <div className="flex items-center justify-between mt-1">
+                            <span className="text-[10px] text-slate-400 font-semibold">{item.time}</span>
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full",
+                              item.source === "watchlist"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-purple-50 text-purple-600"
+                            )}>
+                              {item.source === "watchlist" ? "Alert" : "Case"}
+                            </span>
                           </div>
                         </div>
                       </div>

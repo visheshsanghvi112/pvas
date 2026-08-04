@@ -122,6 +122,9 @@ export default function ForensicCasesPage() {
           setSelectedCase(updated);
         }
         fetchCases();
+      } else {
+        const err = await res.json();
+        console.warn("[updateStatus] Error updating status:", err.detail || err);
       }
     } catch (e) {
       console.error("Failed to update case status", e);
