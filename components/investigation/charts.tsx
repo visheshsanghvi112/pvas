@@ -199,34 +199,33 @@ export function AlertDriversChart({ breakdown = [] }: { breakdown?: Array<{ labe
   if (!breakdown || breakdown.length === 0)
     return <div className="text-slate-500 text-xs p-4">No score breakdown available.</div>;
 
-  const PARAM_METADATA: Record<string, { color: string; bg: string; border: string; bar: string }> = {
-    "Price Rise": { color: "text-blue-700", bg: "bg-blue-50/60", border: "border-blue-200", bar: "bg-blue-600" },
-    "Price Z": { color: "text-indigo-700", bg: "bg-indigo-50/60", border: "border-indigo-200", bar: "bg-indigo-600" },
-    "Volume Z": { color: "text-cyan-700", bg: "bg-cyan-50/60", border: "border-cyan-200", bar: "bg-cyan-600" },
-    "Band Persistence": { color: "text-amber-700", bg: "bg-amber-50/60", border: "border-amber-200", bar: "bg-amber-600" },
-    "180 Day New High": { color: "text-rose-700", bg: "bg-rose-50/60", border: "border-rose-200", bar: "bg-rose-600" },
-  };
-
   return (
     <div className="w-full space-y-3">
       {breakdown.map((b) => {
-        const meta = PARAM_METADATA[b.label] || { color: "text-slate-700", bg: "bg-slate-50", border: "border-slate-200", bar: "bg-slate-600" };
         const contribution = Math.round((b.weight * b.score) / 5 * 10) / 10;
         const pctFill = (b.score / 5) * 100;
+        const isHigh = b.score >= 5;
+        const isMid = b.score >= 3 && b.score < 5;
+
+        const theme = isHigh
+          ? { text: "text-rose-700", bg: "bg-rose-50/50", border: "border-rose-200", bar: "bg-rose-600" }
+          : isMid
+          ? { text: "text-amber-700", bg: "bg-amber-50/50", border: "border-amber-200", bar: "bg-amber-500" }
+          : { text: "text-emerald-700", bg: "bg-emerald-50/50", border: "border-emerald-200", bar: "bg-emerald-500" };
 
         return (
-          <div key={b.label} className={cn("p-3 rounded-xl border flex flex-col gap-2 transition-colors", meta.bg, meta.border)}>
+          <div key={b.label} className={cn("p-3 rounded-xl border flex flex-col gap-2 transition-colors", theme.bg, theme.border)}>
             <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
-              <span className={cn("font-bold text-sm", meta.color)}>{b.label}</span>
+              <span className={cn("font-bold text-xs tracking-tight", theme.text)}>{b.label}</span>
               <div className="flex items-center gap-3 font-mono text-xs">
                 <span className="text-slate-500">Weight: <strong>{b.weight}%</strong></span>
                 <span className="text-slate-500">Score: <strong>{b.score}/5</strong></span>
-                <span className={cn("font-bold text-sm", meta.color)}>+{contribution} pts</span>
+                <span className={cn("font-extrabold text-xs", theme.text)}>+{contribution} pts</span>
               </div>
             </div>
             <div className="w-full bg-slate-200/80 rounded-full h-2 overflow-hidden">
               <div
-                className={cn("h-2 rounded-full transition-all duration-500", meta.bar)}
+                className={cn("h-2 rounded-full transition-all duration-500", theme.bar)}
                 style={{ width: `${Math.max(pctFill, 2)}%` }}
               />
             </div>
@@ -444,7 +443,7 @@ export function ParameterRadarChart({
           <div
             className={cn(
               "h-full rounded-full transition-all duration-500",
-              isHighScore ? "bg-blue-600" : isMidScore ? "bg-amber-500" : "bg-emerald-500"
+              isHighScore ? "bg-rose-600" : isMidScore ? "bg-amber-500" : "bg-emerald-500"
             )}
             style={{ width: `${Math.max(fillPct, 8)}%` }}
           />
@@ -502,22 +501,22 @@ export function ParameterRadarChart({
           {rightCards.map(renderParameterCard)}
 
           {/* PVASF Risk Summary Indicator Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+          <div className="bg-white border border-slate-200/90 rounded-xl p-3.5 shadow-2xs hover:border-slate-300 transition-all flex flex-col justify-between">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Risk Profile</span>
-              <span className="text-[10px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
+              <span className="text-xs font-extrabold text-slate-800 uppercase tracking-wider">Risk Profile</span>
+              <span className="text-[10px] font-bold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-200 font-mono">
                 PVASF Engine
               </span>
             </div>
             <div className="mt-2 mb-1 flex items-baseline justify-between">
-              <span className="text-2xl font-black font-mono text-amber-400">
+              <span className="text-2xl font-black font-mono text-slate-900 tracking-tight">
                 {metrics.final_score ?? 84}<span className="text-xs font-bold text-slate-400">/100</span>
               </span>
-              <span className="text-xs font-extrabold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/40">
+              <span className="text-xs font-extrabold text-rose-700 bg-rose-50 px-2.5 py-0.5 rounded-md border border-rose-200 font-mono shadow-2xs">
                 High Anomaly
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 leading-tight mt-1">
+            <p className="text-[11px] text-slate-500 font-medium leading-tight mt-1">
               Elevated concentration across Price Z ({sPriceZ}/5) & Volume Z ({sVolZ}/5)
             </p>
           </div>
