@@ -129,7 +129,17 @@ function DataTable({ headers, rows }: { headers: string[]; rows: (string | React
   );
 }
 
-function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: string; icon?: React.ReactNode }) {
+function SectionHeader({
+  title,
+  subtitle,
+  icon,
+  onExpand,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  onExpand?: () => void;
+}) {
   return (
     <div className="px-4 py-3 border-b border-slate-200/80 flex items-center justify-between bg-slate-50/80">
       <div className="flex items-center gap-2.5">
@@ -139,13 +149,25 @@ function SectionHeader({ title, subtitle, icon }: { title: string; subtitle?: st
           {subtitle && <p className="text-[11px] font-medium text-slate-500">{subtitle}</p>}
         </div>
       </div>
+
+      {onExpand && (
+        <button
+          type="button"
+          onClick={onExpand}
+          title="Expand Chart to Fullscreen"
+          className="opacity-0 group-hover:opacity-100 transition-all duration-200 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 text-slate-700 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/60 shadow-2xs text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shrink-0"
+        >
+          <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
+          <span className="text-[11px]">Fullscreen</span>
+        </button>
+      )}
     </div>
   );
 }
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("border border-slate-200/90 bg-white rounded-2xl shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 flex flex-col overflow-hidden", className)}>
+    <div className={cn("group border border-slate-200/90 bg-white rounded-2xl shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 flex flex-col overflow-hidden relative", className)}>
       {children}
     </div>
   );
@@ -155,16 +177,25 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   const { currentUser } = useUser();
   const [activeTab, setActiveTab] = useState<Tab>("Overview");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [expandedChart, setExpandedChart] = useState<{
+    title: string;
+    subtitle?: string;
+    chart: React.ReactNode;
+  } | null>(null);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isFullscreen) {
-        setIsFullscreen(false);
+      if (e.key === "Escape") {
+        if (expandedChart) {
+          setExpandedChart(null);
+        } else if (isFullscreen) {
+          setIsFullscreen(false);
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen]);
+  }, [isFullscreen, expandedChart]);
 
   const [detail, setDetail] = useState<ScripDetail | null>(null);
   const [participants, setParticipants] = useState<ParticipantAudit | null>(null);
@@ -440,6 +471,11 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 icon={<Activity className="w-4.5 h-4.5 text-blue-600" />}
                 title="5-Parameter Risk Radar Profile & Intelligence Signature"
                 subtitle="Comprehensive 0–5 parameter score radar mapped against Risk Thresholds"
+                onExpand={() => setExpandedChart({
+                  title: "5-Parameter Risk Radar Profile & Intelligence Signature",
+                  subtitle: "Comprehensive 0–5 parameter score radar mapped against Risk Thresholds",
+                  chart: <ParameterRadarChart metrics={metrics} />
+                })}
               />
               <div className="p-4 md:p-5">
                 <ParameterRadarChart metrics={metrics} />
@@ -470,7 +506,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             {/* Score Contribution + Alert Trail */}
             <div className="grid gap-5 md:grid-cols-2">
               <Card>
-                <SectionHeader icon={<BarChart2 className="w-4 h-4" />} title="PVASF Score Contribution" subtitle="weighted contribution / final score" />
+                <SectionHeader
+                  icon={<BarChart2 className="w-4 h-4" />}
+                  title="PVASF Score Contribution"
+                  subtitle="weighted contribution / final score"
+                  onExpand={() => setExpandedChart({
+                    title: "PVASF Score Contribution",
+                    subtitle: "Weighted parameter contribution to final score",
+                    chart: <AlertDriversChart breakdown={score_breakdown} />
+                  })}
+                />
                 <div className="p-5 flex-1">
                   <AlertDriversChart breakdown={score_breakdown} />
                 </div>
@@ -489,6 +534,11 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 icon={<TrendingUp className="w-4 h-4" />}
                 title="Price Movement — 180 Day Window"
                 subtitle="Yellow band = last 15 trading days (PVASF observation window)"
+                onExpand={() => setExpandedChart({
+                  title: "Price Movement — 180 Day Window",
+                  subtitle: "Yellow band = last 15 trading days (PVASF observation window)",
+                  chart: <PriceChart history={history} />
+                })}
               />
               <div className="p-5">
                 <PriceChart history={history} />
@@ -498,7 +548,15 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             {/* Volume Dynamics */}
             <div className="grid grid-cols-2 gap-5">
               <Card>
-                <SectionHeader icon={<BarChart2 className="w-4 h-4" />} title="Daily Traded Volume" />
+                <SectionHeader
+                  icon={<BarChart2 className="w-4 h-4" />}
+                  title="Daily Traded Volume"
+                  onExpand={() => setExpandedChart({
+                    title: "Daily Traded Volume",
+                    subtitle: "Daily traded shares / contracts volume history",
+                    chart: <VolumeChart history={history} />
+                  })}
+                />
                 <div className="p-5"><VolumeChart history={history} /></div>
               </Card>
               <Card>
@@ -506,6 +564,11 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   icon={<Activity className="w-4 h-4" />}
                   title="Rolling 15-Day Avg Volume"
                   subtitle="line = 15D MA · bars = daily vol"
+                  onExpand={() => setExpandedChart({
+                    title: "Rolling 15-Day Avg Volume",
+                    subtitle: "line = 15D MA · bars = daily vol",
+                    chart: <RollingVolumeChart history={history} />
+                  })}
                 />
                 <div className="p-5"><RollingVolumeChart history={history} /></div>
               </Card>
@@ -640,6 +703,11 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       icon={<TrendingUp className="w-4 h-4" />}
                       title="Net LTP Contribution % (Sec 4.1)"
                       subtitle="Net price push (Pos - Neg) / 15D stock price movement"
+                      onExpand={() => setExpandedChart({
+                        title: "Net LTP Contribution % (Sec 4.1)",
+                        subtitle: "Net price push (Pos - Neg) / 15D stock price movement",
+                        chart: <LtpChart ltpContributors={participants.ltp_contributors} />
+                      })}
                     />
                     <div className="p-4 flex-1">
                       <LtpChart ltpContributors={participants.ltp_contributors} />
@@ -954,6 +1022,56 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     Cross-Broker Wash: {(selectedTrade as any).Ftrd_Diff_Broker_Wash_Flag === 1 ? "⚠ YES" : "NO"}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen High-Definition Chart Modal */}
+      {expandedChart && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 md:p-8 animate-in fade-in duration-200"
+          onClick={() => setExpandedChart(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-6xl flex flex-col overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-200/90 flex items-center justify-between bg-slate-50/90">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Maximize2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-base font-extrabold text-slate-900">{expandedChart.title}</h2>
+                  {expandedChart.subtitle && (
+                    <p className="text-xs text-slate-500 font-medium">{expandedChart.subtitle}</p>
+                  )}
+                </div>
+                <span className="ml-2 text-xs font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg">
+                  {symbol}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-400 font-mono hidden sm:inline">Press ESC to close</span>
+                <button
+                  onClick={() => setExpandedChart(null)}
+                  className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-all cursor-pointer flex items-center gap-1.5"
+                  title="Close Fullscreen View"
+                >
+                  <X className="w-4.5 h-4.5" />
+                  <span className="text-xs font-extrabold">Close</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content - Expanded High-Res Canvas */}
+            <div className="p-6 md:p-8 flex-1 bg-slate-50/50 flex flex-col justify-center items-center min-h-[480px]">
+              <div className="w-full h-[520px] bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs flex items-center justify-center overflow-hidden">
+                {expandedChart.chart}
               </div>
             </div>
           </div>
