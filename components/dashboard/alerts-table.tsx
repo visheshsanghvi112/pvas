@@ -313,11 +313,11 @@ export function AlertsTable({
               className={cn(
                 "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
                 filterPriceSpike
-                  ? "bg-rose-50 border-rose-300 text-rose-700 font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <TrendingUp className="h-3 w-3 text-rose-500" /> Price Spike ≥ 15%
+              <TrendingUp className="h-3 w-3 text-slate-400" /> Price Spike ≥ 15%
             </button>
 
             <button
@@ -325,11 +325,11 @@ export function AlertsTable({
               className={cn(
                 "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
                 filterPriceZ
-                  ? "bg-purple-50 border-purple-300 text-purple-700 font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <Zap className="h-3 w-3 text-purple-500" /> Price Z ≥ 1.65σ
+              <Zap className="h-3 w-3 text-slate-400" /> Price Z ≥ 1.65σ
             </button>
 
             <button
@@ -337,11 +337,11 @@ export function AlertsTable({
               className={cn(
                 "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
                 filterVolZ
-                  ? "bg-amber-50 border-amber-300 text-amber-700 font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <BarChart2 className="h-3 w-3 text-amber-500" /> Volume Z ≥ 1.65σ
+              <BarChart2 className="h-3 w-3 text-slate-400" /> Volume Z ≥ 1.65σ
             </button>
 
             <button
@@ -349,11 +349,11 @@ export function AlertsTable({
               className={cn(
                 "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
                 filterCircuitHits
-                  ? "bg-blue-50 border-blue-300 text-blue-700 font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <ShieldAlert className="h-3 w-3 text-blue-500" /> Circuit Hits ≥ 3d
+              <ShieldAlert className="h-3 w-3 text-slate-400" /> Circuit Hits ≥ 3d
             </button>
 
             <button
@@ -361,11 +361,11 @@ export function AlertsTable({
               className={cn(
                 "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
                 filterNewHighs
-                  ? "bg-emerald-50 border-emerald-300 text-emerald-700 font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
               )}
             >
-              <CheckCircle2 className="h-3 w-3 text-emerald-500" /> 180D Breakouts ≥ 1d
+              <CheckCircle2 className="h-3 w-3 text-slate-400" /> 180D Breakouts ≥ 1d
             </button>
           </div>
 
@@ -514,15 +514,12 @@ export function AlertsTable({
 
                   {/* Price Z */}
                   <td className="px-4 py-3.5">
-                    <div className={cn(
-                      "text-sm font-bold tabular-nums",
-                      alert.price_z >= 1.645 ? "text-purple-700" : "text-slate-700"
-                    )}>
+                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
                       {alert.price_z.toFixed(2)}σ
                     </div>
-                    <div className="text-[11px] mt-0.5">
+                    <div className="text-[11px] mt-0.5 font-medium">
                       {alert.price_z >= 1.645 ? (
-                        <span className="text-purple-600 font-semibold">⚠ Significant</span>
+                        <span className="text-rose-600 font-semibold">⚠ Significant</span>
                       ) : (
                         <span className="text-slate-400">Normal</span>
                       )}
@@ -531,15 +528,12 @@ export function AlertsTable({
 
                   {/* Volume Z */}
                   <td className="px-4 py-3.5">
-                    <div className={cn(
-                      "text-sm font-bold tabular-nums",
-                      alert.volume_z >= 1.645 ? "text-amber-700" : "text-slate-700"
-                    )}>
+                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
                       {alert.volume_z.toFixed(2)}σ
                     </div>
-                    <div className="text-[11px] mt-0.5">
+                    <div className="text-[11px] mt-0.5 font-medium">
                       {alert.volume_z >= 1.645 ? (
-                        <span className="text-amber-600 font-semibold">⚠ Volume Surge</span>
+                        <span className="text-rose-600 font-semibold">⚠ Surge</span>
                       ) : (
                         <span className="text-slate-400">Normal</span>
                       )}
@@ -548,10 +542,7 @@ export function AlertsTable({
 
                   {/* Circuit Hits */}
                   <td className="px-4 py-3.5">
-                    <div className={cn(
-                      "text-sm font-bold tabular-nums",
-                      alert.band_hit_days >= 3 ? "text-blue-700" : "text-slate-700"
-                    )}>
+                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
                       {alert.band_hit_days} {alert.band_hit_days === 1 ? "day" : "days"}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5">≥90% Band</div>
@@ -559,10 +550,7 @@ export function AlertsTable({
 
                   {/* New Highs */}
                   <td className="px-4 py-3.5">
-                    <div className={cn(
-                      "text-sm font-bold tabular-nums",
-                      alert.new_high_days >= 1 ? "text-emerald-700" : "text-slate-700"
-                    )}>
+                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
                       {alert.new_high_days} {alert.new_high_days === 1 ? "day" : "days"}
                     </div>
                     <div className="text-[11px] text-slate-400 mt-0.5">180D Breakout</div>

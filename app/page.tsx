@@ -80,9 +80,9 @@ export default function DashboardPage() {
           <button
             onClick={() => setRiskFilter("All")}
             className={cn(
-              "text-left border rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-md hover:-translate-y-0.5",
+              "text-left border rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs",
               riskFilter === "All"
-                ? "bg-blue-50/80 border-blue-400/90 ring-2 ring-blue-500/20"
+                ? "bg-white border-blue-600 ring-2 ring-blue-600/20"
                 : "bg-white border-slate-200/90 hover:border-slate-300"
             )}
           >
@@ -90,7 +90,7 @@ export default function DashboardPage() {
               <span className="text-xs font-extrabold text-slate-600 uppercase tracking-wider">
                 Monitored Scrips
               </span>
-              <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center">
                 <BarChart2 className="h-3.5 w-3.5 text-slate-700" />
               </div>
             </div>
@@ -109,17 +109,17 @@ export default function DashboardPage() {
           <button
             onClick={() => setRiskFilter("High")}
             className={cn(
-              "text-left border rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-md hover:-translate-y-0.5",
+              "text-left border rounded-2xl p-3.5 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs",
               riskFilter === "High"
-                ? "bg-rose-100/80 border-rose-400 ring-2 ring-rose-500/20"
-                : "bg-rose-50/70 border-rose-200/90 hover:border-rose-300"
+                ? "bg-white border-rose-600 ring-2 ring-rose-600/20"
+                : "bg-white border-slate-200/90 hover:border-slate-300"
             )}
           >
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-rose-700 uppercase tracking-wider">
+              <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
                 High Risk Alerts
               </span>
-              <div className="w-7 h-7 rounded-lg bg-rose-100 border border-rose-200 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center">
                 <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
               </div>
             </div>
@@ -127,7 +127,7 @@ export default function DashboardPage() {
               <span className="text-2xl font-black text-rose-600 leading-none font-mono">
                 {loading ? "—" : highRiskCount}
               </span>
-              <span className="text-xs font-extrabold text-rose-700 bg-rose-100 px-2 py-0.5 rounded-md border border-rose-200">
+              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
                 Score ≥ 15
               </span>
             </div>
@@ -139,13 +139,13 @@ export default function DashboardPage() {
           </button>
 
           {/* Card 3: Top Price Mover */}
-          <div className="bg-violet-50/70 border border-violet-200/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:border-violet-300 transition-all duration-200">
+          <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-3.5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-violet-700 uppercase tracking-wider">
+              <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
                 Top Price Surge
               </span>
-              <div className="w-7 h-7 rounded-lg bg-violet-100 border border-violet-200 flex items-center justify-center">
-                <TrendingUp className="h-3.5 w-3.5 text-violet-600" />
+              <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
               </div>
             </div>
             {topMover && !loading ? (
@@ -153,11 +153,11 @@ export default function DashboardPage() {
                 <div className="mt-2.5 flex items-baseline justify-between">
                   <Link
                     href={`/analysis/${topMover.symbol}`}
-                    className="text-base font-black text-slate-900 hover:text-violet-700 hover:underline flex items-center gap-1 leading-none font-mono"
+                    className="text-base font-black text-slate-900 hover:text-blue-700 hover:underline flex items-center gap-1 leading-none font-mono"
                   >
-                    {topMover.symbol} <ChevronRight className="h-3.5 w-3.5 text-violet-500" />
+                    {topMover.symbol} <ChevronRight className="h-3.5 w-3.5 text-blue-500" />
                   </Link>
-                  <span className="text-xs font-black text-rose-600 bg-rose-100 px-1.5 py-0.5 rounded-md border border-rose-200">
+                  <span className="text-xs font-extrabold text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded-md border border-rose-200">
                     +{topMover.price_rise_pct.toFixed(1)}%
                   </span>
                 </div>
@@ -172,13 +172,13 @@ export default function DashboardPage() {
           </div>
 
           {/* Card 4: Top Volume Anomaly */}
-          <div className="bg-amber-50/70 border border-amber-200/90 rounded-2xl p-3.5 flex flex-col justify-between shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:border-amber-300 transition-all duration-200">
+          <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-3.5 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-all duration-200">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-amber-700 uppercase tracking-wider">
+              <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wider">
                 Top Volume Surge
               </span>
-              <div className="w-7 h-7 rounded-lg bg-amber-100 border border-amber-200 flex items-center justify-center">
-                <Zap className="h-3.5 w-3.5 text-amber-600" />
+              <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+                <Zap className="h-3.5 w-3.5 text-slate-700" />
               </div>
             </div>
             {topVolume && !loading ? (
@@ -186,11 +186,11 @@ export default function DashboardPage() {
                 <div className="mt-2.5 flex items-baseline justify-between">
                   <Link
                     href={`/analysis/${topVolume.symbol}`}
-                    className="text-base font-black text-slate-900 hover:text-amber-700 hover:underline flex items-center gap-1 leading-none font-mono"
+                    className="text-base font-black text-slate-900 hover:text-blue-700 hover:underline flex items-center gap-1 leading-none font-mono"
                   >
-                    {topVolume.symbol} <ChevronRight className="h-3.5 w-3.5 text-amber-500" />
+                    {topVolume.symbol} <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
                   </Link>
-                  <span className="text-xs font-black text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-md border border-amber-200">
+                  <span className="text-xs font-extrabold text-amber-800 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-200">
                     {topVolume.volume_z.toFixed(2)}σ Surge
                   </span>
                 </div>
