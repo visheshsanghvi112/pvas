@@ -16,7 +16,6 @@ from backend.routers.trade_matches import router as trade_matches_router
 from backend.routers.clients import router as clients_router
 from backend.routers.auth import router as auth_router
 from backend.routers.cases import router as cases_router
-from backend.routers.agg_trades import router as agg_trades_router, v1_router as agg_trades_v1_router
 
 
 @asynccontextmanager
@@ -44,9 +43,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Institutional Market Surveillance API",
     description=(
-        "Multi-Asset Conduct, Compliance & Forensic Audit Suite API. "
+        "Price-Volume Alert Surveillance Framework (PVASF) API. "
         "Backed by Regulatory DWBIS Teradata schema (SQLite dev mode). "
-        "Endpoints: /api/v1/surveillance/* | /api/v1/trades/* | /api/v1/clients/* | /api/aggregates/* | /api/v1/agg-trades/*"
+        "Endpoints: /api/v1/surveillance/* | /api/v1/trades/* | /api/v1/clients/pan/* | /api/v1/cases/*"
     ),
     version="2.5.0",
     lifespan=lifespan,
@@ -67,8 +66,6 @@ app.include_router(trade_matches_router)
 app.include_router(clients_router)
 app.include_router(auth_router)
 app.include_router(cases_router)
-app.include_router(agg_trades_router)
-app.include_router(agg_trades_v1_router)
 
 if __name__ == "__main__":
     import uvicorn

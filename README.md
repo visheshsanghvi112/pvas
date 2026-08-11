@@ -65,18 +65,26 @@ The **Price-Volume Alert Surveillance Framework (PVASF)** is an end-to-end, high
 │   │   ├── seed.py             # Synthetic Seed Data Generator (31,200 trade records)
 │   │   └── surveillance.db     # Local Development SQLite Database
 │   ├── repositories/           # Repository Pattern Data Access Layer
-│   │   ├── fact_trades_repo.py # FACT_TRADES Repository
+│   │   ├── agg_trades_repo.py  # SEBI Trade Aggregate Repository (AGG_SEC_DAY, ACSS, APPD)
+│   │   ├── trade_matches_repo.py# Trade Execution Matches & Wash Trade Repository
 │   │   ├── dim_exch_clnt_repo.py# DIM_EXCH_CLNT_DTLS Repository
 │   │   └── dim_dep_clnt_repo.py# DIM_DEP_CLNT_DTLS Repository
 │   ├── schemas/                # Pydantic v2 Validation Schemas & DTOs
+│   │   ├── agg_trades.py       # Aggregate Schemas
+│   │   ├── trade_matches.py    # Trade Execution Match Schemas
+│   │   ├── dim_exch_clnt.py    # Exchange Client Account Schemas
+│   │   ├── dim_dep_clnt.py     # Depository Demat Account Schemas
+│   │   └── cases.py            # Forensic Case Schemas
 │   ├── services/               # Core Business Logic & Surveillance Algorithms
 │   │   ├── surveillance_service.py # EOD Scoring Engine & DWBIS Shareholding Analytics
-│   │   ├── fact_trades_service.py # Trade Match Filtering & Analytics
+│   │   ├── agg_trades_service.py # Pre-Calculated Aggregate Analytics Service
+│   │   ├── trade_matches_service.py # Trade Match Filtering & Analytics
 │   │   ├── client_service.py   # Client 360 Identity Resolution
 │   │   └── auth_service.py     # Authentication, User Accounts & Audit Logging
 │   └── routers/                # FastAPI HTTP REST API Endpoints
 │       ├── surveillance.py     # Shortlisting Metrics, Shareholding & Corporate Actions
-│       ├── fact_trades.py      # Trade Match Explorer & Wash Trade Analytics
+│       ├── agg_trades.py       # SEBI Aggregate Endpoints (/api/aggregates/)
+│       ├── trade_matches.py    # Trade Match Explorer & Wash Trade Analytics (/api/v1/trades/)
 │       ├── clients.py          # Client 360 Directory & Identity Resolution
 │       ├── cases.py            # Forensic Case Dossier Persistence API
 │       └── auth.py             # Authentication, User Management & Audit Log API

@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   BookOpen,
   TrendingUp,
+  History
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWatchlist, fetchCases, type ScripSummary, type CaseRecord } from "@/lib/api";
@@ -28,6 +29,7 @@ const nav = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
   { key: "compare", href: "/compare", label: "Compare", icon: GitCompare },
   { key: "cases", href: "/cases", label: "Cases", icon: FolderLock },
+  { key: "history", href: "/history", label: "History", icon: History },
   { key: "settings", href: "/settings", label: "Admin", icon: Settings },
 ];
 
@@ -58,59 +60,117 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   // Track read state separately so polling doesn't reset already-read items
-  const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  const [readIds, setReadIds] = useState<Set<string>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("pvasf_read_notifications");
+        if (saved) return new Set(JSON.parse(saved));
+      } catch (e) {
+        console.warn("Failed to load read notification IDs from localStorage", e);
+      }
+    }
+    return new Set();
+  });
+
+  const saveReadIds = (newSet: Set<string>) => {
+    setReadIds(newSet);
+    if (typeof window !== "undefined") {
+      try {
+        localStorage.setItem("pvasf_read_notifications", JSON.stringify(Array.from(newSet)));
+      } catch (e) {
+        console.warn("Failed to save read notification IDs to localStorage", e);
+      }
+    }
+  };
 
   const buildAlerts = useCallback(
     (scrips: ScripSummary[], cases: CaseRecord[]): AlertItem[] => {
       const now = new Date();
+      const caseMap = new Map<string, CaseRecord>();
+      cases.forEach((c) => {
+        if (c.status !== "Closed") {
+          caseMap.set(c.target_symbol, c);
+        }
+      });
 
-      // ── 1. Watchlist-driven alerts: any scrip currently on the risk watchlist
-      //    Source of truth: scrips where watchlist === true (scored above threshold)
-      const watchlistAlerts: AlertItem[] = scrips
-        .filter((s) => s.watchlist)
-        .map((s) => ({
-          id: `wl-${s.symbol}`,
-          symbol: s.symbol,
-          title: `${s.symbol} — Surveillance Flag`,
-          description: `PVASF Score: ${s.score.toFixed(1)}/100 · Risk: ${s.risk} · ${s.price_rise_pct > 0 ? `↑${s.price_rise_pct.toFixed(1)}% price rise` : "Anomaly detected"}`,
-          time: now.toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
-          read: readIds.has(`wl-${s.symbol}`),
-          type: s.risk === "High" ? "high" : "medium",
-          source: "watchlist" as const,
-        }));
+      const alertItems: AlertItem[] = [];
 
-      // ── 2. Case-driven alerts: open or under-review dossiers (not closed)
-      const caseAlerts: AlertItem[] = cases
-        .filter((c) => c.status !== "Closed")
-        .map((c) => {
-          const formattedDate = c.created_at
-            ? new Date(c.created_at).toLocaleDateString("en-IN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
-            : "Today";
-          return {
+      // Process all scrips and build alerts from live surveillance metrics & linked cases
+      scrips.forEach((s) => {
+        const openCase = caseMap.get(s.symbol);
+        const hasZFlag = Math.abs(s.price_z) >= 1.645 || Math.abs(s.volume_z) >= 1.645;
+        const isHigh = s.risk === "High" || (openCase && openCase.priority === "High");
+        const isMedium =
+          s.risk === "Medium" ||
+          (openCase && openCase.priority === "Medium") ||
+          s.watchlist ||
+          hasZFlag;
+
+        if (isHigh || isMedium) {
+          const alertId = openCase ? `case-${openCase.id}` : `wl-${s.symbol}`;
+          const caseTitle = openCase?.title
+            ? `${s.symbol} — ${openCase.title}`
+            : `${s.symbol} — ${s.risk} Risk Surveillance Alert`;
+          const caseIdStr = openCase ? `Case ${openCase.case_id} (${openCase.status}) · ` : "";
+          const metricStr = `Risk: ${s.risk} · Score: ${s.score.toFixed(0)} · Price Z: ${s.price_z >= 0 ? "+" : ""}${s.price_z.toFixed(2)}σ · Vol Z: ${s.volume_z >= 0 ? "+" : ""}${s.volume_z.toFixed(2)}σ`;
+
+          alertItems.push({
+            id: alertId,
+            symbol: s.symbol,
+            title: caseTitle,
+            description: `${caseIdStr}${metricStr}`,
+            time: openCase?.created_at
+              ? new Date(openCase.created_at).toLocaleDateString("en-IN", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : now.toLocaleDateString("en-IN", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+            read: readIds.has(alertId),
+            type: isHigh ? "high" : "medium",
+            source: openCase ? "case" : "watchlist",
+          });
+        }
+      });
+
+      // Include any open cases that were not matched in scrips loop
+      const processedSymbols = new Set(alertItems.map((a) => a.symbol));
+      cases.forEach((c) => {
+        if (c.status !== "Closed" && !processedSymbols.has(c.target_symbol)) {
+          alertItems.push({
             id: `case-${c.id}`,
             symbol: c.target_symbol,
             title: `${c.target_symbol} — ${c.title || c.case_id}`,
-            description: c.description || `Case ${c.case_id} · ${c.status} · Priority: ${c.priority}`,
-            time: formattedDate,
+            description: `Case ${c.case_id} · ${c.status} · Priority: ${c.priority}`,
+            time: c.created_at
+              ? new Date(c.created_at).toLocaleDateString("en-IN", {
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "Today",
             read: readIds.has(`case-${c.id}`),
             type: c.priority === "High" ? "high" : "medium",
-            source: "case" as const,
-          };
-        });
+            source: "case",
+          });
+        }
+      });
 
-      // ── 3. Merge: watchlist first, then cases. De-duplicate by symbol
-      //    (if a symbol has both a watchlist flag AND an open case, prefer the case entry)
-      const caseSymbols = new Set(caseAlerts.map((a) => a.symbol));
-      const dedupedWatchlist = watchlistAlerts.filter((a) => !caseSymbols.has(a.symbol));
-
-      // Sort: unread first, then by type (high before medium), then watchlist before case
-      const merged = [...dedupedWatchlist, ...caseAlerts].sort((a, b) => {
+      // Sort: unread first, then high priority before medium priority
+      alertItems.sort((a, b) => {
         if (a.read !== b.read) return a.read ? 1 : -1;
         const typePriority = { high: 0, medium: 1, watchlist: 2 };
         return (typePriority[a.type] ?? 2) - (typePriority[b.type] ?? 2);
       });
 
-      return merged;
+      return alertItems;
     },
     [readIds]
   );
@@ -137,7 +197,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const handleAlertClick = (alertItem: AlertItem) => {
     const newReadIds = new Set(readIds);
     newReadIds.add(alertItem.id);
-    setReadIds(newReadIds);
+    saveReadIds(newReadIds);
     setAlerts((prev) => prev.map((a) => (a.id === alertItem.id ? { ...a, read: true } : a)));
     setNotificationsOpen(false);
     router.push(`/analysis/${alertItem.symbol}`);
@@ -145,7 +205,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const handleMarkAllRead = () => {
     const allIds = new Set(alerts.map((a) => a.id));
-    setReadIds(allIds);
+    saveReadIds(allIds);
     setAlerts((prev) => prev.map((a) => ({ ...a, read: true })));
   };
 
@@ -191,97 +251,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Header ── */}
       <header className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs" style={{ zIndex: 50 }}>
-        <div className="flex items-center gap-4 px-5 py-0" style={{ height: "56px" }}>
+        <div className="flex items-center justify-between px-5 py-0 relative" style={{ height: "56px" }}>
 
-          {/* Logo / Title */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 group">
-            <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-black text-sm tracking-tight shadow-xs group-hover:bg-blue-700 transition-colors">
-              PV
-            </div>
-            <div>
-              <div className="font-extrabold text-sm text-slate-900 tracking-tight leading-none">PVASF</div>
-              <div className="text-[10px] font-semibold text-slate-500 leading-none mt-0.5">Market Conduct Engine</div>
-            </div>
+          {/* Centered Header Title */}
+          <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center group">
+            <h1 className="font-extrabold text-base text-slate-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
+              Price Volume Surveillance
+            </h1>
           </Link>
-
-          <div className="h-5 w-px bg-slate-200 mx-1 shrink-0" />
-
-          {/* Navigation Links */}
-          <nav className="flex items-center gap-1 shrink-0">
-            {nav.map(({ key, href, label, icon: Icon }) => {
-              const active = pathname === href || (href !== "/" && pathname.startsWith(href));
-              return (
-                <Link
-                  key={key}
-                  href={href}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
-                    active
-                      ? "bg-slate-900 text-white shadow-xs"
-                      : "text-slate-600 hover:bg-slate-100/80 hover:text-slate-900"
-                  )}
-                >
-                  <Icon className={cn("h-3.5 w-3.5", active ? "text-blue-400" : "text-slate-400")} />
-                  <span>{label}</span>
-                </Link>
-              );
-            })}
-          </nav>
 
           <div className="flex-1" />
 
-          {/* Scrip Search Bar */}
-          <div ref={searchRef} className="relative w-64 md:w-72">
-            <div className="relative flex items-center">
-              <Search className="absolute left-3 h-4 w-4 text-slate-400 pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Search symbol, company..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onFocus={() => searchQuery.trim() && setSearchOpen(true)}
-                className="w-full h-9 pl-9 pr-8 rounded-xl border border-slate-200/90 bg-slate-100/70 text-xs font-semibold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-500/20 transition-all shadow-2xs"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => { setSearchQuery(""); setSearchOpen(false); }}
-                  className="absolute right-2.5 text-slate-400 hover:text-slate-600"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Search Dropdown */}
-            {searchOpen && searchResults.length > 0 && (
-              <div
-                className="absolute left-0 right-0 mt-1.5 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden py-1"
-                style={{ zIndex: 200 }}
-              >
-                {searchResults.map((item) => (
-                  <button
-                    key={item.symbol}
-                    onClick={() => handleSelectSymbol(item.symbol)}
-                    className="w-full flex items-center justify-between px-3.5 py-2 text-left hover:bg-slate-50 transition-colors"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 font-mono">{item.symbol}</div>
-                      <div className="text-[11px] text-slate-400 truncate max-w-[180px]">{item.company}</div>
-                    </div>
-                    <div className="text-right ml-3">
-                      <div className="text-xs font-bold text-slate-700">₹{item.latest_close.toFixed(2)}</div>
-                      <div className={cn("text-[10px] font-semibold", item.price_rise_pct > 0 ? "text-rose-600" : "text-emerald-600")}>
-                        {item.price_rise_pct > 0 ? "+" : ""}{item.price_rise_pct}%
-                      </div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Notifications */}
-          <div className="relative" data-dropdown="notifications">
+          {/* Right Header Controls (Notifications + Profile Dropdown) */}
+          <div className="flex items-center gap-3.5">
+            {/* Notifications */}
+            <div className="relative" data-dropdown="notifications">
             <button
               onClick={() => { setNotificationsOpen(!notificationsOpen); setProfileOpen(false); }}
               className="relative flex items-center justify-center w-9 h-9 rounded-lg text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
@@ -372,39 +356,64 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           </div>
 
-          {/* User Profile */}
+          {/* User Profile Pill & Dropdown Navigation Menu */}
           <div className="relative" data-dropdown="profile">
             <button
               onClick={() => { setProfileOpen(!profileOpen); setNotificationsOpen(false); }}
-              className="flex items-center gap-2 h-9 px-2 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              className="flex items-center gap-2.5 h-10 px-3 rounded-2xl bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200/80 transition-all cursor-pointer shadow-2xs"
             >
               <div
-                className="flex items-center justify-center rounded-full text-white font-bold text-xs"
+                className="flex items-center justify-center rounded-full text-white font-bold text-xs shadow-xs"
                 style={{ width: 30, height: 30, background: "#1e293b", fontSize: 11 }}
               >
                 {userInitials}
               </div>
-              <div className="hidden md:block text-left">
-                <div className="text-xs font-semibold text-slate-900 leading-tight">{currentUser.name}</div>
-                <div className="text-[10px] text-slate-400 leading-tight">{currentUser.role}</div>
+              <div className="text-left">
+                <div className="text-xs font-bold text-slate-900 leading-tight">{currentUser.name}</div>
+                <div className="text-[10px] text-slate-500 font-medium leading-tight">{currentUser.role}</div>
               </div>
-              <ChevronDown className="h-3.5 w-3.5 text-slate-400 hidden md:block" />
+              <ChevronDown className="h-3.5 w-3.5 text-slate-400 ml-0.5" />
             </button>
 
             {profileOpen && (
               <div
-                className="absolute right-0 rounded-xl border border-slate-200 bg-white shadow-xl overflow-hidden"
-                style={{ top: "calc(100% + 8px)", width: 200, zIndex: 200 }}
+                className="absolute right-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden py-1"
+                style={{ top: "calc(100% + 8px)", width: 220, zIndex: 200 }}
               >
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <div className="text-sm font-semibold text-slate-900">{currentUser.name}</div>
-                  <div className="text-xs text-slate-500 mt-0.5">{currentUser.department}</div>
-                  <div className="text-[11px] font-bold text-blue-600 mt-1 uppercase tracking-wider">{currentUser.role} PRIVILEGE</div>
+                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
+                  <div className="text-xs font-bold text-slate-900">{currentUser.name}</div>
+                  <div className="text-[11px] text-slate-500">{currentUser.department}</div>
+                  <div className="text-[10px] font-extrabold text-blue-600 mt-1 uppercase tracking-wider">{currentUser.role} privileges</div>
                 </div>
-                <div className="p-2">
+
+                {/* Navigation Options inside User Menu */}
+                <div className="p-1.5 space-y-0.5 border-b border-slate-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">Workspace Modules</div>
+                  {nav.map(({ key, href, label, icon: Icon }) => {
+                    const active = pathname === href || (href !== "/" && pathname.startsWith(href));
+                    return (
+                      <Link
+                        key={key}
+                        href={href}
+                        onClick={() => setProfileOpen(false)}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all",
+                          active
+                            ? "bg-slate-900 text-white font-bold"
+                            : "text-slate-700 hover:bg-slate-100 hover:text-slate-900"
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4", active ? "text-blue-400" : "text-slate-500")} />
+                        <span>{label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                <div className="p-1.5">
                   <button
                     onClick={() => { logout(); setProfileOpen(false); }}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
                   >
                     Logout Session
                   </button>
@@ -412,7 +421,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
-
+        </div>
         </div>
       </header>
 

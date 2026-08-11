@@ -389,9 +389,9 @@ export function AlertsTable({
       {/* ── Table Scroll Container (Single Scroll Container) ── */}
       <div className="flex-1 overflow-auto bg-white">
         <table className="w-full border-collapse" style={{ minWidth: 960 }}>
-          <thead className="sticky top-0 z-10 shadow-2xs">
+          <thead className="sticky top-0 z-20 shadow-2xs">
             <tr className="bg-slate-50/95 backdrop-blur-xs text-slate-700 text-xs font-bold border-y border-slate-200">
-              <th className="px-4 py-3 text-left" style={{ minWidth: 200 }}>
+              <th className="px-4 py-3 text-left sticky left-0 bg-slate-50 z-30 shadow-[1px_0_0_0_#e2e8f0]" style={{ minWidth: 200 }}>
                 <div
                   className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer hover:text-slate-900 transition-colors"
                   onClick={() => handleSort("symbol")}
@@ -420,7 +420,7 @@ export function AlertsTable({
               Array.from({ length: 8 }).map((_, i) => (
                 <tr key={i} className="border-b border-slate-100 animate-pulse">
                   {Array.from({ length: 9 }).map((_, j) => (
-                    <td key={j} className="px-4 py-3.5">
+                    <td key={j} className={cn("px-4 py-3.5", j === 0 && "sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]")}>
                       <div className="h-4 bg-slate-100 rounded" style={{ width: j === 0 ? 120 : 60 }} />
                     </td>
                   ))}
@@ -452,23 +452,23 @@ export function AlertsTable({
                   )}
                 >
                   {/* Security Master */}
-                  <td className="px-4 py-3.5">
+                  <td className={cn("px-4 py-3.5 sticky left-0 z-10 shadow-[1px_0_0_0_#e2e8f0]", idx % 2 === 0 ? "bg-white" : "bg-slate-50/90")}>
                     <div className="flex items-center gap-2.5">
                       <div className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", riskDot[alert.risk] || "bg-slate-300")} />
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-1.5">
                           <Link
                             href={`/analysis/${alert.symbol}`}
-                            className="font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline"
+                            className="font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline tracking-tight"
                           >
                             {alert.symbol}
                           </Link>
-                          <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
                             EQ
                           </span>
                         </div>
-                        <div className="text-xs text-slate-400 truncate max-w-[170px] mt-0.5" title={alert.company || alert.isin}>
-                          {alert.company || alert.isin || "Listed Security"}
+                        <div className="text-xs font-medium text-slate-500 truncate max-w-[180px] mt-0.5" title={`${alert.company || alert.symbol} (${alert.isin || ''})`}>
+                          {alert.company || `${alert.symbol} Ltd`}
                         </div>
                       </div>
                     </div>

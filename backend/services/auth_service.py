@@ -99,6 +99,19 @@ class AuthService:
         admin_role: str,
     ) -> SysUser:
         """Creates a new user account (Admin only)."""
+        valid_roles = {"Admin", "Analyst", "Viewer"}
+        if role not in valid_roles:
+            raise ValueError(f"Invalid role '{role}'. Must be one of: {', '.join(valid_roles)}")
+
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters long")
+
+        existing = self._db.query(SysUser).filter(
+            (SysUser.username == username) | (SysUser.email == email)
+        ).first()
+        if existing:
+            raise ValueError("Username or email already registered")
+
         hashed = hash_password(password)
         user = SysUser(
             username=username,
@@ -130,10 +143,22 @@ class AuthService:
         admin_username: str,
         admin_role: str
     ) -> Optional[SysUser]:
-        """Updates role of a target user (Admin only)."""
+        """Updates role of a target user (Admin only with self-demotion lockout protection)."""
+        valid_roles = {"Admin", "Analyst", "Viewer"}
+        if new_role not in valid_roles:
+            raise ValueError(f"Invalid role '{new_role}'. Must be one of: {', '.join(valid_roles)}")
+
         user = self._db.query(SysUser).filter(SysUser.id == user_id).first()
         if not user:
             return None
+
+        # Lockout check: if demoting an Admin, ensure at least one other active Admin remains
+        if user.role == "Admin" and new_role != "Admin":
+            active_admin_count = self._db.query(SysUser).filter(
+                SysUser.role == "Admin", SysUser.is_active == True
+            ).count()
+            if active_admin_count <= 1:
+                raise ValueError("Cannot demote the last remaining active Admin user in the system.")
 
         old_role = user.role
         user.role = new_role
@@ -155,10 +180,18 @@ class AuthService:
         admin_username: str,
         admin_role: str
     ) -> Optional[SysUser]:
-        """Toggles user active/inactive status (Admin only)."""
+        """Toggles user active/inactive status (Admin only with lockout protection)."""
         user = self._db.query(SysUser).filter(SysUser.id == user_id).first()
         if not user:
             return None
+
+        # Lockout check: if deactivating an active Admin, ensure at least one other active Admin remains
+        if user.role == "Admin" and user.is_active:
+            active_admin_count = self._db.query(SysUser).filter(
+                SysUser.role == "Admin", SysUser.is_active == True
+            ).count()
+            if active_admin_count <= 1:
+                raise ValueError("Cannot deactivate the last remaining active Admin user in the system.")
 
         user.is_active = not user.is_active
         self._db.commit()

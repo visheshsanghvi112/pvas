@@ -8,6 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
+import { getAuthHeaders } from "@/lib/api";
+
+const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+
 interface HistoryItem {
   symbol: string;
   company: string;
@@ -30,7 +34,7 @@ export default function HistoryPage() {
   async function loadHistory() {
     setLoading(true);
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/v1/cases/");
+      const res = await fetch(`${BASE_HOST}/api/v1/cases/`, { headers: getAuthHeaders() });
       if (res.ok) {
         const cases = await res.json();
         const mapped: HistoryItem[] = cases.map((c: any) => ({
@@ -43,6 +47,7 @@ export default function HistoryPage() {
         }));
         setHistoryItems(mapped);
       }
+
     } catch (e) {
       console.error("Failed to load history from cases endpoint", e);
     } finally {

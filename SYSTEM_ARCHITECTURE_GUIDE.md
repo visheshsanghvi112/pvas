@@ -1,8 +1,8 @@
 # Price-Volume Alert Surveillance Framework (PVASF)
 ## Master System Architecture, Algorithmic Engine & Technical Manual
 
-**Document Version:** 3.0.0  
-**Target Systems:** Enterprise Teradata Data Warehouse (`FACT_TRADES`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`) | FastAPI Surveillance Engine | Next.js Enterprise Compliance Suite  
+**Document Version:** 3.2.0 (Post-Implementation Code Verified)  
+**Target Systems:** Enterprise 3-Tier SEBI Data Warehouse (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`) | FastAPI Surveillance Engine | Next.js Enterprise Compliance Suite  
 **Scope:** Complete Architectural Specification, Scoring Algorithms, Database Schemas, User Workflows, Data Lineage, RBAC Security, and Regulatory Compliance Audit  
 
 ---
@@ -76,27 +76,164 @@ The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas,
 
 ---
 
-## 3. EOD Data Processing & Transformation Pipeline
+### 2.3 Comprehensive File-by-File Responsibility Directory
 
-When end-of-day (EOD) trade feeds or historical market extracts arrive, the data flows through a 5-stage transformation pipeline from raw SQL tables to shortlisted risk alerts:
+Every file in the codebase is categorized below by its specific layer, responsibility, and system dependencies:
+
+#### 1. Core Surveillance & Specification Files
+- **[`pv_alert_surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/pv_alert_surveillance.py)**: Pure Python implementation of the 5 Core Statistical Anomaly Metrics, Z-score calculations, participant trade audit algorithms, and weighted composite scoring ($w_1=25.0, w_2=20.0, w_3=25.0, w_4=15.0, w_5=15.0$). Operates independently of web frameworks.
+- **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)**: Regulatory specification document detailing mathematical scoring rules, metric cutoffs (0, 1, 3, 5), and watchlist triage thresholds ($S \ge 15.0$).
+- **[`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md)**: Master schema reference document defining physical tables across the Dimension, Fact, Application, and SEBI Trade Aggregate layers.
+- **[`TRADE_AGGREGATE_REARCHITECTURE_PLAN.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/TRADE_AGGREGATE_REARCHITECTURE_PLAN.md)**: Architecture plan documenting 30-minute VWAP closing price calculations and trade aggregate repository projections.
+
+#### 2. Backend Application Engine (`backend/`)
+- **[`backend/main.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/main.py)**: FastAPI application entry point. Configures CORS middleware, registers router modules (`surveillance`, `trade_matches`, `clients`, `auth`, `cases`, `agg_trades`), and manages lifespan database initialization and seeding.
+- **[`backend/db/database.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/database.py)**: SQLAlchemy engine configuration, connection pool setup, `SessionLocal` factory, `init_db()`, and `reset_database()` helper routines.
+- **[`backend/db/models.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/models.py)**: Declarative ORM models defining 18 physical database tables (`DimExchClntDtls`, `DimDepClntDtls`, `FactMstrSharehldg`, `FactMainShldng`, `FactPromShldrDtls`, `FactPubShldrDtls`, `FactDvrShldng`, `FactDrHolding`, `FactLkdinShldng`, `FactCmpExchShldng`, `FactCorpActions`, `FactCaDilFctr`, `SysUser`, `SysAuditLog`, `ForensicCase`, `AggSecDay`, `AggClntSecDay`, `AggPanPairDay`). *(Note: Trade match logs `AggTradeRecord` are projected dynamically from `AGG_PAN_PAIR_DAY` + `AGG_SEC_DAY`)*.
+- **[`backend/db/seed.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/seed.py)**: Synthetic data generator. Populates 260 trading days of EOD security aggregates (`AGG_SEC_DAY`), participant trade aggregates (`AGG_CLNT_SEC_DAY`), counterparty PAN pair matrices (`AGG_PAN_PAIR_DAY`), quarterly shareholding shifts, corporate actions, exchange & depository demat clients, and forensic case dossiers.
+
+#### 3. Backend Services Layer (`backend/services/`)
+- **[`backend/services/surveillance_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/surveillance_service.py)**: Main business logic service for EOD surveillance. Loads EOD data directly from `AGG_SEC_DAY`, executes `SurveillanceEngine`, calculates participant conduct metrics (LTP pushers, volume share, PnL), and formats shareholding breakdowns & corporate actions.
+- **[`backend/services/trade_matches_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/trade_matches_service.py)**: Business logic service for trade match analytics. Orchestrates repository calls, computes pagination metadata, and summarizes same-broker wash trades and HFT algo executions.
+- **[`backend/services/agg_trades_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/agg_trades_service.py)**: Service layer for querying pre-calculated SEBI trade aggregates (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`).
+- **[`backend/services/cases_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/cases_service.py)**: Business logic for forensic investigation dossiers (`Draft` $\rightarrow$ `Open Investigation` $\rightarrow$ `Pending Action` $\rightarrow$ `Closed`) and evidence JSON attachments.
+- **[`backend/services/client_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/client_service.py)**: Client 360° identity resolution service. Cross-references exchange client accounts (`DECL`) with depository demat accounts (`DDCL`) by PAN.
+- **[`backend/services/auth_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/auth_service.py)**: Security service enforcing RBAC roles (`Admin`, `Analyst`, `Viewer`), salted SHA-256 password hashing, and immutable security audit logging (`SYS_AUDIT_LOGS`).
+
+#### 4. Backend Repositories Layer (`backend/repositories/`)
+- **[`backend/repositories/trade_matches_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/trade_matches_repo.py)**: Data access layer projecting millisecond trade execution records (`AggTradeRecord`) directly from `AGG_PAN_PAIR_DAY` + `AGG_SEC_DAY`. Filters by symbol, date range, wash flags, and algo flags.
+- **[`backend/repositories/agg_trades_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/agg_trades_repo.py)**: Data access layer executing optimized SQL queries against `AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, and `AGG_PAN_PAIR_DAY`.
+- **[`backend/repositories/cases_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/cases_repo.py)**: Data access layer managing CRUD persistence for `FORENSIC_CASES`.
+- **[`backend/repositories/dim_exch_clnt_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/dim_exch_clnt_repo.py)**: Data access layer querying exchange client accounts (`DIM_EXCH_CLNT_DTLS`).
+- **[`backend/repositories/dim_dep_clnt_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/dim_dep_clnt_repo.py)**: Data access layer querying depository demat accounts (`DIM_DEP_CLNT_DTLS`).
+
+#### 5. Backend Routers & Schemas (`backend/routers/`, `backend/schemas/`)
+- **[`backend/routers/surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/surveillance.py)**: FastAPI endpoints for watchlist risk triage (`/watchlist`, `/scrips`), scrip detail (`/scrip/{scrip_id}`), participant audits, shareholding breakdowns, corporate actions, and weight adjustments.
+- **[`backend/routers/trade_matches.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/trade_matches.py)**: FastAPI endpoints for trade execution exploration (`/api/v1/trades/`), daily symbol trade heatmaps, wash trade summaries, and algo breakdowns.
+- **[`backend/routers/agg_trades.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/agg_trades.py)**: FastAPI endpoints serving raw SEBI trade warehouse aggregates (`/api/aggregates/...` & `/api/v1/agg-trades/...`).
+- **[`backend/routers/cases.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/cases.py)**: FastAPI endpoints for forensic case management (`/api/v1/cases/`).
+- **[`backend/routers/clients.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/clients.py)**: FastAPI endpoints for exchange/depository client listings and Client 360° PAN lookups (`/api/v1/clients/...`).
+- **[`backend/routers/auth.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/auth.py)**: FastAPI endpoints for authentication (`/api/v1/auth/login`), user management, and audit log viewing.
+- **[`backend/schemas/`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/)**: Pydantic v2 validation models (`agg_trades.py`, `cases.py`, `common.py`, `dim_dep_clnt.py`, `dim_exch_clnt.py`, `trade_matches.py`).
+
+#### 6. Frontend App Router Pages (`app/`)
+- **[`lib/api.ts`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/lib/api.ts)**: Unified TypeScript API client encapsulating REST fetch requests (`fetchWatchlist`, `fetchScripDetail`, `fetchScripParticipants`, `fetchTradeLog`, `fetchCases`, `fetchClient360`).
+- **[`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx)**: Executive Surveillance Dashboard. Renders KPI summary cards, risk-ranked watchlist table, and anomaly trigger filters.
+- **[`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/[symbol]/page.tsx)** & **[`app/analyse/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analyse/[symbol]/page.tsx)**: Single Continuous Scrip Analysis Workspace. Houses the 180-day price/volume chart, participant conduct audit, shareholding trends, corporate actions, and case evidence tabs.
+- **[`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx)**: Regulatory Audit & Alert Triage History Log.
+- **[`app/trades/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/trades/page.tsx)**: Trade Execution Explorer. Provides paginated filtering across millisecond trade executions, wash trade flags, and HFT algo tags.
+- **[`app/clients/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/clients/page.tsx)**: Client 360° Identity Resolution Portal. Enables searching exchange and depository demat accounts by PAN.
+- **[`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx)**: Forensic Case Management Workspace. Tracks active investigation dossiers and status transitions.
+- **[`app/compare/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/compare/page.tsx)**: Multi-Scrip Anomaly Comparison Matrix.
+- **[`app/members/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/members/page.tsx)**: Clearing Member & Broker Conduct Monitor.
+- **[`app/algo-ctcl/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/algo-ctcl/page.tsx)**: CTCL Terminal & HFT Algo Intelligence.
+- **[`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx)**: Interactive Model Weight Calibration & User Management Page.
+
+#### 7. Frontend UI Components (`components/`)
+- **[`components/layout/app-shell.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/layout/app-shell.tsx)**: Navigation shell housing top bar, sidebar links, role badge selector, Teradata Data Sync button, and the **Unified Notification Drawer**.
+- **[`components/dashboard/alerts-table.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/dashboard/alerts-table.tsx)**: Watchlist table component rendering risk scores, 180D price rise %, $Z_{\text{price}}$, $Z_{\text{volume}}$, circuit hit badges, and navigation to `/analysis/[symbol]`.
+- **[`components/dashboard/filter-panel.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/dashboard/filter-panel.tsx)**: Risk triage & anomaly score range filters.
+- **[`components/dashboard/kpi-card.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/dashboard/kpi-card.tsx)**: Executive KPI cards rendering high-risk scrip counts and monitored metrics.
+- **[`components/investigation/investigation-workspace.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/investigation/investigation-workspace.tsx)**: Single Continuous Stock Workspace tab container (Overview, 5-Metric Breakdown, 180d OHLCV Chart, Participant Conduct Audit, Case Dossiers).
+- **[`components/investigation/charts.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/investigation/charts.tsx)**: Recharts-powered 180-day price and volume Z-score visualizer with circuit band overlays.
+- **[`components/investigation/timeline.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/investigation/timeline.tsx)**: Corporate announcements & dilution timeline component.
+- **[`components/ui/`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/ui/)**: Shared UI primitives (`badge.tsx`, `button.tsx`, `card.tsx`, `input.tsx`, `metric-card.tsx`, `metric-help.tsx`).
+
+---
+
+## 3. System Execution & Data Transformation Pipeline
+
+### 3.1 End-to-End System Execution Flow
+
+The system operates across 5 interconnected execution phases from database boot to frontend rendering:
+
+```
+───────────────────────────────────────────────────────────────────────────────────────────
+PHASE A: STARTUP & DATABASE INITIALIZATION
+  `backend/main.py` ──► `database.py` (init_db) ──► `models.py` (18 ORM Tables Created)
+                                                         │
+                                                         ▼
+                                            `seed.py` (Seeds Aggregate Tables)
+───────────────────────────────────────────────────────────────────────────────────────────
+PHASE B: EOD DATA RELOAD & ANOMALY SURVEILLANCE ENGINE
+  User Opens App / Sync Data ──► `routers/surveillance.py` (/scrips)
+                                        │
+                                        ▼
+                           `surveillance_service.py` (get_scrips_summary)
+                                        │
+                                        ├──► Reloads fresh EOD data from `AGG_SEC_DAY`
+                                        └──► Invokes `pv_alert_surveillance.py` Engine
+                                                    │
+                                                    ▼
+                                       Calculates 5 Statistical Anomaly Metrics:
+                                       • Price Rise % (s1)  • Price Z-Score (s2)
+                                       • Volume Z-Score (s3) • Circuit Band Hits (s4)
+                                       • 180D New High Breakouts (s5)
+                                                    │
+                                                    ▼
+                                       Computes Weighted Composite Risk Score (S)
+                                       Assigns Risk Tier: High (>=15.0), Medium (10-14.9), Low (<10.0)
+───────────────────────────────────────────────────────────────────────────────────────────
+PHASE C: REST API SERIALIZATION & FRONTEND HYDRATION
+  FastAPI Router ──► Serializes DTO ──► REST JSON Payload
+                                              │
+                                              ▼
+                               `lib/api.ts` (fetchWatchlist -> /scrips)
+                                              │
+                                              ▼
+                               `app/page.tsx` Dashboard & `app-shell.tsx`
+                               • Alerts Table Renders Watchlist & Badges
+                               • Notification Bell Drawer Combines Live Scores
+───────────────────────────────────────────────────────────────────────────────────────────
+PHASE D: IN-DEPTH PARTICIPANT & SCRIP CONDUCT AUDIT
+  User Clicks "Analyze Scrip" ──► `/analysis/[symbol]` Page
+                                         │
+                                         ▼
+                           `routers/surveillance.py` (/scrip/{symbol}/participants)
+                                         │
+                                         ▼
+                           `surveillance_service.py`
+                                         ├──► Reads `AGG_CLNT_SEC_DAY` (LTP Pushers, Volume Share)
+                                         └──► Reads `AGG_PAN_PAIR_DAY` (Circular Loops & Wash Trades)
+                                                    │
+                                                    ▼
+                           Renders Recharts Price Chart, LTP Push Table, Circular Loop Node Map
+───────────────────────────────────────────────────────────────────────────────────────────
+PHASE E: TRADE EXECUTION EXPLORATION & FORENSIC DOSSIERS
+  User Navigates to `/trades` ──► `routers/trade_matches.py` (/api/v1/trades/)
+                                          │
+                                          ▼
+                             `trade_matches_service.py` ──► `trade_matches_repo.py`
+                                                                    │
+                                                                    ▼
+                                                 Projects `AGG_PAN_PAIR_DAY` + `AGG_SEC_DAY`
+                                                 Extracts Same-Broker Wash Trade Flag (1)
+                                                 Extracts HFT Algo Execution Flag (1)
+                                                                    │
+                                                                    ▼
+                             Renders Paginated Millisecond Execution Match Log Table
+───────────────────────────────────────────────────────────────────────────────────────────
+```
+
+When end-of-day (EOD) trade feeds or historical market extracts arrive, the data flows through a 5-stage transformation pipeline:
 
 ```
                   ┌─────────────────────────────────────────┐
                   │          RAW DATAWAREHOUSE TABLES       │
-                  │   FACT_TRADES (31,200 Trade Matches)    │
-                  │   DIM_EXCH_CLNT_DTLS (500 Accounts)     │
-                  │   DIM_DEP_CLNT_DTLS (500 Demat Accts)   │
+                  │   AGG_SEC_DAY, AGG_CLNT_SEC_DAY         │
+                  │   DIM_EXCH_CLNT_DTLS (DECL)             │
+                  │   DIM_DEP_CLNT_DTLS  (DDCL)             │
                   └────────────────────┬────────────────────┘
                                        │
                                        ▼
                   ┌─────────────────────────────────────────┐
                   │       1. DAILY OHLCV AGGREGATION        │
-                  │  Derived from trade-level match data:   │
-                  │  • Open  = Price of FIRST trade of day  │
-                  │  • High  = MAX(Ftrd_Trd_Price) of day   │
-                  │  • Low   = MIN(Ftrd_Trd_Price) of day   │
-                  │  • Close = Price of LAST trade of day   │
-                  │  • Volume = SUM(Ftrd_Trd_Qty) of day    │
+                  │  Sourced from AGG_SEC_DAY:              │
+                  │  • Open  = Asd_Open_Price               │
+                  │  • High  = Asd_High_Price               │
+                  │  • Low   = Asd_Low_Price                │
+                  │  • Close = Asd_Close_Price (VWAP Close) │
+                  │  • Volume = Asd_Tot_Qty                 │
                   └────────────────────┬────────────────────┘
                                        │
                                        ▼
@@ -121,19 +258,18 @@ When end-of-day (EOD) trade feeds or historical market extracts arrive, the data
                   ┌─────────────────────────────────────────┐
                   │      4. WEIGHTED COMPOSITE SCORING      │
                   │  Score = (0.25 * PriceRise) +           │
-                  │          (0.25 * PriceZ)    +           │
-                  │          (0.20 * VolumeZ)   +           │
+                  │          (0.20 * PriceZ)    +           │
+                  │          (0.25 * VolumeZ)   +           │
                   │          (0.15 * BandHits)  +           │
                   │          (0.15 * NewHighs)              │
-                  │  Transformed to 0..100 Scale            │
                   └────────────────────┬────────────────────┘
                                        │
                                        ▼
                   ┌─────────────────────────────────────────┐
                   │    5. RISK SEVERITY & WATCHLIST TRIAGE  │
-                  │  Score >= 75.0  --> HIGH Risk (OPEN)    │
-                  │  Score >= 60.0  --> MEDIUM (REVIEW)     │
-                  │  Score < 60.0   --> LOW (NORMAL)        │
+                  │  Score >= 15.0  --> HIGH Risk (OPEN)    │
+                  │  Score >= 10.0  --> MEDIUM (REVIEW)     │
+                  │  Score < 10.0   --> LOW (NORMAL)        │
                   └─────────────────────────────────────────┘
 ```
 
@@ -220,50 +356,40 @@ $$\text{New High Count} = \sum_{t=T-15}^{T} \mathbb{I}\left(\text{High}_t > \max
 
 ### 4.6 Weighted Composite Score & Risk Triage
 
-The weighted composite score is computed using configurable weights ($w_1 \dots w_5$ summing to $1.0$):
+The weighted composite score is computed using configurable weights in [`pv_alert_surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/pv_alert_surveillance.py#L129-L135):
 
-$$\text{Composite Score Raw} = (w_1 \cdot S_1) + (w_2 \cdot S_2) + (w_3 \cdot S_3) + (w_4 \cdot S_4) + (w_5 \cdot S_5)$$
+$$\text{PVASF Final Risk Score} = \sum_{i=1}^{5} \frac{w_i \cdot S_i}{5.0}$$
 
-$$\text{PVASF Final Risk Score} = \left(\frac{\text{Composite Score Raw}}{5.0}\right) \times 100$$
+**Active Default Weight Allocation:**  
+- $w_1$ (Price Rise %) = **25.0** (25%)
+- $w_2$ (Price Z-Score) = **20.0** (20%)
+- $w_3$ (Volume Z-Score) = **25.0** (25%)
+- $w_4$ (Band Persistence) = **15.0** (15%)
+- $w_5$ (New Highs) = **15.0** (15%)
 
-**Default Weight Allocation:**  
-- $w_1$ (Price Rise %) = **0.25**
-- $w_2$ (Price Z-Score) = **0.25**
-- $w_3$ (Volume Z-Score) = **0.20**
-- $w_4$ (Band Persistence) = **0.15**
-- $w_5$ (New Highs) = **0.15**
-
-**Watchlist Triage Thresholds:**  
-- **HIGH Risk**: Score $\ge 75.0$ (Immediate investigation mandatory)
-- **MEDIUM Risk**: $60.0 \le \text{Score} < 75.0$ (Surveillance review queue)
-- **LOW Risk**: Score $< 60.0$ (Normal trading pattern)
+**Active Watchlist Triage Thresholds:**  
+- **HIGH Risk**: Score $\ge 15.0$ (Immediate investigation mandatory)
+- **MEDIUM Risk**: $10.0 \le \text{Score} < 15.0$ (Surveillance review queue)
+- **LOW Risk**: Score $< 10.0$ (Normal trading pattern)
 
 ---
 
 ## 5. Participant Conduct Audit & Algorithmic Intelligence
 
 ### 5.1 LTP Contribution % (Price Pushers)
-Measures the percentage of positive price ticks driven by aggressive buy trades for each client PAN:
-
-$$\text{LTP Contribution \% (PAN}_i) = \frac{\sum \text{Qty of Buy-Aggressive Trades by PAN}_i \text{ with LTP\_Chng = '+'}}{\text{Total Qty of All Upward Trades in 15d}} \times 100$$
+Measures positive price impact derived from participant trades stored in `AGG_CLNT_SEC_DAY` (`Acsd_Pos_Cont_Val` - `Acsd_Neg_Cont_Val`).
 
 ### 5.2 Volume Share %
-Measures each PAN's share of total traded volume during the observation window:
+Measures each participant PAN's share of total traded volume during the observation window:
 
-$$\text{Volume Share \% (PAN}_i) = \frac{\sum (\text{Buy Qty}_i + \text{Sell Qty}_i)}{\text{Total Traded Volume in 15d}} \times 100$$
+$$\text{Volume Share \% (PAN}_i) = \frac{\sum (\text{Acsd\_Buy\_Tot\_Qty}_i + \text{Acsd\_Sell\_Tot\_Qty}_i)}{\text{Total Traded Volume in 15d}} \times 100$$
 
 ### 5.3 Counterparty Pairs & Circular Loop Detection
-Evaluates trade match concentration between buyer PAN ($A$) and seller PAN ($B$). A high pairwise concentration ($> 20\%$) indicates synchronized trading. Multi-node circular rotation ($A \rightarrow B \rightarrow C \rightarrow A$) is detected by traversing counterparty volume graphs.
+Evaluates trade match concentration between buyer PAN ($A$) and seller PAN ($B$) from `AGG_PAN_PAIR_DAY`. Multi-node circular rotation ($A \rightarrow B \rightarrow C \rightarrow A$) is detected by traversing counterparty volume graphs.
 
 ### 5.4 Wash Trade Audit
 Trade executions are audited for wash trade indicators:
-- `Ftrd_Same_Broker_Wash_Flag = 1`: Buy and sell orders matched within the same Trading Member (Broker).
-- `Ftrd_Diff_Broker_Wash_Flag = 1`: Pre-arranged wash trade executed across different brokers.
-
-### 5.5 Algorithmic Order Book Intelligence (CTCL)
-Audits execution channels (`Ftrd_Buy_CTCL_Algo_Flag`):
-- **Manual vs DMA vs Algo Ratio**: Tracks algorithmic participation volume.
-- **Order Book Depth Snapshot**: Renders Best Bid/Ask prices (`Ftrd_Best_Bid_Price`, `Ftrd_Best_Ask_Price`) and pending order queue counts at the exact trade execution millisecond.
+- `Appd_Same_Broker_Wash_Flag = 1` / `Ftrd_Same_Broker_Wash_Flag = 1`: Buy and sell orders matched within the same Trading Member.
 
 ---
 
@@ -271,8 +397,8 @@ Audits execution channels (`Ftrd_Buy_CTCL_Algo_Flag`):
 
 The official PVASF framework is built on a **3-Tier Enterprise SEBI Data Warehouse Architecture**:
 1. **Dimension Layer (`DECL`, `DDCL`):** Legal entity demographics, PAN resolution, depository demat accounts, joint holders, and Power of Attorney (POA) hubs.
-2. **Fact Execution Layer (`FACT_TRADES`, `FMSH`, `FCAC`):** Millisecond trade match logs, order IDs (`Ftrd_Buy_Ord_Num`), same-broker wash trade flags, and legal evidence in court proceedings. (*Note: `FACT_TRADES` is retained for legal evidence and microsecond execution logs, but omitted from daily baseline OHLC/Close calculations*).
-3. **Aggregate Layer (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`):** Pre-calculated daily security closing prices (30-min VWAP), OHLC bars, client volume shares, positive/negative/net LTP price push contributions (`Acsd_Pos_Cont_Val` - `Acsd_Neg_Cont_Val`), daily wash trade totals, and buyer-seller PAN pair concentrations (`Appd_Pos_Contri` - `Appd_Neg_Contri`).
+2. **Fact Execution Layer (`FMSH`, `FCAC`):** Order IDs, corporate actions, and forensic dossiers. (*Note: In the active Python backend, millisecond trade match records `AggTradeRecord` are projected dynamically from `AGG_PAN_PAIR_DAY` + `AGG_SEC_DAY` by `TradeMatchesRepository`*).
+3. **Aggregate Layer (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`):** Pre-calculated daily security closing prices (30-min VWAP), OHLC bars, client volume shares, positive/negative/net LTP price push contributions, daily wash trade totals, and buyer-seller PAN pair concentrations.
 
 ```
 ┌───────────────────────────────┐               ┌───────────────────────────────┐
@@ -286,195 +412,91 @@ The official PVASF framework is built on a **3-Tier Enterprise SEBI Data Warehou
 └───────────────────────────────┘               │ Decl_City, Decl_State         │      │
                                                 └───────────────▲───────────────┘      │
 ┌───────────────────────────────┐                               │                      │ Join by
-│     FACT_TRADES (FTRD)        │                               │                      │ Client
+│    AGG_PAN_PAIR_DAY (APPD)    │                               │                      │ Client
 ├───────────────────────────────┤               ┌───────────────┴───────────────┐      │ PAN
-│ Ftrd_Trd_Num (PK)             │               │   DIM_DEP_CLNT_DTLS (DDCL)    │      │
-│ Ftrd_Symbol, Ftrd_Trd_Date    │               ├───────────────────────────────┤      │
-│ Ftrd_Trd_Tmst (Timestamp)     ├───────────────► Ddcl_Clnt_Token (PK)          │      │
-│ Ftrd_Trd_Price, Ftrd_Trd_Qty  │               │ Ddcl_Clnt_Pan (PAN Key) ◄─────┴──────┘
-│ Ftrd_Buy_Exch_Clnt_Token ─────┤               │ Ddcl_Dp_Id (NSDL/CDSL DP)     │
-│ Ftrd_Sell_Exch_Clnt_Token ────┘               │ Ddcl_Clnt_Id (Demat Acct)     │
-│ Ftrd_Same_Broker_Wash_Flag    │               │ Ddcl_Jnt_Hldr1_Pan            │
+│ Appd_Buy_Clnt_Token ──────────┼───────────────► Ddcl_Clnt_Token (PK)          │      │
+│ Appd_Sell_Clnt_Token ─────────┤               │ Ddcl_Clnt_Pan (PAN Key) ◄─────┴──────┘
+│ Appd_Trd_Date, Appd_Cmp_Token │               │ Ddcl_Dp_Id (NSDL/CDSL DP)     │
+│ Appd_Buy_Tot_Qty, Val         │               │ Ddcl_Clnt_Id (Demat Acct)     │
+│ Appd_Same_Broker_Wash_Flag    │               │ Ddcl_Jnt_Hldr1_Pan            │
 └───────────────────────────────┘               │ Ddcl_Poa_Hldr_Pan             │
                                                 └───────────────────────────────┘
 ```
 
 ---
 
-### Table 1: `FACT_TRADES` (`FTRD`) — 123 Total Columns (Enterprise Data Warehouse PDM V10.0)
+### Physical Teradata Warehouse ORM Matrix (18 SQLAlchemy ORM Models)
 
-Stores every trade execution match on the exchange.
-
-#### Base Columns (27 Columns — Returned in List Responses)
-
-| # | Column Name | Data Type | Description |
-|---|---|---|---|
-| 1 | `Ftrd_Trd_Date` | `DATE` | Calendar date of trade execution. |
-| 2 | `Ftrd_Trd_Num` | `INTEGER` | Primary Key — Unique exchange trade match number. |
-| 3 | `Ftrd_Symbol` | `VARCHAR` | NSE scrip symbol (e.g., `ALPHATECH`). |
-| 4 | `Ftrd_Series` | `VARCHAR` | Market series code (`EQ`, `BE`). |
-| 5 | `Ftrd_Sub_Seg_Code` | `INTEGER` | Sub-segment: `1`=EQ, `2`=Futures, `3`=Call, `4`=Put. |
-| 6 | `Ftrd_Sess_Type` | `INTEGER` | Session: `1`=Pre-Open, `2`=Normal Market, `3`=Closing Auction. |
-| 7 | `Ftrd_Trd_Tmst` | `TIMESTAMP` | Execution timestamp (millisecond precision). |
-| 8 | `Ftrd_Trd_Price` | `DECIMAL` | Executed trade price. |
-| 9 | `Ftrd_Trd_Qty` | `DECIMAL` | Executed trade quantity. |
-| 10 | `Ftrd_Trd_Val` | `DECIMAL` | Executed trade value (Price × Qty). |
-| 11 | `Ftrd_Buy_Exch_TM_Token` | `INTEGER` | Buying Trading Member (Broker) token. |
-| 12 | `Ftrd_Buy_Exch_Clnt_Token` | `INTEGER` | Buying Client exchange token (FK → `DECL`). |
-| 13 | `Ftrd_Sell_Exch_TM_Token` | `INTEGER` | Selling Trading Member (Broker) token. |
-| 14 | `Ftrd_Sell_Exch_Clnt_Token` | `INTEGER` | Selling Client exchange token (FK → `DECL`). |
-| 15 | `Ftrd_Buy_Acct_Type` | `INTEGER` | Buy account type: `1`=Client, `2`=Proprietary, `3`=Institutional. |
-| 16 | `Ftrd_Sell_Acct_Type` | `INTEGER` | Sell account type: `1`=Client, `2`=Proprietary, `3`=Institutional. |
-| 17 | `Ftrd_Same_Broker_Wash_Flag` | `INTEGER` | `1` if buy & sell client matched within same broker. |
-| 18 | `Ftrd_Diff_Broker_Wash_Flag` | `INTEGER` | `1` if wash trade detected across different brokers. |
-| 19 | `Ftrd_Buy_CTCL_Algo_Flag` | `INTEGER` | Buy side algo flag: `0`=Algo, `1`=Non-Algo. |
-| 20 | `Ftrd_Sell_CTCL_Algo_Flag` | `INTEGER` | Sell side algo flag: `0`=Algo, `1`=Non-Algo. |
-| 21 | `Ftrd_Buy_CTCL_Inet_DMA_Flag`| `INTEGER` | Buy side DMA / internet order flag. |
-| 22 | `Ftrd_Sell_CTCL_Inet_DMA_Flag`| `INTEGER` | Sell side DMA / internet order flag. |
-| 23 | `Ftrd_LTP_Chng_Indc` | `VARCHAR` | LTP change direction: `+` (up), `-` (down), `=` (unchanged). |
-| 24 | `Ftrd_Last_Trd_Price` | `DECIMAL` | Last traded price prior to this trade match. |
-| 25 | `Ftrd_Init_Side_Type` | `INTEGER` | Initiator side: `1`=Buy aggressive, `2`=Sell aggressive. |
-| 26 | `Ftrd_Trd_Mod_Flag` | `INTEGER` | `1` if trade record was modified post-match. |
-| 27 | `Ftrd_Trd_Can_Flag` | `INTEGER` | `1` if trade match was cancelled. |
-
-#### Detail Columns (70 Columns — Order Book Depth & Order Attributes)
-
-Key detail columns include: `Ftrd_Buy_Ord_Num`, `Ftrd_Sell_Ord_Num`, `Ftrd_Buy_Ord_Tmst`, `Ftrd_Sell_Ord_Tmst`, `Ftrd_Buy_Ord_Price`, `Ftrd_Sell_Ord_Price`, `Ftrd_Buy_IP_Addr`, `Ftrd_Sell_IP_Addr`, `Ftrd_Best_Bid_Price`, `Ftrd_Best_Ask_Price`, `Ftrd_Best_Bid_Qty`, `Ftrd_Best_Ask_Qty`, `Ftrd_Bid_Pdg_Ord_Cnt`, `Ftrd_Ask_Pdg_Ord_Cnt`, `FTRD_BUY_ALGO_ID`, `FTRD_SELL_ALGO_ID`.
+| Table Name | Short Name | ORM Class Name | Domain / Category | Framework Purpose & Consuming Modules |
+| :--- | :---: | :---: | :--- | :--- |
+| `DIM_EXCH_CLNT_DTLS` | `DECL` | `DimExchClntDtls` | Exchange Client Master | Client PAN legal resolution, trading member broker IDs & city/state clusters |
+| `DIM_DEP_CLNT_DTLS` | `DDCL` | `DimDepClntDtls` | Depository Client Master | Demat beneficiary owner accounts, joint holder PANs & POA control hubs |
+| `FACT_MSTR_SHAREHLDG` | `FMSH` | `FactMstrSharehldg` | Shareholding Header | Master record for quarterly shareholding filing status & reporting dates |
+| `FACT_MAIN_SHLDNG` | `FSHG` | `FactMainShldng` | Main Shareholding Record | Promoter float % vs. Public float % & total promoter share pledge % |
+| `FACT_PROM_SHLDR_DTLS` | `FPRH` | `FactPromShldrDtls` | Promoter Shareholder Details | Promoter entity names, individual share counts & pledged share percentages |
+| `FACT_PUB_SHLDR_DTLS` | `FPUH` | `FactPubShldrDtls` | Public Shareholder Details | Listing of public institutional & non-institutional entities holding >1% |
+| `FACT_DVR_SHLDNG` | `FDVR` | `FactDvrShldng` | Differential Voting Rights | Shareholding pattern for stocks with DVR share classes (Class X, Y, Z) |
+| `FACT_DR_HOLDING` | `FDRH` | `FactDrHolding` | Depository Receipts | Outstanding ADR/GDR counts and underlying custodian shares |
+| `FACT_LKDIN_SHLDNG` | `FLKD` | `FactLkdinShldng` | Locked-In Shareholding | Locked-in promoter/public share counts and lock-in expiry dates |
+| `FACT_CMP_EXCH_SHLDNG` | `FCES` | `FactCmpExchShldng` | Company Exchange Index | Mapping index for company tokens, trade periods, and filing dates |
+| `FACT_CORP_ACTIONS` | `FCAC` | `FactCorpActions` | Corporate Announcements | Official disclosures for dividends, bonus issues, stock splits & record dates |
+| `FACT_CA_DIL_FCTR` | `FCDF` | `FactCaDilFctr` | Corporate Action Dilution | Price dilution adjustment factors (e.g. 0.500000 for 1:1 bonus/split) |
+| `FORENSIC_CASES` | `CASES` | `ForensicCase` | Dossier Persistence | Persistence for regulatory investigation dossiers & pinned trade evidence |
+| `SYS_USERS` | `USERS` | `SysUser` | Security & RBAC | Salted SHA-256 password authentication & RBAC roles (`Admin`, `Analyst`, `Viewer`) |
+| `SYS_AUDIT_LOGS` | `LOGS` | `SysAuditLog` | Immutable Security Audit Log | Security audit trail recording user logins, weight changes & KYC views |
+| `AGG_SEC_DAY` | `ASD` | `AggSecDay` | Trade Security Aggregate | Official 30-min VWAP Close (`Asd_Close_Price`), OHLC bars & 52W Highs/Lows |
+| `AGG_CLNT_SEC_DAY` | `ACSD` | `AggClntSecDay` | Trade Client Aggregate | Pre-calculated daily client volume share, LTP push & wash trade counts |
+| `AGG_PAN_PAIR_DAY` | `APPD` | `AggPanPairDay` | Trade PAN Pair Aggregate | Pre-calculated buyer-seller PAN pair matched volume, value & circular loops |
 
 ---
-
-### Table 2: `DIM_EXCH_CLNT_DTLS` (`DECL`) — 128 Total Columns (Enterprise Data Warehouse PDM V10.0)
-
-Exchange client dimension table linking trading tokens to legal entities via PAN.
-
-| # | Column Name | Data Type | Description |
-|---|---|---|---|
-| 1 | `Decl_Exch_Clnt_Token` | `INTEGER` | Primary Key — Unique exchange client token (FK target from `FTRD`). |
-| 2 | `Decl_Clnt_Token` | `INTEGER` | Global internal client token. |
-| 3 | `Decl_TM_Id` | `VARCHAR` | Trading Member (Broker) ID. |
-| 4 | `Decl_Clnt_Id` | `VARCHAR` | Unique client code assigned by broker. |
-| 5 | `Decl_Clnt_Pan` | `VARCHAR` | **Client Permanent Account Number (PAN) — Primary Join Key to DDCL.** |
-| 6 | `Decl_Clnt_Name` | `VARCHAR` | Full legal client name. |
-| 7 | `Decl_Clnt_Catg_Type` | `INTEGER` | Client category: `1`=Individual, `2`=Corporate, `3`=FII. |
-| 8 | `Decl_Clnt_Stat` | `INTEGER` | Account status: `1`=Active, `2`=Suspended. |
-| 9 | `Decl_City` | `VARCHAR` | Registered city. |
-| 10 | `Decl_State` | `VARCHAR` | Registered state. |
-| 11 | `Decl_Cntry` | `VARCHAR` | Registered country. |
-
----
-
-### Table 3: `DIM_DEP_CLNT_DTLS` (`DDCL`) — 63 Total Columns (Enterprise Data Warehouse PDM V10.0)
-
-Depository client dimension table storing demat accounts (NSDL / CDSL), joint holders, and Power of Attorney flags.
-
-| # | Column Name | Data Type | Description |
-|---|---|---|---|
-| 1 | `Ddcl_Clnt_Token` | `INTEGER` | Primary Key — Depository client token. |
-| 2 | `Ddcl_Clnt_Pan` | `VARCHAR` | **Client PAN — Join key from DECL.** |
-| 3 | `Ddcl_Dp_Id` | `VARCHAR` | Depository Participant ID (NSDL / CDSL). |
-| 4 | `Ddcl_Clnt_Id` | `VARCHAR` | Demat account client ID. |
-| 5 | `Ddcl_Dp_Type_Desc` | `VARCHAR` | Depository type description (`NSDL`, `CDSL`). |
-| 6 | `Ddcl_Jnt_Hldr1_Pan` | `VARCHAR` | Joint Holder 1 PAN. |
-| 7 | `Ddcl_Poa_Hldr_Pan` | `VARCHAR` | Power of Attorney (PoA) holder PAN. |
-| 8 | `Ddcl_Acct_Stat_Desc` | `VARCHAR` | Demat account status (`Active`, `Frozen`). |
-
----
-
-### Tables 4-11: Quarterly Shareholding Results Tables (8 Tables, 174 Columns)
-- **`FACT_MSTR_SHAREHLDG` (`FMSH`, 37 fields):** Shareholding Master
-- **`FACT_MAIN_SHLDNG` (`FSHG`, 30 fields):** Main Shareholding Record
-- **`FACT_PROM_SHLDR_DTLS` (`FPRH`, 22 fields):** Promoter Shareholder Details
-- **`FACT_PUB_SHLDR_DTLS` (`FPUH`, 19 fields):** Public Shareholder Details
-- **`FACT_DVR_SHLDNG` (`FDVR`, 25 fields):** Differential Voting Rights Details
-- **`FACT_DR_HOLDING` (`FDRH`, 19 fields):** Depository Receipts Details
-- **`FACT_LKDIN_SHLDNG` (`FLKD`, 17 fields):** Locked-In Shareholding
-- **`FACT_CMP_EXCH_SHLDNG` (`FCES`, 5 fields):** Company Exchange Shareholding Details
-
----
-
-### Tables 12-13: Corporate Actions & Dilution Factors (2 Tables, 62 Columns)
-- **`FACT_CORP_ACTIONS` (`FCAC`, 49 fields):** Corporate Actions & Announcements
-- **`FACT_CA_DIL_FCTR` (`FCDF`, 13 fields):** Corporate Actions Dilution Factor
-
----
-
-## Complete Physical Teradata Warehouse Matrix (13 Tables, 551 Columns)
-
-| Table | Short Name | Full Column Count | Domain / Category |
-|---|---|---|---|
-| `FACT_TRADES` | FTRD | **123** | Trade Execution Facts |
-| `DIM_EXCH_CLNT_DTLS` | DECL | **128** | Exchange Client Master |
-| `DIM_DEP_CLNT_DTLS` | DDCL | **63** | Depository Client Master |
-| `FACT_MSTR_SHAREHLDG` | FMSH | **37** | Shareholding Master |
-| `FACT_MAIN_SHLDNG` | FSHG | **30** | Main Shareholding Record |
-| `FACT_PROM_SHLDR_DTLS` | FPRH | **22** | Promoter Shareholder Details |
-| `FACT_PUB_SHLDR_DTLS` | FPUH | **19** | Public Shareholder Details |
-| `FACT_DVR_SHLDNG` | FDVR | **25** | Differential Voting Rights |
-| `FACT_DR_HOLDING` | FDRH | **19** | Depository Receipts |
-| `FACT_LKDIN_SHLDNG` | FLKD | **17** | Locked-In Shareholding |
-| `FACT_CMP_EXCH_SHLDNG` | FCES | **5** | Company Exchange Shareholding Index |
-| `FACT_CORP_ACTIONS` | FCAC | **49** | Corporate Actions & Announcements |
-| `FACT_CA_DIL_FCTR` | FCDF | **13** | Corporate Actions Dilution Factor |
-| `FORENSIC_CASES` | CASES | **13** | Forensic Case Dossier Persistence |
-| `SYS_USERS` | USERS | **9** | Security User Management & RBAC |
-| `SYS_AUDIT_LOGS` | LOGS | **7** | Immutable Security Audit Trail |
-| **Grand Total** | **16 Tables** | **580 Columns** | **Enterprise Physical Data Warehouse & Persistence Engine** |
 
 ## 7. End-to-End Data Lineage
 
 ```
-[ FACT_TRADES (97 Cols) ] ────┐
-[ DIM_EXCH_CLNT_DTLS (44) ] ──┼──► [ FactTradesRepository ] ──► [ EODSurveillanceService ]
-[ DIM_DEP_CLNT_DTLS (45)  ] ──┘                                        │
-                                                                       ▼
-                                                          Computes 5 Metric Scores
-                                                          Calculates LTP Pushers & PnL
-                                                                       │
-                                                                       ▼
-                                                          [ FastAPI Router Layer ]
-                                                                       │
-                                                                       ▼
-                                                          JSON Payloads (REST API)
-                                                                       │
-                                                                       ▼
-                                                          [ Next.js UI Workspace ]
+[ AGG_SEC_DAY ] ───────────┐
+[ AGG_CLNT_SEC_DAY ] ──────┼──► [ AggTradesRepository ] ──► [ EODSurveillanceService ]
+[ AGG_PAN_PAIR_DAY ] ──────┤                                        │
+[ DIM_EXCH_CLNT_DTLS ] ────┤                                        ▼
+[ DIM_DEP_CLNT_DTLS ] ─────┘                           Computes 5 Anomaly Scores
+                                                       Calculates Client LTP Push & PnL
+                                                       Extracts Wash Trades & Circular Loops
+                                                                    │
+                                                                    ▼
+                                                       [ FastAPI Router Layer ]
+                                                                    │
+                                                                    ▼
+                                                       JSON Payloads (REST API)
+                                                                    │
+                                                                    ▼
+                                                       [ Next.js UI Workspace ]
 ```
 
 ---
 
 ## 8. UI/UX Blueprint, Folder Structure & Page Code Architecture
 
-The PVASF frontend is built with Next.js 15 App Router, Tailwind CSS, Recharts, and Lucide React icons, adhering to a **Single Continuous Workspace Paradigm** and a **3-Click Investigation Journey**.
+The PVASF frontend is built with Next.js 15 App Router, Tailwind CSS, Recharts, and Lucide React icons, adhering to a **Single Continuous Workspace Paradigm**.
 
-### 8.1 Complete Directory & File Structure Map
+### 8.1 Active Directory & File Structure Map
 
 ```
 UI_PVASF/
 ├── app/                                    # Next.js App Router Page Routes
 │   ├── layout.tsx                          # Root Layout with AppShell wrapper & theme provider
 │   ├── page.tsx                            # Dashboard / Watchlist Triage Page (Route: /)
-│   ├── globals.css                         # Global CSS tokens, dark theme variables & custom scrollbars
-│   ├── algo-ctcl/
-│   │   └── page.tsx                        # CTCL Terminal & HFT Algo Intelligence (Route: /algo-ctcl)
-│   ├── cases/
-│   │   └── page.tsx                        # Forensic Case Dossier Management (Route: /cases)
-│   ├── clients/
-│   │   └── page.tsx                        # Client 360° Directory & Identity Resolution (Route: /clients)
-│   ├── compare/
-│   │   └── page.tsx                        # Multi-Scrip Anomaly Comparison Matrix (Route: /compare)
-│   ├── guide/
-│   │   └── page.tsx                        # Architecture, Math Engine & Methodology Guide (Route: /guide)
-│   ├── history/
-│   │   └── page.tsx                        # Regulatory Alert Audit & Triage History Log (Route: /history)
-│   ├── investigations/
-│   │   └── [symbol]/
-│   │       └── page.tsx                    # Single Continuous Stock Workspace (Route: /investigations/[symbol])
-│   ├── members/
-│   │   └── page.tsx                        # Clearing Member & Broker Conduct Monitor (Route: /members)
-│   ├── settings/
-│   │   └── page.tsx                        # Weight Calibration & RBAC Management (Route: /settings)
-│   └── trades/
-│       └── page.tsx                        # Trade Execution Explorer & Order Book Matches (Route: /trades)
+│   ├── globals.css                         # Global CSS tokens & theme variables
+│   ├── algo-ctcl/page.tsx                  # CTCL Terminal & HFT Algo Intelligence (Route: /algo-ctcl)
+│   ├── analysis/
+│   │   └── [symbol]/page.tsx              # Single Continuous Stock Workspace (Route: /analysis/[symbol])
+│   ├── analyse/
+│   │   └── [symbol]/page.tsx              # Route alias for stock analysis workspace (Route: /analyse/[symbol])
+│   ├── cases/page.tsx                      # Forensic Case Dossier Management (Route: /cases)
+│   ├── clients/page.tsx                    # Client 360° Directory & Identity Resolution (Route: /clients)
+│   ├── compare/page.tsx                    # Multi-Scrip Anomaly Comparison Matrix (Route: /compare)
+│   ├── history/page.tsx                    # Regulatory Alert Audit & Triage History Log (Route: /history)
+│   ├── members/page.tsx                    # Clearing Member & Broker Conduct Monitor (Route: /members)
+│   ├── settings/page.tsx                   # Weight Calibration & RBAC Management (Route: /settings)
+│   └── trades/page.tsx                     # Trade Execution Explorer & Order Book Matches (Route: /trades)
 │
 ├── components/                             # Reusable React UI Components
 │   ├── layout/
@@ -496,46 +518,46 @@ UI_PVASF/
 │       └── metric-help.tsx                 # In-Context Formula Explanations & Tooltips
 │
 ├── lib/                                    # State Management, API Connectors & Utilities
-│   ├── api.ts                              # Axios/Fetch API Client Layer for FastAPI Endpoints
+│   ├── api.ts                              # Fetch API Client Layer for FastAPI Endpoints
 │   ├── user-context.tsx                    # User Session & Role-Based Access Control Context
 │   ├── metric-help.ts                      # Parameter Mathematical Formula References & Definitions
 │   ├── data.ts                             # Mock/Fallback Static Constants
 │   └── utils.ts                            # Classname merging (clsx + tailwind-merge)
 │
 └── backend/                                # FastAPI Python Backend Architecture
-    ├── main.py                             # FastAPI App Entrypoint, CORS & Router Inclusion
-    ├── security.py                         # Password Hashing & JWT/Bearer Token Auth
+    ├── main.py                             # FastAPI App Entrypoint & Router Inclusion
+    ├── security.py                         # Password Hashing & Bearer Token Auth
     ├── routers/                            # REST Controller Layer
     │   ├── surveillance.py                 # Watchlist, Scrip Scorecard & Weight Tuning Endpoints
-    │   ├── agg_trades.py                   # Security/Client/PAN-Pair Daily Aggregates (/api/aggregates/)
-    │   ├── fact_trades.py                  # Trade Execution Matches & Wash Trade Analytics
-    │   ├── clients.py                      # Client 360°, DECL (Exchange) & DDCL (Depository) Lookups
-    │   ├── cases.py                        # Forensic Case Dossier Persistence
-    │   └── auth.py                         # User Login & Audit Trail Logs
+    │   ├── agg_trades.py                   # Security/Client/PAN-Pair Aggregates (/api/aggregates/)
+    │   ├── trade_matches.py                # Trade Execution Matches (/api/v1/trades/)
+    │   ├── clients.py                      # Client 360°, DECL & DDCL Lookups (/api/v1/clients/)
+    │   ├── cases.py                        # Forensic Case Dossier Persistence (/api/v1/cases/)
+    │   └── auth.py                         # User Login & Audit Trail Logs (/api/v1/auth/)
     ├── services/                           # Business Domain Services
-    │   ├── surveillance_service.py         # 5-Metric Scoring Engine, Z-Scores & LTP Pusher Math
+    │   ├── surveillance_service.py         # 5-Metric Scoring Engine & LTP Pusher Math
     │   ├── agg_trades_service.py           # Pre-Calculated Daily Analytics Service
-    │   ├── fact_trades_service.py          # Raw Match Analytics & Wash Trade Detection
+    │   ├── trade_matches_service.py        # Raw Match Analytics & Wash Trade Detection
     │   ├── client_service.py               # Identity Resolution across DECL + DDCL
     │   ├── cases_service.py                # Dossier Workflow & Lifecycle Logic
     │   └── auth_service.py                 # RBAC Management & Audit Logging
     ├── repositories/                       # Data Access Layer (SQLAlchemy ORM)
     │   ├── agg_trades_repo.py              # Aggregated Tables Data Access
-    │   ├── fact_trades_repo.py             # FACT_TRADES Querying
+    │   ├── trade_matches_repo.py           # Trade Execution Matches & Wash Trade Querying
+    │   ├── cases_repo.py                   # FORENSIC_CASES Table Persistence
     │   ├── dim_exch_clnt_repo.py           # DIM_EXCH_CLNT_DTLS Querying
-    │   ├── dim_dep_clnt_repo.py            # DIM_DEP_CLNT_DTLS Querying
-    │   └── cases_repo.py                   # FORENSIC_CASES Table Persistence
+    │   └── dim_dep_clnt_repo.py            # DIM_DEP_CLNT_DTLS Querying
     ├── schemas/                            # Pydantic DTO Serialization Specs
     │   ├── agg_trades.py                   # Aggregated Daily Schemas
-    │   ├── fact_trades.py                  # Trade Execution Schemas
+    │   ├── trade_matches.py                # Trade Execution Match Schemas
     │   ├── dim_exch_clnt.py                # Exchange Client Account Schemas
     │   ├── dim_dep_clnt.py                 # Depository Demat Account Schemas
     │   ├── cases.py                        # Forensic Case Schemas
     │   └── common.py                       # Base Response & Paginated DTO Wrappers
     └── db/                                 # Database Engine & Persistence
         ├── database.py                     # SQLAlchemy Engine & Session Factory
-        ├── models.py                       # Relational Table Definitions (16 Tables)
-        └── seed.py                         # Market Feed Generator (31,200 Trades)
+        ├── models.py                       # Relational Table Definitions (18 Tables)
+        └── seed.py                         # Market Feed Generator
 ```
 
 ---
@@ -544,42 +566,16 @@ UI_PVASF/
 
 | Route Path | File Location | Primary Purpose & Key Functionality | Main Components Used | API Endpoints Invoked |
 | :--- | :--- | :--- | :--- | :--- |
-| `/` | [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx) | **Executive Surveillance Dashboard**: Main triage workspace displaying high-risk scrips, executive KPI stat cards, composite risk heatmaps, and quick filtering by risk severity. | `KpiCard`, `AlertsTable`, `FilterPanel` | `/api/v1/surveillance/watchlist`, `/api/v1/surveillance/weights` |
-| `/investigations/[symbol]` | [`app/investigations/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/investigations/[symbol]/page.tsx) | **Single Continuous Stock Workspace**: 5-Tab deep dive for a selected stock (Overview, 5-Metric Breakdown, 180d OHLCV Chart, Trade Execution Matches, Participant Conduct Audit & Case Dossier creation). | `InvestigationWorkspace`, `Charts`, `Timeline`, `MetricCard` | `/api/v1/surveillance/scrip/{symbol}`, `/scrip/{symbol}/participants`, `/shareholding-breakdown`, `/corporate-actions` |
-| `/trades` | [`app/trades/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/trades/page.tsx) | **Trade Execution Explorer**: Full-featured execution match search with pagination, filtering by wash trade flag, HFT CTCL flag, date range, and order depth inspection modal. | `Badge`, `Input`, `Button`, Order Depth Modal | `/api/v1/trades/`, `/api/v1/trades/stats/daily`, `/api/v1/trades/analysis/wash-trades` |
-| `/clients` | [`app/clients/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/clients/page.tsx) | **Client 360° Directory**: Entity resolution lookup mapping Exchange Trading Accounts (`DECL`) with Depository Demat Accounts (`DDCL`) by PAN, displaying transaction volume & risk status. | `Badge`, `Input`, Client 360 Modal | `/api/v1/clients/exchange`, `/api/v1/clients/depository`, `/api/v1/clients/profile/{token}` |
-| `/cases` | [`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx) | **Forensic Case Management**: Case dossier triage workspace to track open regulatory investigations, assign investigators, record evidence notes, and advance case lifecycle states (NEW -> IN_REVIEW -> ESCALATED -> CLOSED). | Case Grid, Case Creator Modal | `/api/v1/cases/`, `/api/v1/cases/{case_id}` |
-| `/compare` | [`app/compare/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/compare/page.tsx) | **Multi-Scrip Comparison Matrix**: Side-by-side comparative analysis of up to 4 scrips across all 5 anomaly metrics, Z-Scores, price surge %, and participant concentration. | Comparison Radar/Bar Grid, Metric Cards | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/scrip/{symbol}` |
-| `/members` | [`app/members/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/members/page.tsx) | **Broker & Clearing Member Conduct**: Monitor trading member concentration, wash trade ratios, and HFT order-to-trade ratios across registered stock brokers. | Member Stat Cards, Broker Table | `/api/v1/trades/analysis/wash-trades`, `/api/v1/trades/analysis/algo-breakdown` |
-| `/algo-ctcl` | [`app/algo-ctcl/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/algo-ctcl/page.tsx) | **CTCL & Algo Intelligence**: Specialized dashboard auditing High-Frequency Trading (HFT) algorithms, CTCL terminal IDs, co-location latency anomalies, and automated spoofing patterns. | Algo Distribution Charts, Terminal Audit | `/api/v1/trades/analysis/algo-breakdown` |
-| `/history` | [`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx) | **Regulatory Audit & Alert History**: Immutable log of all historical alert triggers, past model weight changes, user actions, and investigation resolution archives. | History Table, Filter Toolbar | `/api/v1/auth/audit-logs`, `/api/v1/surveillance/watchlist` |
-| `/settings` | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx) | **System Settings & Model Tuning**: Interactive slider controls to calibrate metric weights ( \dots w_5$), set alert triage thresholds, manage system users, and assign RBAC roles. | Weight Tuning Sliders, User Table | `/api/v1/surveillance/weights`, `/api/v1/auth/users` |
-| `/guide` | [`app/guide/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/guide/page.tsx) | **Architecture & User Manual Guide**: In-app documentation hub explaining system architecture, mathematical formulas, scoring thresholds, schema definitions, and regulatory compliance. | Markdown Renderer, Interactive Nav | Static Spec / Inline Documentation |
-
----
-
-### 8.3 Single Continuous Workspace Paradigm
-
-The application enforces a **3-Click Investigation Journey** within a **Single Continuous Workspace** ([`app/investigations/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/investigations/[symbol]/page.tsx)):
-
-```
-                         DASHBOARD / WATCHLIST
-                                   │
-                                   │ (Select Stock: ALPHATECH)
-                                   ▼
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                    ALPHATECH SINGLE INVESTIGATION WORKSPACE                      │
-│                           (/investigations/ALPHATECH)                            │
-│                                                                                  │
-│ ┌──────────────┬──────────────┬──────────────┬──────────────┬──────────────────┐ │
-│ │  1. OVERVIEW │  2. METRICS  │ 3. 180d CHART│  4. TRADES   │ 5. PARTICIPANTS  │ │
-│ └──────────────┴──────────────┴──────────────┴──────────────┴──────────────────┘ │
-│                                                                                  │
-│   • Clicking any Trade Match  --> Launches Order Book Depth Inspector Modal      │
-│   • Clicking any Client PAN   --> Launches Client 360° Profile Modal (DECL+DDCL) │
-│   • Clicking Case Dossier     --> Saves Pinned Evidence & Notes to Workspace    │
-└──────────────────────────────────────────────────────────────────────────────────┘
-```
+| `/` | [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx) | **Executive Surveillance Dashboard**: Main triage workspace displaying high-risk scrips, executive KPI stat cards, and composite risk filters. | `KpiCard`, `AlertsTable`, `FilterPanel` | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/weights` |
+| `/analysis/[symbol]` | [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/[symbol]/page.tsx) | **Single Continuous Stock Workspace**: 5-Tab deep dive for a selected stock (Overview, 5-Metric Breakdown, 180d OHLCV Chart, Trade Execution Matches, Participant Conduct Audit & Case Dossier creation). | `InvestigationWorkspace`, `Charts`, `Timeline`, `MetricCard` | `/api/v1/surveillance/scrip/{scrip_id}`, `/scrip/{scrip_id}/participants`, `/shareholding-breakdown`, `/corporate-actions` |
+| `/trades` | [`app/trades/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/trades/page.tsx) | **Trade Execution Explorer**: Full-featured execution match search with pagination, filtering by wash trade flag, HFT CTCL flag, date range, and order depth. | `Badge`, `Input`, `Button` | `/api/v1/trades/`, `/api/v1/trades/stats/daily`, `/api/v1/trades/analysis/wash-trades` |
+| `/clients` | [`app/clients/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/clients/page.tsx) | **Client 360° Directory**: Entity resolution lookup mapping Exchange Accounts (`DECL`) with Depository Demat Accounts (`DDCL`) by PAN. | `Badge`, `Input` | `/api/v1/clients/exchange`, `/api/v1/clients/depository`, `/api/v1/clients/pan/{pan}` |
+| `/cases` | [`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx) | **Forensic Case Management**: Case dossier triage workspace to track open regulatory investigations, assign investigators, and record notes. | Case Grid, Case Creator Modal | `/api/v1/cases/`, `/api/v1/cases/{case_id}` |
+| `/compare` | [`app/compare/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/compare/page.tsx) | **Multi-Scrip Comparison Matrix**: Side-by-side comparative analysis of scrips across all 5 anomaly metrics. | Comparison Grid, Metric Cards | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/scrip/{symbol}` |
+| `/members` | [`app/members/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/members/page.tsx) | **Broker & Clearing Member Conduct**: Monitor trading member concentration and wash trade ratios across stock brokers. | Member Stat Cards, Broker Table | `/api/v1/trades/analysis/wash-trades`, `/api/v1/trades/analysis/algo-breakdown` |
+| `/algo-ctcl` | [`app/algo-ctcl/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/algo-ctcl/page.tsx) | **CTCL & Algo Intelligence**: Specialized dashboard auditing High-Frequency Trading (HFT) algorithms and terminal IDs. | Algo Distribution Charts | `/api/v1/trades/analysis/algo-breakdown` |
+| `/history` | [`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx) | **Regulatory Audit & Alert History**: Log of historical alert triggers, user actions, and investigation archives. | History Table, Filter Toolbar | `/api/v1/auth/audit-logs`, `/api/v1/surveillance/scrips` |
+| `/settings` | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx) | **System Settings & Model Tuning**: Calibrate metric weights ($w_1 \dots w_5$), set alert thresholds, and manage system users. | Weight Tuning Sliders, User Table | `/api/v1/surveillance/weights`, `/api/v1/auth/users` |
 
 ---
 
@@ -588,34 +584,26 @@ The application enforces a **3-Click Investigation Journey** within a **Single C
 | API Endpoint | Verb | Input Parameters | Output Payloads / DTO | Purpose |
 | :--- | :---: | :--- | :--- | :--- |
 | `/api/v1/surveillance/health` | `GET` | None | `{"status": "ONLINE", "spec": "..."}` | System operational & spec alignment check. |
-| `/api/v1/surveillance/watchlist` | `GET` | `search` | `List[ScripScorecardDTO]` | Executive dashboard risk-ranked watchlist. |
-| `/api/v1/surveillance/scrips` | `GET` | `search` | `List[ScripScorecardDTO]` | Summary of active scrips and alert states. |
-| `/api/v1/surveillance/scrip/{symbol}` | `GET` | `symbol`, `days=180` | `ScripDetailDTO` | 180-day historical OHLCV chart, scorecards, announcements & shareholding. |
-| `/api/v1/surveillance/scrip/{symbol}/participants` | `GET` | `symbol` | `ParticipantSummaryDTO` | Participant conduct audit: LTP pushers, volume share, PnL & wash trades. |
-| `/api/v1/surveillance/scrip/{symbol}/shareholding-breakdown` | `GET` | `symbol` | `DWBISShareholdingBreakdownDTO` | Full Enterprise Data Warehouse quarter-by-quarter shareholding trends (`FSHG`, `FPRH`). |
-| `/api/v1/surveillance/scrip/{symbol}/corporate-actions` | `GET` | `symbol` | `List[DWBISCorpActionDTO]` | Official Regulatory corporate actions & price dilution factors (`FCAC`, `FCDF`). |
+| `/api/v1/surveillance/scrips` | `GET` | `search` | `List[ScripSummary]` | Active scrips summary & executive dashboard watchlist triage. |
+| `/api/v1/surveillance/scrip/{scrip_id}` | `GET` | `scrip_id` | `ScripDetailDTO` | 180-day historical OHLCV chart, scorecards, announcements & shareholding. |
+| `/api/v1/surveillance/scrip/{scrip_id}/participants` | `GET` | `scrip_id` | `ParticipantAudit` | Participant conduct audit: LTP pushers, volume share, PnL & wash trades. |
+| `/api/v1/surveillance/scrip/{scrip_id}/shareholding-breakdown` | `GET` | `scrip_id` | `DWBISShareholdingBreakdownDTO` | Full Enterprise Data Warehouse quarter-by-quarter shareholding trends (`FSHG`, `FPRH`). |
+| `/api/v1/surveillance/scrip/{scrip_id}/corporate-actions` | `GET` | `scrip_id` | `List[DWBISCorpActionDTO]` | Official Regulatory corporate actions & price dilution factors (`FCAC`, `FCDF`). |
 | `/api/v1/surveillance/weights` | `POST` | `{"weights": {...}, "threshold": X}` | `UpdatedWeightsDTO` | Dynamically updates scoring weights $w_1 \dots w_5$ & alert triage threshold. |
-| `/api/v1/surveillance/upload-eod` | `POST` | `file` (CSV multipart) | `{"status": "SUCCESS", "records": N}` | Uploads and processes new EOD trade feed CSV files. |
-| `/api/v1/trades/` | `GET` | `symbol`, `date_from`, `date_to`, `wash_flag`, `algo_flag`, `page`, `page_size` | `PaginatedTradesDTO` | Filtered & paginated trade matches from `FACT_TRADES`. |
+| `/api/v1/trades/` | `GET` | `symbol`, `date_from`, `date_to`, `wash_flag`, `algo_flag`, `page`, `page_size` | `PaginatedTradesDTO` | Filtered & paginated trade matches projected from `AGG_PAN_PAIR_DAY` + `AGG_SEC_DAY`. |
 | `/api/v1/trades/stats/daily` | `GET` | None | `List[DailySymbolStatsDTO]` | Daily trade count & value metrics for volume heatmaps. |
 | `/api/v1/trades/analysis/wash-trades` | `GET` | `date_from`, `date_to` | `WashTradeSummaryDTO` | Same-broker wash trade analytics & counterparty pair matrix. |
 | `/api/v1/trades/analysis/algo-breakdown` | `GET` | `date_from`, `date_to` | `AlgoBreakdownDTO` | HFT CTCL vs manual trade volume breakdown. |
-| `/api/v1/trades/{date}/{num}` | `GET` | `date`, `num` | `FactTradeDetail` | Order book depth snapshot & execution timestamps. |
 | `/api/v1/clients/exchange` | `GET` | `pan`, `tm_id`, `clnt_id`, `name`, `catg_type`, `stat`, `page` | `PaginatedExchClientsDTO` | List exchange client accounts from `DIM_EXCH_CLNT_DTLS` (`DECL`). |
 | `/api/v1/clients/exchange/search` | `GET` | `q` (PAN/Name/ID), `limit` | `List[DimExchClntBase]` | Full-text client account search (`DECL`). |
-| `/api/v1/clients/exchange/{token}` | `GET` | `token` | `DimExchClntDetail` | Detailed exchange account profile. |
 | `/api/v1/clients/depository` | `GET` | `pan`, `dp_id`, `clnt_id`, `name`, `page` | `PaginatedDepClientsDTO` | List depository demat accounts from `DIM_DEP_CLNT_DTLS` (`DDCL`). |
-| `/api/v1/clients/depository/{token}` | `GET` | `token` | `DimDepClntDetail` | Detailed depository demat account profile. |
-| `/api/v1/clients/profile/{token}` | `GET` | `token` | `Client360DTO` | In-context Client 360° profile (`DECL` + `DDCL` cross-reference). |
-| `/api/v1/clients/pan/{pan}` | `GET` | `pan` | `Client360DTO` | Client 360° lookup by PAN for identity resolution modals. |
+| `/api/v1/clients/pan/{pan}` | `GET` | `pan` | `ClientDetail` | Client 360° lookup by PAN for identity resolution. |
 | `/api/v1/cases/` | `GET`, `POST` | `status`, `target_symbol` | `List[ForensicCaseDTO]` | List or create forensic case dossiers (`FORENSIC_CASES`). |
 | `/api/v1/cases/{case_id}` | `GET`, `PUT`, `DELETE` | `case_id`, `status` | `ForensicCaseDTO` | Fetch, advance status lifecycle, or update forensic case dossier. |
-| `/api/v1/auth/login` | `POST` | `username`, `password` | `UserSessionDTO` | SHA-256 password authentication & bearer session token generation. |
-| `/api/v1/auth/users` | `GET`, `POST` | `username`, `role` | `List[SysUserDTO]` | Role-Based Access Control (RBAC) user account management (`SYS_USERS`). |
-| `/api/v1/auth/audit-logs` | `GET` | `username`, `action` | `List[SysAuditLogDTO]` | Immutable security audit trail logs (`SYS_AUDIT_LOGS`). |
-| `/api/aggregates/security/{symbol}` | `GET` | `symbol`, `start_date`, `end_date`, `limit` | `List[AggSecDaySchema]` | **Security daily aggregates: Official 30-min VWAP Close, OHLC bars, 52W High/Low & Circuit Limits (`AGG_SEC_DAY`).** |
-| `/api/aggregates/client` | `GET` | `cmp_token`, `clnt_token`, `target_date`, `limit` | `List[AggClntSecDaySchema]` | **Client security daily aggregates: Volume share, LTP push values & wash trade totals (`AGG_CLNT_SEC_DAY`).** |
-| `/api/aggregates/pan_pair` | `GET` | `cmp_token`, `buy_clnt_token`, `sell_clnt_token`, `target_date`, `limit` | `List[AggPanPairDaySchema]` | **Counterparty PAN pair daily aggregates: Matched volume, value & circular trade loops (`AGG_PAN_PAIR_DAY`).** |
+| `/api/v1/auth/login` | `POST` | `username`, `password` | `UserSessionDTO` | PBKDF2-HMAC-SHA256 password authentication & bearer token generation. |
+| `/api/v1/auth/users` | `GET`, `POST` | `username`, `role` | `List[UserResponse]` | Role-Based Access Control (RBAC) user account management (`SYS_USERS`). |
+| `/api/v1/auth/audit-logs` | `GET` | `username`, `action` | `List[AuditLogResponse]` | Immutable security audit trail logs (`SYS_AUDIT_LOGS`). |
+| `/api/aggregates/security/{symbol}` | `GET` | `symbol`, `start_date`, `end_date`, `limit` | `List[AggSecDaySchema]` | Security daily aggregates: Official 30-min VWAP Close, OHLC bars (`AGG_SEC_DAY`). |
 
 ---
 
@@ -635,17 +623,6 @@ The application enforces a **3-Click Investigation Journey** within a **Single C
 | **CTCL & Algo Intelligence** | **No Access**| **View** | **View** | **No Access**| **Full** | **View** |
 | **Forensic Case Workspace** | **No Access**| **View** | **Full** | **No Access**| **No Access**| **Full** |
 
-### 10.2 PII Data Sensitivity Rules
-
-| User Role | PAN Masking Rule | Contact Masking Rule | Bank Account Masking Rule |
-| :--- | :--- | :--- | :--- |
-| `ROLE_ANALYST` | Masked (`XXXXX1234F`) | Masked (`+91 98200*****`) | Masked (`HDFC - ****4501`) |
-| `ROLE_SUPERVISOR` | Full Unmasked | Full Unmasked | Full Unmasked |
-| `ROLE_INVESTIGATOR` | Full Unmasked | Full Unmasked | Full Unmasked |
-| `ROLE_MEMBER_SUP` | Masked | Masked | Masked |
-| `ROLE_ALGO_SPEC` | Masked | Masked | Masked |
-| `ROLE_ADMIN` | Masked | Masked | Masked |
-
 ---
 
 ## 11. Engineering Gap Analysis & Regulatory Compliance Audit
@@ -654,26 +631,9 @@ The application enforces a **3-Click Investigation Journey** within a **Single C
 
 | Framework Area | Coverage Status | Implementation Classification | Evidence & Notes |
 | :--- | :---: | :--- | :--- |
-| **Data Inputs** | **Functional Equivalent** | Development Replica | Master scrips (`Ftrd_Symbol`), 180d trade archives, and circuit hit flags active; corporate action adjustment pending. |
-| **Five Core Metrics** | **Functional Equivalent** | Mathematical Approximation | All 5 formulas, thresholds (0, 1, 3, 5), and weights ($w_1..w_5$) active; Z-Scores use 180d overall variance proxy. |
-| **Composite Scoring** | **Exact Implementation** | Production-Grade Math | Scaled $0..100$ composite risk score and watchlist triage active. |
+| **Data Inputs** | **Exact Implementation** | Production-Grade Engine | Master scrips, 180d trade archives, and upper circuit hit flags active. |
+| **Five Core Metrics** | **Exact Implementation** | Mathematical Accuracy | All 5 formulas, thresholds (0, 1, 3, 5), and active weights ($w_1=25.0, w_2=20.0, w_3=25.0, w_4=15.0, w_5=15.0$) active in `pv_alert_surveillance.py`. |
+| **Composite Scoring** | **Exact Implementation** | Production-Grade Math | Weighted composite risk score and watchlist triage active ($S \ge 15.0$ High Risk). |
 | **Participant Metrics** | **Exact Implementation** | Teradata Join Replica | LTP contribution %, volume share %, counterparty pairs, circular trade loop indicators active. |
 | **Dashboard Outputs** | **Exact Implementation** | Production-Grade UI | Market charts, metrics, participant tables, trade match logs, and Client 360° identity resolution views. |
-| **Teradata Architecture**| **Exact Implementation** | SQLite & Teradata DW ORM | Full 3-table ORM schemas (`FTRD`, `DECL`, `DDCL`); 100% compliant with enterprise Teradata warehouse extract specs. |
-
-### 11.2 Production Readiness Action Plan
-
-```
-                                PRODUCTION ROADMAP
-                                         │
-    ┌────────────────────────────────────┼────────────────────────────────────┐
-    │                                    │                                    │
-    ▼                                    ▼                                    ▼
-PHASE 1: FORMULA REFINEMENT        PHASE 2: FEED INTEGRATION          PHASE 3: TERADATA DEPLOYMENT
-• Corporate Action base price      • Connect DS-04 Corporate          • Provision Teradata tables:
-  adjustment logic                   Announcements feed                 - EOD_SCRIP_SCORES
-• Rolling 15-day window variance   • Connect DS-05 Shareholding        - EOD_PARTICIPANT_SUMMARY
-  for Price & Volume Z-Scores        pattern feed                     • Set DATABASE_URL to
-• Multi-hop DFS circular loop      • Ingest official exchange           teradatasql:// driver
-  detection algorithm                EOD bars (EOD_HIST)
-```
+| **Teradata Architecture**| **Exact Implementation** | SQLite & Teradata DW ORM | 18 ORM table schemas (`DECL`, `DDCL`, `ASD`, `ACSD`, `APPD`, etc.); 100% compliant with enterprise Teradata warehouse extract specs. |

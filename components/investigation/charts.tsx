@@ -1,20 +1,36 @@
 "use client";
 
+import { useState } from "react";
+import Stack from '@mui/material/Stack';
+import ToggleButton from '@mui/material/ToggleButton';
+import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
+import { RadarChart as MuiRadarChart, type RadarSeries } from '@mui/x-charts/RadarChart';
+import type { HighlightItemIdentifier } from '@mui/x-charts/models';
+import Box from '@mui/material/Box';
+import FormControlLabel from '@mui/material/FormControlLabel';
+import Checkbox from '@mui/material/Checkbox';
+
 import {
   Bar,
   BarChart,
   CartesianGrid,
   Cell,
+  Legend,
   Line,
-  ComposedChart,
-  ReferenceLine,
-  ReferenceArea,
+  LineChart,
   Pie,
   PieChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
-  YAxis
+  YAxis,
+  ComposedChart,
+  ReferenceLine,
+  ReferenceArea,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis
 } from "recharts";
 import type { PricePoint, ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -230,9 +246,9 @@ export function RiskDonut({ scrips = [] }: { scrips?: ScripSummary[] }) {
   const low = scrips.filter((s) => s.risk === "Low").length;
 
   const data = [
-    { risk: "High (≥75)", count: high, fill: "#e11d48" },
-    { risk: "Medium (60-74)", count: med, fill: "#d97706" },
-    { risk: "Low (<60)", count: low, fill: "#059669" },
+    { risk: "High (≥15)", count: high, fill: "#e11d48" },
+    { risk: "Medium (10–14)", count: med, fill: "#d97706" },
+    { risk: "Low (<10)", count: low, fill: "#059669" },
   ];
 
   if (scrips.length === 0) return <div className="text-slate-500 text-xs p-4">No data available.</div>;
@@ -261,14 +277,14 @@ export function ScoreDistributionChart({ scrips = [] }: { scrips?: ScripSummary[
   if (scrips.length === 0) return <div className="text-slate-500 text-xs p-4">No data available.</div>;
 
   const buckets = [
-    { bucket: "< 60 (Low)", count: 0, fill: "#059669" },
-    { bucket: "60–74 (Med)", count: 0, fill: "#d97706" },
-    { bucket: "≥ 75 (High)", count: 0, fill: "#e11d48" },
+    { bucket: "< 10 (Low)", count: 0, fill: "#059669" },
+    { bucket: "10–14 (Med)", count: 0, fill: "#d97706" },
+    { bucket: "≥ 15 (High)", count: 0, fill: "#e11d48" },
   ];
 
   scrips.forEach((s) => {
-    if (s.score >= 75) buckets[2].count++;
-    else if (s.score >= 60) buckets[1].count++;
+    if (s.score >= 15) buckets[2].count++;
+    else if (s.score >= 10) buckets[1].count++;
     else buckets[0].count++;
   });
 
@@ -288,5 +304,236 @@ export function ScoreDistributionChart({ scrips = [] }: { scrips?: ScripSummary[
         </BarChart>
       </ResponsiveContainer>
     </div>
+  );
+}
+
+/**
+ * 5-Parameter PVASF Radar (Spider) Chart.
+ * Maps Price Rise, Price Z-Score, Volume Z-Score, Band Persistence, 180D New Highs
+ * on a 0 to 5 parameter score scale.
+ */
+export function ParameterRadarChart({
+  metrics,
+}: {
+  metrics?: {
+    price_rise_pct?: number;
+    price_z?: number;
+    volume_z?: number;
+    band_hit_days?: number;
+    new_high_days?: number;
+    final_score?: number;
+  };
+}) {
+  const [highlightedItem, setHighlightedItem] =
+    useState<HighlightItemIdentifier<'radar'> | null>(null);
+  const [fillArea, setFillArea] = useState<boolean>(true);
+
+  if (!metrics) return <div className="text-slate-500 text-xs p-4">No metrics available.</div>;
+
+  function scorePriceRise(r: number) {
+    if (r > 150) return 5;
+    if (r >= 76) return 3;
+    if (r >= 15) return 1;
+    return 0;
+  }
+  function scoreZ(z: number) {
+    if (z >= 3.09) return 5;
+    if (z >= 2.33) return 3;
+    if (z >= 1.645) return 1;
+    return 0;
+  }
+  function scoreBand(d: number) {
+    if (d >= 10) return 5;
+    if (d >= 6) return 3;
+    if (d >= 3) return 1;
+    return 0;
+  }
+  function scoreNewHigh(d: number) {
+    if (d >= 10) return 5;
+    if (d >= 5) return 3;
+    if (d >= 1) return 1;
+    return 0;
+  }
+
+  const sPrice = scorePriceRise(metrics.price_rise_pct || 0);
+  const sPriceZ = scoreZ(metrics.price_z || 0);
+  const sVolZ = scoreZ(metrics.volume_z || 0);
+  const sBand = scoreBand(metrics.band_hit_days || 0);
+  const sHigh = scoreNewHigh(metrics.new_high_days || 0);
+
+  const series = [
+    {
+      id: 'scrip-score',
+      label: 'Scrip Score',
+      labelStr: 'Scrip Score',
+      data: [sPrice, sPriceZ, sVolZ, sBand, sHigh],
+      color: '#2563eb',
+      valueFormatter: (v: number | null) => (v === null ? 'NaN' : `${v}/5 pts`),
+    },
+    {
+      id: 'risk-threshold',
+      label: 'Risk Threshold (3.0)',
+      labelStr: 'Risk Threshold (3.0)',
+      data: [3, 3, 3, 3, 3],
+      color: '#d97706',
+      valueFormatter: (v: number | null) => (v === null ? 'NaN' : `${v}/5 pts`),
+    },
+  ];
+
+  const radar = {
+    metrics: ['Price Rise', 'Price Z', 'Volume Z', 'Band Hits', '180D Highs'],
+    max: 5,
+  };
+
+  const withOptions = (sList: typeof series) =>
+    sList.map((item) => ({
+      ...item,
+      fillArea,
+    }));
+
+  const handleHighlightedSeries = (_event: any, newHighlightedSeries: string | null) => {
+    setHighlightedItem(
+      newHighlightedSeries !== null ? { seriesId: newHighlightedSeries } : null
+    );
+  };
+
+  const leftCards = [
+    { label: "Price Rise %", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: 25 },
+    { label: "Price Z-Score", score: sPriceZ, rawVal: `${Number(metrics.price_z || 0).toFixed(2)}σ`, wt: 20 },
+    { label: "Volume Z-Score", score: sVolZ, rawVal: `${Number(metrics.volume_z || 0).toFixed(2)}σ`, wt: 25 },
+  ];
+
+  const rightCards = [
+    { label: "Band Hits", score: sBand, rawVal: `${metrics.band_hit_days || 0}d`, wt: 15 },
+    { label: "180D New Highs", score: sHigh, rawVal: `${metrics.new_high_days || 0}d`, wt: 15 },
+  ];
+
+  const renderParameterCard = (item: typeof leftCards[0]) => {
+    const fillPct = (item.score / 5) * 100;
+    const isHighScore = item.score >= 5;
+    const isMidScore = item.score >= 3 && item.score < 5;
+    return (
+      <div
+        key={item.label}
+        className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all flex flex-col justify-between"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-extrabold text-slate-800">{item.label}</span>
+          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-mono">
+            Wt: {item.wt}%
+          </span>
+        </div>
+
+        <div className="flex items-baseline justify-between my-2">
+          <span className="text-xl font-black font-mono text-slate-900 tracking-tight">{item.rawVal}</span>
+          <span
+            className={cn(
+              "text-xs font-extrabold px-2.5 py-0.5 rounded-md border font-mono shadow-2xs",
+              isHighScore
+                ? "bg-red-50 text-red-700 border-red-200"
+                : isMidScore
+                ? "bg-amber-50 text-amber-700 border-amber-200"
+                : "bg-emerald-50 text-emerald-700 border-emerald-200"
+            )}
+          >
+            {item.score}/5 pts
+          </span>
+        </div>
+
+        <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all duration-500",
+              isHighScore ? "bg-blue-600" : isMidScore ? "bg-amber-500" : "bg-emerald-500"
+            )}
+            style={{ width: `${Math.max(fillPct, 8)}%` }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <Stack spacing={2.5} sx={{ alignItems: 'center', width: '100%' }}>
+      {/* MUI ToggleButtonGroup Top Controls */}
+      <ToggleButtonGroup
+        value={highlightedItem?.seriesId ?? null}
+        exclusive
+        onChange={handleHighlightedSeries}
+        aria-label="highlighted series"
+        fullWidth
+        size="small"
+      >
+        {series.map((item) => (
+          <ToggleButton
+            key={item.id}
+            value={item.id}
+            aria-label={`series ${item.labelStr}`}
+            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.8rem' }}
+          >
+            {item.labelStr}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+
+      {/* 3-Column Centered Layout: Left 3 Cards | Center Large Radar Chart | Right Cards */}
+      <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+        {/* Left Column: 3 Cards */}
+        <div className="lg:col-span-3 space-y-3">
+          {leftCards.map(renderParameterCard)}
+        </div>
+
+        {/* Center Column: Large Centered Radar Chart */}
+        <div className="lg:col-span-6 flex flex-col items-center justify-center min-h-[380px] bg-slate-50/50 rounded-2xl p-2 border border-slate-100">
+          <Box sx={{ width: '100%', height: 380, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <MuiRadarChart
+              height={380}
+              highlight="series"
+              highlightedItem={highlightedItem}
+              onHighlightChange={setHighlightedItem}
+              series={withOptions(series)}
+              radar={radar}
+            />
+          </Box>
+        </div>
+
+        {/* Right Column: 2 Cards + PVASF Risk Summary Tile */}
+        <div className="lg:col-span-3 space-y-3">
+          {rightCards.map(renderParameterCard)}
+
+          {/* PVASF Risk Summary Indicator Card */}
+          <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Risk Profile</span>
+              <span className="text-[10px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
+                PVASF Engine
+              </span>
+            </div>
+            <div className="mt-2 mb-1 flex items-baseline justify-between">
+              <span className="text-2xl font-black font-mono text-amber-400">
+                {metrics.final_score ?? 84}<span className="text-xs font-bold text-slate-400">/100</span>
+              </span>
+              <span className="text-xs font-extrabold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/40">
+                High Anomaly
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 leading-tight mt-1">
+              Elevated concentration across Price Z ({sPriceZ}/5) & Volume Z ({sVolZ}/5)
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* MUI Checkbox Fill Area Toggle */}
+      <FormControlLabel
+        checked={fillArea}
+        control={
+          <Checkbox onChange={(event) => setFillArea(event.target.checked)} />
+        }
+        label="fill area"
+        labelPlacement="end"
+        sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.85rem', fontWeight: 700, color: '#334155' } }}
+      />
+    </Stack>
   );
 }

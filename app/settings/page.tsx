@@ -77,10 +77,11 @@ export default function SettingsPage() {
 
   // Weights state
   const [wPriceRise, setWPriceRise] = useState(25);
-  const [wPriceZ, setWPriceZ] = useState(20);
-  const [wVolumeZ, setWVolumeZ] = useState(25);
+  const [wPriceZ, setWPriceZ] = useState(25);
+  const [wVolumeZ, setWVolumeZ] = useState(20);
   const [wBand, setWBand] = useState(15);
   const [wHigh, setWHigh] = useState(15);
+
 
   // Thresholds state
   const [watchlistScore, setWatchlistScore] = useState(15);
@@ -88,6 +89,7 @@ export default function SettingsPage() {
   // Save & Modal states
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [userUpdateMsg, setUserUpdateMsg] = useState("");
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
 
@@ -367,7 +369,7 @@ export default function SettingsPage() {
                       min={0}
                       max={50}
                       value={wPriceRise}
-                      disabled={!canEditSettings}
+                      disabled={!canEditSettings || saving}
                       onChange={(e) => setWPriceRise(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />
@@ -383,7 +385,7 @@ export default function SettingsPage() {
                       min={0}
                       max={50}
                       value={wPriceZ}
-                      disabled={!canEditSettings}
+                      disabled={!canEditSettings || saving}
                       onChange={(e) => setWPriceZ(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />
@@ -399,7 +401,7 @@ export default function SettingsPage() {
                       min={0}
                       max={50}
                       value={wVolumeZ}
-                      disabled={!canEditSettings}
+                      disabled={!canEditSettings || saving}
                       onChange={(e) => setWVolumeZ(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />
@@ -415,7 +417,7 @@ export default function SettingsPage() {
                       min={0}
                       max={50}
                       value={wBand}
-                      disabled={!canEditSettings}
+                      disabled={!canEditSettings || saving}
                       onChange={(e) => setWBand(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />
@@ -431,7 +433,7 @@ export default function SettingsPage() {
                       min={0}
                       max={50}
                       value={wHigh}
-                      disabled={!canEditSettings}
+                      disabled={!canEditSettings || saving}
                       onChange={(e) => setWHigh(Number(e.target.value))}
                       className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                     />

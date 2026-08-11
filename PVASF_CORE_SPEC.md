@@ -219,7 +219,6 @@ $$\text{Counterparty Pair Share \%} = \frac{\text{Volume traded within Entity-Co
 ## 5. Output (Dashboard Requirements)
 
 From among the alphabets allocated to the surveillance officer, the dashboard provides the following details for scrips shortlisted with scores beyond the threshold:
-
 ### 5.1. Price-Volume Movement Details
 - **5.1.1**: Price movement in the scrip in past 180 days.
 - **5.1.2**: Rolling 15 days' average close-to-close (C-C) price movement in 15 days & 180 days.

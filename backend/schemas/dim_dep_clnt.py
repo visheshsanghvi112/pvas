@@ -68,13 +68,3 @@ class DimDepClntDetail(DimDepClntBase):
     Ddcl_Exch_Clnt_Id:      Optional[str] = None
 
 
-class DimDepClntFilter(BaseModel):
-    """Query filters for DIM_DEP_CLNT_DTLS list endpoint."""
-    pan:        Optional[str] = Field(None, description="Client PAN (partial match)")
-    clnt_id:    Optional[str] = Field(None, description="Client ID (partial match)")
-    name:       Optional[str] = Field(None, description="Client name (partial match)")
-    dep_token:  Optional[int] = Field(None, description="Depository: 1=NSDL, 2=CDSL")
-    catg_type:  Optional[int] = Field(None, description="Category type code")
-    stat:       Optional[int] = Field(None, description="Client status")
-    sort_by:    str           = Field("Ddcl_Dep_Clnt_Token", description="Column to sort by")
-    sort_dir:   Literal["asc", "desc"] = Field("asc", description="Sort direction")

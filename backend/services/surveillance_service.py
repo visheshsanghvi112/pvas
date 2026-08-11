@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 import numpy as np
 import pandas as pd
+import zlib
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT_DIR not in sys.path:
@@ -16,6 +17,43 @@ from pv_alert_surveillance import (
     MarketMetricsResult,
     ParticipantAuditResult
 )
+
+COMPANY_NAMES = {
+    "ALPHATECH": "Alpha Technologies Ltd",
+    "NOVAENERGY": "Nova Energy Ltd",
+    "ZENITHBIO": "Zenith Bio-Tech Ltd",
+    "ORBITCEM": "Orbit Cement Ltd",
+    "TCS": "Tata Consultancy Services Ltd",
+    "SBIN": "State Bank of India",
+    "ICICIBANK": "ICICI Bank Ltd",
+    "AXISBANK": "Axis Bank Ltd",
+    "RELIANCE": "Reliance Industries Ltd",
+    "HDFCBANK": "HDFC Bank Ltd",
+    "INFY": "Infosys Ltd",
+    "WIPRO": "Wipro Ltd",
+    "BAJFINANCE": "Bajaj Finance Ltd",
+    "MARUTI": "Maruti Suzuki India Ltd",
+    "SUNPHARMA": "Sun Pharma Industries Ltd",
+}
+
+ISIN_CODES = {
+    "ALPHATECH": "INE001A01010",
+    "NOVAENERGY": "INE002B01020",
+    "ZENITHBIO": "INE003C01030",
+    "ORBITCEM": "INE004D01040",
+    "TCS": "INE467B01029",
+    "SBIN": "INE062A01020",
+    "ICICIBANK": "INE090A01021",
+    "AXISBANK": "INE238A01034",
+    "RELIANCE": "INE002A01018",
+    "HDFCBANK": "INE040A01034",
+    "INFY": "INE009A01021",
+    "WIPRO": "INE075A01022",
+    "BAJFINANCE": "INE296A01024",
+    "MARUTI": "INE585B01010",
+    "SUNPHARMA": "INE044A01036",
+}
+
 
 class EODSurveillanceService:
     def __init__(self):
@@ -98,41 +136,110 @@ class EODSurveillanceService:
         dates = [end_date - timedelta(days=days - i) for i in range(days)]
         
         scrips = [
-            ("ALPHATECH", 2400.0, 0.08, False),
-            ("NOVAENERGY", 140.0, 0.25, True),   # High price rise & band hits
-            ("ZENITHBIO", 1600.0, 0.05, False),
-            ("ORBITCEM", 1550.0, 0.12, True),   # High volume spike
-            ("TCS", 3800.0, 0.04, False),
-            ("SBIN", 780.0, 0.18, True),       # High z-score
-            ("ICICIBANK", 1100.0, 0.06, False),
-            ("AXISBANK", 1150.0, 0.15, False),
-            ("RELIANCE", 2900.0, 0.06, False),
-            ("HDFCBANK", 1750.0, 0.05, False),
-            ("INFY", 1550.0, 0.07, False),
-            ("WIPRO", 480.0, 0.10, False),
-            ("BAJFINANCE", 7200.0, 0.12, True),
-            ("MARUTI", 11000.0, 0.08, False),
-            ("SUNPHARMA", 1200.0, 0.09, False)
+            ("ALPHATECH",   2400.0),
+            ("NOVAENERGY",   140.0),
+            ("ZENITHBIO",   1600.0),
+            ("ORBITCEM",    1550.0),
+            ("TCS",         3800.0),
+            ("SBIN",         780.0),
+            ("ICICIBANK",   1100.0),
+            ("AXISBANK",    1150.0),
+            ("RELIANCE",    2900.0),
+            ("HDFCBANK",    1750.0),
+            ("INFY",        1550.0),
+            ("WIPRO",        480.0),
+            ("BAJFINANCE",  7200.0),
+            ("MARUTI",     11000.0),
+            ("SUNPHARMA",  1200.0)
         ]
         
         all_rows = []
-        for ticker, base_price, volatility, inject_anomaly in scrips:
-            np.random.seed(abs(hash(ticker)) % 10000)
-            trend = np.linspace(0, base_price * 0.35 if inject_anomaly else base_price * 0.08, days)
-            noise = np.cumsum(np.random.normal(0.1, base_price * volatility * 0.05, days))
-            close = np.maximum(base_price + trend + noise, 10.0)
-            
-            high = close + np.abs(np.random.normal(base_price * 0.015, base_price * 0.008, days))
-            low = np.maximum(close - np.abs(np.random.normal(base_price * 0.012, base_price * 0.006, days)), 5.0)
-            open_p = low + (high - low) * np.random.uniform(0.2, 0.8, days)
-            volume = np.random.randint(100000, 1500000, days)
-            
-            if inject_anomaly:
-                for idx in range(days - 12, days):
-                    close[idx] = close[idx - 1] * 1.025
-                    high[idx] = close[idx] * 1.002
-                    volume[idx] = int(volume[idx - 1] * 1.8)
-            
+        for ticker, base_price in scrips:
+            seed_val = zlib.crc32(ticker.encode("utf-8")) % 10000
+            r_state = np.random.RandomState(seed_val)
+            close = np.zeros(days)
+            high = np.zeros(days)
+            low = np.zeros(days)
+            open_p = np.zeros(days)
+            volume = np.zeros(days)
+            close[0] = base_price
+
+            if ticker == "ALPHATECH":
+                circuit_days = {246, 248, 250, 252, 254, 256, 258, 259}
+                for i in range(1, days):
+                    if i < 245:
+                        ret = r_state.normal(0.0007, 0.008)
+                    else:
+                        ret = 0.098 if i in circuit_days else r_state.uniform(0.008, 0.015)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+                volume[245:] = r_state.normal(1200000, 30000, 15)
+
+            elif ticker == "NOVAENERGY":
+                circuit_days = {245, 246, 247, 249, 250, 251, 253, 254, 255, 257, 258}
+                for i in range(1, days):
+                    if i < 245:
+                        ret = r_state.normal(0.0005, 0.007)
+                    else:
+                        ret = 0.048 if i in circuit_days else r_state.uniform(0.002, 0.008)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(120000, 8000, 245), 40000)
+                volume[245:] = r_state.normal(450000, 15000, 15)
+
+            elif ticker == "ZENITHBIO":
+                circuit_days = {247, 250, 252, 255, 257, 259}
+                for i in range(1, days):
+                    if i < 245:
+                        ret = r_state.normal(0.0006, 0.007)
+                    else:
+                        ret = 0.055 if i in circuit_days else r_state.uniform(0.005, 0.012)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(140000, 10000, 245), 40000)
+                volume[245:] = r_state.normal(800000, 25000, 15)
+
+            elif ticker == "ORBITCEM":
+                circuit_days = {257}
+                for i in range(1, days):
+                    if i < 245:
+                        ret = r_state.normal(0.0003, 0.006)
+                    else:
+                        ret = 0.114 if i in circuit_days else r_state.uniform(0.001, 0.006)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+                volume[245:] = r_state.normal(210000, 10000, 15)
+
+            elif ticker == "SBIN":
+                for i in range(1, days):
+                    ret = r_state.normal(0.0001, 0.006)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+                volume[245:] = r_state.normal(320000, 15000, 15)
+
+            elif ticker == "ICICIBANK":
+                for i in range(1, days):
+                    ret = r_state.normal(0.0001, 0.006)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+                volume[245:] = r_state.normal(240000, 12000, 15)
+
+            elif ticker == "AXISBANK":
+                for i in range(1, days):
+                    ret = 0.025 if i == 255 else r_state.normal(0.0002, 0.006)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume = np.maximum(r_state.normal(150000, 10000, days), 50000)
+
+            else:
+                for i in range(1, days):
+                    ret = r_state.normal(0.0001, 0.006)
+                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
+                volume = np.maximum(r_state.normal(150000, 10000, days), 50000)
+
+            for i in range(days):
+                prev_c = close[i - 1] if i > 0 else close[i]
+                open_p[i] = round(prev_c * r_state.uniform(0.999, 1.001), 2)
+                high[i] = max(close[i], open_p[i], round(close[i] * 1.004, 2))
+                low[i] = min(close[i], open_p[i], round(close[i] * 0.996, 2))
+
             for d, o, h, l, c, v in zip(dates, open_p, high, low, close, volume):
                 all_rows.append({
                     "Ticker": ticker,
@@ -209,10 +316,9 @@ class EODSurveillanceService:
 
     def get_scrips_summary(self) -> List[Dict[str, Any]]:
         """Calculates surveillance metrics for all scrips in the current EOD dataset."""
-        if len(self.current_df["Ticker"].unique()) < 15:
-            db_df = self._load_db_eod()
-            if db_df is not None and not db_df.empty:
-                self.current_df = db_df
+        db_df = self._load_db_eod()
+        if db_df is not None and not db_df.empty:
+            self.current_df = db_df
 
         tickers = self.current_df["Ticker"].unique().tolist()
         results = []
@@ -220,6 +326,7 @@ class EODSurveillanceService:
         for ticker in tickers:
             df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
             if len(df_t) < 196:
+                print(f"[surveillance_service] Warning: Scrip {ticker} has {len(df_t)} trading days (minimum 196 required for 180d lookback analysis). Skipping.")
                 continue
                 
             try:
@@ -229,10 +336,14 @@ class EODSurveillanceService:
                 end_p = float(df_t["Close"].iloc[-1])
                 change_pct = float(((end_p - start_p) / start_p) * 100)
                 
+                company_name = COMPANY_NAMES.get(ticker, f"{ticker} India Ltd")
+                isin_code = ISIN_CODES.get(ticker, f"INE{abs(hash(ticker)) % 1000000000:09d}")
                 risk, status = self._risk_and_status(metrics.final_score)
                 results.append({
                     "ticker": ticker,
                     "symbol": ticker,
+                    "company": company_name,
+                    "isin": isin_code,
                     "latest_close": round(end_p, 2),
                     "price_change_pct": round(change_pct, 2),
                     "risk_score": round(metrics.final_score, 2),
@@ -254,6 +365,9 @@ class EODSurveillanceService:
 
     def get_scrip_detail(self, ticker: str) -> Dict[str, Any]:
         """Returns scrip EOD OHLCV price/volume history and calculated core PV metrics."""
+        db_df = self._load_db_eod()
+        if db_df is not None and not db_df.empty:
+            self.current_df = db_df
         df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
         if df_t.empty:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
@@ -423,10 +537,15 @@ class EODSurveillanceService:
             ticker, self.current_trades_df, final_close, total_vol
         )
         
+        # Total positive LTP contribution across all participants for this ticker
+        ticker_trades = self.current_trades_df[self.current_trades_df["Ticker"] == ticker] if not self.current_trades_df.empty else pd.DataFrame()
+        tot_pos_ltp = float(ticker_trades["PosContVal"].sum()) if not ticker_trades.empty and "PosContVal" in ticker_trades.columns else 1.0
+        tot_pos_ltp = max(tot_pos_ltp, 1.0)
+
         return {
             "ticker": ticker,
             "ltp_contributors": [
-                {"participant": row["PAN"], "contribution": round((row["LTPContribution"] / scrip_15d_price_change) * 100, 2)}
+                {"participant": row["PAN"], "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2)}
                 for row in part_res.ltp_contributors
             ],
             "volume_share": [

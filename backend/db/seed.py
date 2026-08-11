@@ -17,6 +17,7 @@ Realism guarantees:
 
 import random
 import string
+import zlib
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 
@@ -429,16 +430,32 @@ def _seed_sh_and_ann(db: Session):
     ]
 
     for idx, (sym, base, vol, series) in enumerate(SYMBOLS):
-        r_seed = random.Random(abs(hash(sym)))
+        r_seed = random.Random(zlib.crc32(sym.encode("utf-8")))
         cmp_token = 1000 + idx + 1
         
         # Quarter Q1, Q2, Q3, Q4 shareholding records
         for q_idx, q_num in enumerate(["Q1", "Q2", "Q3", "Q4"]):
             as_date = date(2026, 3 * (q_idx + 1), 31 if q_idx in [0, 3] else 30)
-            promoter_pct = Decimal(str(round(r_seed.uniform(48.0, 72.0), 2)))
-            public_pct = Decimal(str(round(100.0 - float(promoter_pct), 2)))
-            pledge_pct = Decimal(str(round(r_seed.choice([0.0, 0.0, 1.25, 2.5]), 2)))
             
+            if sym == "NOVAENERGY":
+                # Promoter exit progression matching CASE-2026-NOVAENERGY-002 (-4.2% drop)
+                prom_pcts = [68.40, 68.40, 68.00, 64.20]
+                promoter_pct = Decimal(str(prom_pcts[q_idx]))
+                pledge_pct = Decimal("2.50") if q_idx >= 2 else Decimal("0.00")
+            elif sym == "ALPHATECH":
+                promoter_pct = Decimal("65.00")
+                pledge_pct = Decimal("12.50")  # Pledged shares financing price ramping
+            elif sym == "ZENITHBIO":
+                promoter_pct = Decimal("58.50")
+                pledge_pct = Decimal("0.00")
+            elif sym == "ORBITCEM":
+                promoter_pct = Decimal("54.00")
+                pledge_pct = Decimal("0.00")
+            else:
+                promoter_pct = Decimal("52.50")
+                pledge_pct = Decimal("0.00")
+                
+            public_pct = Decimal(str(round(100.0 - float(promoter_pct), 2)))
             total_shares = 100_000_000
             prom_shares = int(total_shares * (float(promoter_pct) / 100.0))
             pub_shares = total_shares - prom_shares
@@ -545,8 +562,22 @@ def _seed_sh_and_ann(db: Session):
             ))
 
         # Corporate Actions for this symbol
-        catg_code, action_title, action_desc = ann_templates[idx % len(ann_templates)]
-        ex_date = date.today() - timedelta(days=r_seed.randint(10, 60))
+        if sym == "SBIN":
+            catg_code, action_title, action_desc = ("DP", "Dividend", "Board recommended interim dividend of INR 12 per share (Record Date T-20)")
+            ex_date = date.today() - timedelta(days=20)
+        elif sym == "TCS":
+            catg_code, action_title, action_desc = ("BN", "Bonus Share Issue", "Board approved 1:1 bonus equity share issue")
+            ex_date = date.today() - timedelta(days=45)
+        elif sym == "INFY":
+            catg_code, action_title, action_desc = ("SS", "Stock Split", "Sub-division of equity shares from Face Value INR 10 to INR 2")
+            ex_date = date.today() - timedelta(days=60)
+        elif sym == "RELIANCE":
+            catg_code, action_title, action_desc = ("DP", "Dividend", "Board recommended final dividend of INR 10 per share")
+            ex_date = date.today() - timedelta(days=15)
+        else:
+            catg_code, action_title, action_desc = ("DP", "General Announcement", f"General Corporate Announcement — {sym}")
+            ex_date = date.today() - timedelta(days=30)
+
         ca_rows.append(FactCorpActions(
             Fcac_Exch_Token=1,
             Fcac_Cmp_Token=cmp_token,
@@ -643,27 +674,137 @@ def seed_database(db: Session) -> dict:
     acsd_objects = []
     appd_objects = []
 
-    sym_meta: dict[str, dict] = {}
-    for idx, (sym, base, vol, series) in enumerate(SYMBOLS):
-        sym_meta[sym] = {
-            "base": base, "vol": vol, "series": series,
+    import numpy as np
+    num_days = len(trading_dates)
+    series_by_sym = {}
+
+    for idx, (sym, base, ckt_lmt, series) in enumerate(SYMBOLS):
+        r_state = np.random.RandomState(zlib.crc32(sym.encode("utf-8")) % 10000)
+
+        close = np.zeros(num_days)
+        high = np.zeros(num_days)
+        low = np.zeros(num_days)
+        open_p = np.zeros(num_days)
+        volume = np.zeros(num_days)
+        close[0] = base
+
+        if sym == "ALPHATECH":
+            circuit_days = {246, 248, 250, 252, 254, 256, 258, 259}
+            for i in range(1, num_days):
+                if i < 245:
+                    ret = r_state.normal(0.0007, 0.008)
+                else:
+                    ret = 0.098 if i in circuit_days else r_state.uniform(0.008, 0.015)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volume[245:] = r_state.normal(1200000, 30000, 15)
+
+        elif sym == "NOVAENERGY":
+            circuit_days = {245, 246, 247, 249, 250, 251, 253, 254, 255, 257, 258}
+            for i in range(1, num_days):
+                if i < 245:
+                    ret = r_state.normal(0.0005, 0.007)
+                else:
+                    ret = 0.048 if i in circuit_days else r_state.uniform(0.002, 0.008)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(120000, 8000, 245), 40000)
+            volume[245:] = r_state.normal(450000, 15000, 15)
+
+        elif sym == "ZENITHBIO":
+            circuit_days = {247, 250, 252, 255, 257, 259}
+            for i in range(1, num_days):
+                if i < 245:
+                    ret = r_state.normal(0.0006, 0.007)
+                else:
+                    ret = 0.055 if i in circuit_days else r_state.uniform(0.005, 0.012)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(140000, 10000, 245), 40000)
+            volume[245:] = r_state.normal(800000, 25000, 15)
+
+        elif sym == "ORBITCEM":
+            circuit_days = {257}
+            for i in range(1, num_days):
+                if i < 245:
+                    ret = r_state.normal(0.0003, 0.006)
+                else:
+                    ret = 0.114 if i in circuit_days else r_state.uniform(0.001, 0.006)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volume[245:] = r_state.normal(210000, 10000, 15)
+
+        elif sym == "SBIN":
+            for i in range(1, num_days):
+                ret = r_state.normal(0.0001, 0.006)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volume[245:] = r_state.normal(320000, 15000, 15)
+
+        elif sym == "ICICIBANK":
+            for i in range(1, num_days):
+                ret = r_state.normal(0.0001, 0.006)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volume[245:] = r_state.normal(240000, 12000, 15)
+
+        elif sym == "AXISBANK":
+            for i in range(1, num_days):
+                ret = 0.025 if i == 255 else r_state.normal(0.0002, 0.006)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume = np.maximum(r_state.normal(150000, 10000, num_days), 50000)
+
+        else:
+            for i in range(1, num_days):
+                ret = r_state.normal(0.0001, 0.006)
+                close[i] = round(close[i - 1] * (1.0 + ret), 2)
+            volume = np.maximum(r_state.normal(150000, 10000, num_days), 50000)
+
+        for i in range(num_days):
+            prev_c = close[i - 1] if i > 0 else close[i]
+            open_p[i] = round(prev_c * r_state.uniform(0.999, 1.001), 2)
+            high[i] = max(close[i], open_p[i], round(close[i] * 1.004, 2))
+            low[i] = min(close[i], open_p[i], round(close[i] * 0.996, 2))
+
+        series_by_sym[sym] = {
             "cmp_token": 400_000 + idx,
             "prd_token": 600_000 + idx,
+            "open": np.round(open_p, 2),
+            "high": np.round(high, 2),
+            "low": np.round(low, 2),
+            "close": np.round(close, 2),
+            "volume": np.int64(volume)
         }
 
-    for trd_date in trading_dates:
-        for sym, meta in sym_meta.items():
-            base_p = meta["base"]
-            vol = meta["vol"]
-            close_p = round(_rand_price(base_p, vol), 2)
-            high_p = round(close_p * random.uniform(1.001, 1.03), 2)
-            low_p = round(close_p * random.uniform(0.97, 0.999), 2)
-            open_p = round(random.uniform(low_p, high_p), 2)
-            prev_close = round(close_p * random.uniform(0.98, 1.02), 2)
-            tot_qty = random.randint(10000, 500000)
+    # Assign scrip-specific client pools from the 500 generated CLIENTS
+    client_pool_by_sym = {}
+    for idx, (sym, base, vol, series) in enumerate(SYMBOLS):
+        if sym == "ALPHATECH":
+            # 12 wash-trade clients (same TM00104) + 45 market clients
+            client_pool_by_sym[sym] = CLIENTS[400:457]
+        elif sym == "ZENITHBIO":
+            # 3 circular ring clients + 38 market clients
+            client_pool_by_sym[sym] = CLIENTS[460:500]
+        elif sym == "NOVAENERGY":
+            # 3 top buyer clients + 52 market clients
+            client_pool_by_sym[sym] = CLIENTS[350:405]
+        elif sym == "ORBITCEM":
+            # Algo client + 35 market clients
+            client_pool_by_sym[sym] = CLIENTS[300:336]
+        else:
+            # Large cap blue-chips get unique 180-240 client pools
+            start_i = (idx * 25) % 250
+            client_pool_by_sym[sym] = CLIENTS[start_i : start_i + 220]
+
+    for d_idx, trd_date in enumerate(trading_dates):
+        for sym, meta in series_by_sym.items():
+            open_p = float(meta["open"][d_idx])
+            high_p = float(meta["high"][d_idx])
+            low_p = float(meta["low"][d_idx])
+            close_p = float(meta["close"][d_idx])
+            tot_qty = int(meta["volume"][d_idx])
+            prev_close = float(meta["close"][d_idx - 1]) if d_idx > 0 else close_p
             tot_val = round(tot_qty * close_p, 2)
             tot_cnt = random.randint(200, 5000)
-            wash_cnt = random.randint(0, 15) if random.random() < 0.2 else 0
+            wash_cnt = random.randint(15, 45) if sym == "ALPHATECH" else (random.randint(5, 15) if sym == "ZENITHBIO" else 0)
 
             asd_objects.append(AggSecDay(
                 Asd_Date=trd_date,
@@ -678,7 +819,7 @@ def seed_database(db: Session) -> dict:
                 Asd_Tot_Qty=Decimal(str(tot_qty)),
                 Asd_Tot_Val=Decimal(str(tot_val)),
                 Asd_Tot_Cnt=tot_cnt,
-                Asd_Tot_Wash_Qty=Decimal(str(wash_cnt * 100)),
+                Asd_Tot_Wash_Qty=Decimal(str(wash_cnt * 5000 if sym == "ALPHATECH" else wash_cnt * 100)),
                 Asd_Tot_Wash_Cnt=wash_cnt,
                 Asd_Low_Crct_Price=Decimal(str(round(prev_close * 0.90, 2))),
                 Asd_Upp_Crct_Price=Decimal(str(round(prev_close * 1.10, 2))),
@@ -686,7 +827,12 @@ def seed_database(db: Session) -> dict:
                 Asd_52_Week_Low_Price=Decimal(str(round(low_p * 0.85, 2))),
             ))
 
-            for c in CLIENTS[:3]:
+            pool = client_pool_by_sym[sym]
+            # Sample active clients for this day (15-35 clients daily for large caps)
+            num_active = min(len(pool), random.randint(12, 35))
+            active_clients = random.sample(pool, num_active)
+
+            for c in active_clients:
                 b_qty = random.randint(500, 5000)
                 b_val = round(b_qty * close_p, 2)
                 acsd_objects.append(AggClntSecDay(
@@ -703,26 +849,96 @@ def seed_database(db: Session) -> dict:
                     Acsd_Neg_Cont_Val=Decimal(str(round(b_val * 0.015, 2))),
                 ))
 
-            c_buy = CLIENTS[0]
-            c_sell = CLIENTS[1]
-            p_qty = random.randint(200, 2000)
-            p_val = round(p_qty * close_p, 2)
-            appd_objects.append(AggPanPairDay(
-                Appd_Date=trd_date,
-                Appd_Cmp_Token=meta["cmp_token"],
-                Appd_Exch_Clnt_Token=c_buy["token"],
-                Appd_Clnt_Token=c_buy["token"],
-                Appd_Exch_TM_Token=c_buy["tm_token"],
-                Appd_TM_Token=c_buy["tm_token"],
-                Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
-                Appd_Cpty_Clnt_Token=c_sell["token"],
-                Appd_Cpty_Exch_TM_Token=c_sell["tm_token"],
-                Appd_Cpty_TM_Token=c_sell["tm_token"],
-                Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
-                Appd_Buy_Tot_Val=Decimal(str(p_val)),
-                Appd_Buy_Tot_Cnt=random.randint(2, 20),
-                Appd_Pos_Contri=Decimal(str(round(p_val * 0.02, 2))),
-            ))
+            # Counterparty Pair Trades
+            if sym == "ZENITHBIO":
+                # 3-node circular loop
+                c0, c1, c2 = pool[0], pool[1], pool[2]
+                pairs = [(c0, c1), (c1, c2), (c2, c0)]
+                for c_buy, c_sell in pairs:
+                    p_qty = random.randint(1500, 3500)
+                    p_val = round(p_qty * close_p, 2)
+                    appd_objects.append(AggPanPairDay(
+                        Appd_Date=trd_date,
+                        Appd_Cmp_Token=meta["cmp_token"],
+                        Appd_Exch_Clnt_Token=c_buy["token"],
+                        Appd_Clnt_Token=c_buy["token"],
+                        Appd_Exch_TM_Token=c_buy["tm_token"],
+                        Appd_TM_Token=c_buy["tm_token"],
+                        Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
+                        Appd_Cpty_Clnt_Token=c_sell["token"],
+                        Appd_Cpty_Exch_TM_Token=c_sell["tm_token"],
+                        Appd_Cpty_TM_Token=c_sell["tm_token"],
+                        Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
+                        Appd_Buy_Tot_Val=Decimal(str(p_val)),
+                        Appd_Buy_Tot_Cnt=random.randint(5, 25),
+                        Appd_Pos_Contri=Decimal(str(round(p_val * 0.04, 2))),
+                    ))
+            elif sym == "ALPHATECH":
+                # Same-broker wash trade pair (Same TM token 300104)
+                c_buy, c_sell = pool[0], pool[1]
+                p_qty = random.randint(3000, 8000)
+                p_val = round(p_qty * close_p, 2)
+                same_tm = 300104
+                appd_objects.append(AggPanPairDay(
+                    Appd_Date=trd_date,
+                    Appd_Cmp_Token=meta["cmp_token"],
+                    Appd_Exch_Clnt_Token=c_buy["token"],
+                    Appd_Clnt_Token=c_buy["token"],
+                    Appd_Exch_TM_Token=same_tm,
+                    Appd_TM_Token=same_tm,
+                    Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Exch_TM_Token=same_tm,
+                    Appd_Cpty_TM_Token=same_tm,
+                    Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
+                    Appd_Buy_Tot_Val=Decimal(str(p_val)),
+                    Appd_Buy_Tot_Cnt=random.randint(10, 40),
+                    Appd_Pos_Contri=Decimal(str(round(p_val * 0.05, 2))),
+                    Appd_Algo_Flag=0,
+                ))
+            elif sym == "ORBITCEM":
+                # Spoofing & HFT CTCL Algo orders
+                c_buy, c_sell = pool[0], pool[1] if len(pool) > 1 else pool[0]
+                p_qty = random.randint(1000, 4000)
+                p_val = round(p_qty * close_p, 2)
+                appd_objects.append(AggPanPairDay(
+                    Appd_Date=trd_date,
+                    Appd_Cmp_Token=meta["cmp_token"],
+                    Appd_Exch_Clnt_Token=c_buy["token"],
+                    Appd_Clnt_Token=c_buy["token"],
+                    Appd_Exch_TM_Token=c_buy["tm_token"],
+                    Appd_TM_Token=c_buy["tm_token"],
+                    Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Exch_TM_Token=c_sell["tm_token"],
+                    Appd_Cpty_TM_Token=c_sell["tm_token"],
+                    Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
+                    Appd_Buy_Tot_Val=Decimal(str(p_val)),
+                    Appd_Buy_Tot_Cnt=random.randint(8, 30),
+                    Appd_Pos_Contri=Decimal(str(round(p_val * 0.03, 2))),
+                    Appd_Algo_Flag=1,
+                ))
+            else:
+                c_buy, c_sell = active_clients[0], active_clients[1] if len(active_clients) > 1 else active_clients[0]
+                p_qty = random.randint(200, 1500)
+                p_val = round(p_qty * close_p, 2)
+                appd_objects.append(AggPanPairDay(
+                    Appd_Date=trd_date,
+                    Appd_Cmp_Token=meta["cmp_token"],
+                    Appd_Exch_Clnt_Token=c_buy["token"],
+                    Appd_Clnt_Token=c_buy["token"],
+                    Appd_Exch_TM_Token=c_buy["tm_token"],
+                    Appd_TM_Token=c_buy["tm_token"],
+                    Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Clnt_Token=c_sell["token"],
+                    Appd_Cpty_Exch_TM_Token=c_sell["tm_token"],
+                    Appd_Cpty_TM_Token=c_sell["tm_token"],
+                    Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
+                    Appd_Buy_Tot_Val=Decimal(str(p_val)),
+                    Appd_Buy_Tot_Cnt=random.randint(2, 10),
+                    Appd_Pos_Contri=Decimal(str(round(p_val * 0.01, 2))),
+                    Appd_Algo_Flag=0,
+                ))
 
             if len(asd_objects) >= 1000:
                 db.bulk_save_objects(asd_objects)

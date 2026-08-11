@@ -42,23 +42,24 @@ interface UserContextType {
   createUserApi: (user: { username: string; email: string; full_name: string; department: string; password: string; role: UserRole }) => Promise<boolean>;
 }
 
-const defaultUser: UserProfile = {
-  id: 1,
-  username: "vishesh_admin",
-  name: "Vishesh",
-  role: "Admin",
-  email: "vishesh@surveillance.gov",
-  department: "Market Conduct & Compliance",
-  is_active: true,
+const defaultGuestUser: UserProfile = {
+  id: 0,
+  username: "guest_viewer",
+  name: "Guest / Unauthenticated User",
+  role: "Viewer",
+  email: "guest@surveillance.gov",
+  department: "Public / Read Only",
+  is_active: false,
 };
 
-const AUTH_API = "http://127.0.0.1:8000/api/v1/auth";
+const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const AUTH_API = `${BASE_HOST}/api/v1/auth`;
 
 const UserContext = createContext<UserContextType>({
-  currentUser: defaultUser,
+  currentUser: defaultGuestUser,
   authToken: null,
-  isAdmin: true,
-  canEditSettings: true,
+  isAdmin: false,
+  canEditSettings: false,
   login: async () => false,
   logout: () => {},
   setUserRole: () => {},
@@ -72,7 +73,7 @@ const UserContext = createContext<UserContextType>({
 });
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(defaultUser);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(defaultGuestUser);
   const [authToken, setAuthToken] = useState<string | null>(null);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
@@ -83,16 +84,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     if (savedToken) {
       setAuthToken(savedToken);
       fetchMe(savedToken);
-    } else {
-      // Fetch default admin profile
-      fetchMe(null);
     }
   }, []);
 
   async function fetchMe(token: string | null) {
+    if (!token) {
+      setCurrentUser(defaultGuestUser);
+      return;
+    }
     try {
-      const headers: Record<string, string> = {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
       const res = await fetch(`${AUTH_API}/me`, { headers });
       if (res.ok) {
         const data = await res.json();
@@ -105,6 +106,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           department: data.department,
           is_active: data.is_active,
         });
+      } else {
+        logout();
       }
     } catch (e) {
       console.error("Failed to fetch current user profile", e);
@@ -130,6 +133,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           role: data.user.role as UserRole,
           email: data.user.email,
           department: data.user.department,
+          is_active: true,
         };
         setCurrentUser(userObj);
         refreshUsers(token);
@@ -145,11 +149,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   function logout() {
     setAuthToken(null);
     localStorage.removeItem("pvasf_auth_token");
-    setCurrentUser(defaultUser);
+    setCurrentUser(defaultGuestUser);
   }
 
   const setUserRole = (role: UserRole) => {
-    setCurrentUser((prev) => ({ ...prev, role }));
+    // Role state is managed via backend auth token claims
   };
 
   async function refreshUsers(tokenOverride?: string | null) {

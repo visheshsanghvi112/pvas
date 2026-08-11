@@ -33,14 +33,18 @@ function MetricCard({ detail, accent }: { detail: ScripDetail; accent: "blue" | 
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        {METRICS.map(({ key, label: ml, format, color }) => (
-          <div key={key} className="bg-slate-50 rounded-lg border border-slate-100 p-3">
-            <div className="text-xs text-slate-400 font-medium mb-1">{ml}</div>
-            <div className={`text-lg font-black ${color}`}>
-              {format((detail.metrics as any)[key] ?? 0)}
+        {METRICS.map(({ key, label: ml, format, color }) => {
+          const m = detail.metrics as Record<string, any> || {};
+          const rawVal = m[key] ?? m[key.toUpperCase()] ?? m[key.replace("_pct", " Rise %")] ?? 0;
+          return (
+            <div key={key} className="bg-slate-50 rounded-lg border border-slate-100 p-3">
+              <div className="text-xs text-slate-400 font-medium mb-1">{ml}</div>
+              <div className={`text-lg font-black ${color}`}>
+                {format(typeof rawVal === "number" ? rawVal : Number(rawVal) || 0)}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <Link

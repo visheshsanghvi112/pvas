@@ -72,32 +72,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col h-full bg-slate-50 text-slate-900 font-sans overflow-hidden">
-      {/* ── Page Header Bar (Crisp Light Theme) ── */}
-      <header className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
-            <Activity className="h-5 w-5 text-blue-600" />
-          </div>
-          <div>
-            <h1 className="text-base font-bold text-slate-900">
-              Market Surveillance Dashboard
-            </h1>
-          </div>
-        </div>
-
-        {/* Sync Controls */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="flex items-center gap-2 h-8.5 px-3.5 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-blue-600 transition-colors disabled:opacity-60 cursor-pointer shadow-xs"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
-            {loading ? "Syncing..." : "Sync Teradata Data"}
-          </button>
-        </div>
-      </header>
-
       {/* ── KPI Executive Summary Cards (Clickable Filter Controls) ── */}
       <div className="flex-shrink-0 bg-white/90 border-b border-slate-200/90 px-6 py-3.5 shadow-2xs">
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

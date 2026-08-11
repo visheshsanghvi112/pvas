@@ -1,6 +1,6 @@
-import { InvestigationWorkspace } from "@/components/investigation/investigation-workspace";
+import { redirect } from "next/navigation";
 
 export default async function AnalysePage({ params }: { params: Promise<{ symbol: string }> }) {
   const { symbol } = await params;
-  return <InvestigationWorkspace symbol={symbol} />;
+  redirect(`/analysis/${symbol}`);
 }

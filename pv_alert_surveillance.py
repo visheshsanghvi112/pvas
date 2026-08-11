@@ -7,6 +7,7 @@ Designed to be imported and run in web backends (FastAPI, Next.js API routes),
 Spark pipelines, or stand-alone CLI scripts.
 """
 
+
 import argparse
 import sys
 import os
@@ -25,7 +26,7 @@ MAPPING_RULES = {
     "Open": ["open", "openprice", "open_price"],
     "High": ["high", "highprice", "high_price"],
     "Low": ["low", "lowprice", "low_price"],
-    "Close": ["close", "closeprice", "close_price", "ltp"],
+    "Close": ["close", "closeprice", "close_price", "ltp"],          
     "Volume": ["volume", "qty", "quantity", "traded_qty", "volume_traded"],
     "BandPercent": ["bandpercent", "band_percent", "circuit", "circuit_limit", "band"],
     "PAN": ["pan", "pan_id", "participant", "investor", "panno", "pan_no"],
@@ -127,8 +128,8 @@ class SurveillanceConfig:
     """Configuration weights and lookup parameters for the Surveillance Engine."""
     weights: Dict[str, float] = field(default_factory=lambda: {
         "price_rise": 25.0,
-        "price_z": 20.0,
-        "volume_z": 25.0,
+        "price_z": 25.0,
+        "volume_z": 20.0,
         "band_persistence": 15.0,
         "new_high": 15.0,
     })
@@ -153,22 +154,41 @@ class MarketMetricsResult:
     new_high_days: int
     new_high_score: int
     final_score: float
+    price_mod_z: float = 0.0
+    volume_mod_z: float = 0.0
 
     def as_dict(self) -> Dict[str, Any]:
         return {
             "Ticker": self.ticker,
+            "ticker": self.ticker,
             "Price Rise %": round(self.price_rise_pct, 2),
+            "price_rise_pct": round(self.price_rise_pct, 2),
             "Price Rise Score": self.price_rise_score,
+            "price_rise_score": self.price_rise_score,
             "Price Z": round(self.price_z, 2),
+            "price_z": round(self.price_z, 2),
             "Price Z Score": self.price_z_score,
+            "price_z_score": self.price_z_score,
+            "Price Mod Z": round(self.price_mod_z, 2),
+            "price_mod_z": round(self.price_mod_z, 2),
             "Volume Z": round(self.volume_z, 2),
+            "volume_z": round(self.volume_z, 2),
             "Volume Z Score": self.volume_z_score,
+            "volume_z_score": self.volume_z_score,
+            "Volume Mod Z": round(self.volume_mod_z, 2),
+            "volume_mod_z": round(self.volume_mod_z, 2),
             "Band Hit Days (15d)": self.band_hit_days,
+            "band_hit_days": self.band_hit_days,
             "Band Score": self.band_score,
+            "band_score": self.band_score,
             "180d New Highs (15d)": self.new_high_days,
+            "new_high_days": self.new_high_days,
             "New High Score": self.new_high_score,
+            "new_high_score": self.new_high_score,
             "Final Score": round(self.final_score, 2),
+            "final_score": round(self.final_score, 2),
         }
+
 
 
 @dataclass
@@ -302,14 +322,29 @@ class SurveillanceEngine:
             if sigma < 1e-6 or np.isnan(sigma):
                 return 0.0
             return float((latest - mu) / sigma)
+
+        def modified_zscore_latest(series: pd.Series) -> float:
+            series_clean = series.dropna()
+            if len(series_clean) < lookback + 1:
+                return 0.0
+            latest = series_clean.iloc[-1]
+            background = series_clean.iloc[-(lookback + 1):-1]
+            median = background.median()
+            mad = (background - median).abs().median()
+            if mad < 1e-6 or np.isnan(mad):
+                return 0.0
+            return float(0.6745 * (latest - median) / mad)
+
         # --- 2.2 Price Z-Score ---
         price_roll = close.rolling(recent).mean()
         price_z = zscore_latest(price_roll)
+        price_mod_z = modified_zscore_latest(price_roll)
         price_z_score = self.score_zscore(price_z)
 
         # --- 2.3 Volume Z-Score ---
         vol_roll = rolling_mean_volume(volume)
         volume_z = zscore_latest(vol_roll)
+        volume_mod_z = modified_zscore_latest(vol_roll)
         volume_z_score = self.score_zscore(volume_z)
 
         # --- 2.4 Price Band Persistence (Upper Circuit Only) ---
@@ -348,7 +383,9 @@ class SurveillanceEngine:
             band_score=band_score,
             new_high_days=new_high_days,
             new_high_score=new_high_score,
-            final_score=final_score
+            final_score=final_score,
+            price_mod_z=price_mod_z,
+            volume_mod_z=volume_mod_z
         )
 
     def analyze_participants(self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float) -> ParticipantAuditResult:
@@ -663,9 +700,12 @@ def print_dashboard(report: ScripSurveillanceReport, threshold: float):
     print("-" * 72)
 
     # Market Indicators
-    print(f"Price Path (180d ago -> Latest): {hist_summary['StartPrice']:.2f} -> {hist_summary['EndPrice']:.2f} ({hist_summary['PriceChangePercent']:.2f}%)")
-    print(f"Rolling 15d Avg Price Move:      {hist_summary['15dAvgDailyReturn']:.3f}%")
-    print(f"Rolling 15d Avg Volume:          {hist_summary['15dAvgVolume']:,.0f} shares")
+    if hist_summary:
+        print(f"Price Path (180d ago -> Latest): {hist_summary.get('StartPrice', 0.0):.2f} -> {hist_summary.get('EndPrice', 0.0):.2f} ({hist_summary.get('PriceChangePercent', 0.0):.2f}%)")
+        print(f"Rolling 15d Avg Price Move:      {hist_summary.get('15dAvgDailyReturn', 0.0):.3f}%")
+        print(f"Rolling 15d Avg Volume:          {hist_summary.get('15dAvgVolume', 0.0):,.0f} shares")
+    else:
+        print("Price Path & Market Summary: No Data Available")
     print("-" * 72)
 
     # Shareholding Pattern

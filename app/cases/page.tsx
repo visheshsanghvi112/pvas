@@ -24,6 +24,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { getAuthHeaders } from "@/lib/api";
+
+const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const API_BASE = `${BASE_HOST}/api/v1/cases`;
 
 interface EvidenceItem {
   title: string;
@@ -59,7 +63,6 @@ const priorityDot: Record<string, string> = {
   Low: "bg-emerald-500",
 };
 
-const API_BASE = "http://127.0.0.1:8000/api/v1/cases";
 
 export default function ForensicCasesPage() {
   const [cases, setCases] = useState<CaseItem[]>([]);
@@ -85,7 +88,7 @@ export default function ForensicCasesPage() {
   async function fetchCases() {
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/`);
+      const res = await fetch(`${API_BASE}/`, { headers: getAuthHeaders() });
       if (res.ok) {
         const data = await res.json();
         setCases(data);
@@ -99,7 +102,7 @@ export default function ForensicCasesPage() {
 
   async function fetchCaseDetail(caseId: string) {
     try {
-      const res = await fetch(`${API_BASE}/${caseId}`);
+      const res = await fetch(`${API_BASE}/${caseId}`, { headers: getAuthHeaders() });
       if (res.ok) {
         const detail = await res.json();
         setSelectedCase(detail);
@@ -113,7 +116,7 @@ export default function ForensicCasesPage() {
     try {
       const res = await fetch(`${API_BASE}/${caseId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ status: newStatus }),
       });
       if (res.ok) {
@@ -144,7 +147,7 @@ export default function ForensicCasesPage() {
     try {
       const res = await fetch(`${API_BASE}/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           case_id: generatedId,
           target_symbol: newSymbol.toUpperCase(),
@@ -155,6 +158,7 @@ export default function ForensicCasesPage() {
           description: newDescription,
         }),
       });
+
 
       if (res.ok) {
         setShowCreateModal(false);

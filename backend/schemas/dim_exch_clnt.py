@@ -66,15 +66,3 @@ class DimExchClntDetail(DimExchClntBase):
     Decl_Dmat_Acct_Num:     Optional[str] = None
 
 
-class DimExchClntFilter(BaseModel):
-    """Query filters for DIM_EXCH_CLNT_DTLS list endpoint."""
-    pan:            Optional[str] = Field(None, description="Client PAN (partial match)")
-    tm_id:          Optional[str] = Field(None, description="Trading Member ID")
-    clnt_id:        Optional[str] = Field(None, description="Client ID")
-    name:           Optional[str] = Field(None, description="Client name (partial match)")
-    catg_type:      Optional[int] = Field(None, description="Category type code")
-    stat:           Optional[int] = Field(None, description="Status: 1=Active, 2=Suspended")
-    city:           Optional[str] = Field(None, description="City (partial match)")
-    exch_id:        Optional[str] = Field(None, description="Exchange ID e.g. NSE")
-    sort_by:        str           = Field("Decl_Exch_Clnt_Token", description="Column to sort by")
-    sort_dir:       Literal["asc", "desc"] = Field("asc", description="Sort direction")

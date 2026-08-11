@@ -21,10 +21,13 @@ from backend.schemas.trade_matches import (
     TradeMatchesFilter,
 )
 from backend.services.trade_matches_service import TradeMatchesService
+from backend.security import get_current_user
+from backend.db.models import SysUser
 
 router = APIRouter(
     prefix="/api/v1/trades",
     tags=["Trade Surveillance"],
+    dependencies=[Depends(get_current_user)]
 )
 
 

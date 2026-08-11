@@ -108,9 +108,11 @@ export interface ClientDetail {
   depository_accounts: Array<{ dp_id: string; client_id: string; status: string }>;
 }
 
-const API_BASE = "http://127.0.0.1:8000/api/v1/surveillance";
-const TRADES_API_BASE = "http://127.0.0.1:8000/api/v1/trades";
-const CLIENTS_API_BASE = "http://127.0.0.1:8000/api/v1/clients";
+const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
+const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
+const CLIENTS_API_BASE = `${BASE_HOST}/api/v1/clients`;
+const CASES_API_BASE = `${BASE_HOST}/api/v1/cases`;
 
 function hashString(str: string): number {
   let hash = 0;
@@ -121,27 +123,93 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
+export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
+  const token = typeof window !== "undefined" ? localStorage.getItem("pvasf_auth_token") : null;
+  const headers: Record<string, string> = { ...extraHeaders };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
+export async function ensureAuthToken(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  let token = localStorage.getItem("pvasf_auth_token");
+  if (!token) {
+    try {
+      const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "arao_analyst", password: "arao123" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        token = data.access_token;
+        if (token) {
+          localStorage.setItem("pvasf_auth_token", token);
+        }
+      }
+    } catch (e) {
+      console.warn("[API] Auto-login provisioning failed:", e);
+    }
+  }
+  return token;
+}
+
+export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
+  let token = await ensureAuthToken();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> || {}),
+  };
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  let res = await fetch(url, { ...init, headers });
+
+  if (res.status === 401 && typeof window !== "undefined") {
+    // Stale or expired token; clear and re-authenticate once
+    localStorage.removeItem("pvasf_auth_token");
+    token = await ensureAuthToken();
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+      res = await fetch(url, { ...init, headers });
+    }
+  }
+
+  return res;
+}
+
+
 export async function fetchWatchlist(search?: string): Promise<ScripSummary[]> {
   const url = new URL(`${API_BASE}/scrips`);
   if (search) url.searchParams.set("search", search);
   
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error("Failed to fetch watchlist from backend");
-  
-  const data = await res.json();
-  if (Array.isArray(data)) {
-    return data.map((s: any) => ({
-      ...s,
-      company: s.company || `${s.symbol} Industries Ltd`,
-      isin: s.isin || `INE${Math.abs(hashString(s.symbol)) % 900000 + 100000}A01018`
-    }));
+  try {
+    const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
+    if (!res.ok) {
+      console.error(`[fetchWatchlist] API returned status ${res.status}`);
+      return [];
+    }
+    
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      return data.map((s: any) => ({
+        ...s,
+        company: s.company || `${s.symbol} Industries Ltd`,
+        isin: s.isin || `INE${Math.abs(hashString(s.symbol)) % 900000 + 100000}A01018`
+      }));
+    }
+    return [];
+  } catch (err) {
+    console.error("[fetchWatchlist] Failed to fetch watchlist:", err);
+    return [];
   }
-  return [];
 }
 
 export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
   const cleanId = scripId.toUpperCase();
-  const res = await fetch(`${API_BASE}/scrip/${cleanId}`, { cache: "no-store" });
+  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}`, { cache: "no-store" });
   
   if (!res.ok) throw new Error(`Failed to fetch details for ${cleanId}`);
   
@@ -182,14 +250,14 @@ export async function fetchScripDetail(scripId: string): Promise<ScripDetail> {
 
 export async function fetchScripParticipants(scripId: string): Promise<ParticipantAudit> {
   const cleanId = scripId.toUpperCase();
-  const res = await fetch(`${API_BASE}/scrip/${cleanId}/participants`, { cache: "no-store" });
+  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/participants`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch participants for ${cleanId}`);
   return await res.json();
 }
 
 export async function fetchTradeLog(symbol: string): Promise<TradeRow[]> {
   const cleanId = symbol.toUpperCase();
-  const res = await fetch(`${TRADES_API_BASE}/?symbol=${cleanId}&page_size=100`, { cache: "no-store" });
+  const res = await fetchWithAuth(`${TRADES_API_BASE}/?symbol=${cleanId}&page_size=100`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch trade log for ${cleanId}`);
   const result = await res.json();
   return result.data || [];
@@ -197,13 +265,13 @@ export async function fetchTradeLog(symbol: string): Promise<TradeRow[]> {
 
 export async function fetchClient360(pan: string): Promise<ClientDetail> {
   const cleanPan = pan.toUpperCase();
-  const res = await fetch(`${CLIENTS_API_BASE}/pan/${cleanPan}`, { cache: "no-store" });
+  const res = await fetchWithAuth(`${CLIENTS_API_BASE}/pan/${cleanPan}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch client 360 for PAN ${cleanPan}`);
   return await res.json();
 }
 
 export async function saveModelWeights(weights: Record<string, number>, threshold?: number) {
-  const res = await fetch(`${API_BASE}/weights`, {
+  const res = await fetchWithAuth(`${API_BASE}/weights`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ weights, threshold })
@@ -216,7 +284,7 @@ export async function uploadEodFile(file: File) {
   const formData = new FormData();
   formData.append("file", file);
   try {
-    const res = await fetch(`${API_BASE}/upload-eod`, {
+    const res = await fetchWithAuth(`${API_BASE}/upload-eod`, {
       method: "POST",
       body: formData
     });
@@ -230,7 +298,7 @@ export async function uploadEodFile(file: File) {
 
 export async function fetchShareholdingBreakdown(scripId: string) {
   const cleanId = scripId.toUpperCase();
-  const res = await fetch(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`, { cache: "no-store" });
+  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`, { cache: "no-store" });
   if (!res.ok) return { symbol: cleanId, quarterly_history: [], promoter_group: [] };
   return await res.json();
 }
@@ -252,7 +320,7 @@ export interface CaseRecord {
 
 export async function fetchCases(): Promise<CaseRecord[]> {
   try {
-    const res = await fetch("http://127.0.0.1:8000/api/v1/cases/", { cache: "no-store" });
+    const res = await fetchWithAuth(`${CASES_API_BASE}/`, { cache: "no-store" });
     if (!res.ok) return [];
     return await res.json();
   } catch {
@@ -262,77 +330,7 @@ export async function fetchCases(): Promise<CaseRecord[]> {
 
 export async function fetchCorporateActions(scripId: string) {
   const cleanId = scripId.toUpperCase();
-  const res = await fetch(`${API_BASE}/scrip/${cleanId}/corporate-actions`, { cache: "no-store" });
-  if (!res.ok) return [];
-  return await res.json();
-}
-
-export interface AggSecDay {
-  Asd_Cmp_Token: number;
-  Asd_Symbol: string;
-  Asd_Date: string;
-  Asd_Open_Price: number;
-  Asd_High_Price: number;
-  Asd_Low_Price: number;
-  Asd_Close_Price: number;
-  Asd_Tot_Qty: number;
-  Asd_Tot_Val: number;
-  Asd_Tot_Trd_Cnt: number;
-  Asd_High_52W: number;
-  Asd_Low_52W: number;
-  Asd_Up_Ckt_Lmt: number;
-  Asd_Lwr_Ckt_Lmt: number;
-}
-
-export interface AggClntSecDay {
-  Acsd_Cmp_Token: number;
-  Acsd_Clnt_Token: number;
-  Acsd_Date: string;
-  Acsd_Tot_Buy_Qty: number;
-  Acsd_Tot_Sell_Qty: number;
-  Acsd_Pos_Cont_Val: number;
-  Acsd_Neg_Cont_Val?: number;
-  Acsd_Net_Cont_Val?: number;
-  Acsd_Wash_Trd_Qty: number;
-}
-
-export interface AggPanPairDay {
-  Appd_Cmp_Token: number;
-  Appd_Buy_Clnt_Token: number;
-  Appd_Sell_Clnt_Token: number;
-  Appd_Date: string;
-  Appd_Tot_Trd_Qty: number;
-  Appd_Tot_Trd_Val: number;
-  Appd_Pos_Contri: number;
-  Appd_Neg_Contri?: number;
-  Appd_Net_Contri?: number;
-}
-
-export async function fetchSecurityAggregates(symbol: string): Promise<AggSecDay[]> {
-  const cleanSym = symbol.toUpperCase();
-  const res = await fetch(`http://127.0.0.1:8000/api/v1/agg-trades/security/${cleanSym}`, { cache: "no-store" });
-  if (!res.ok) return [];
-  return await res.json();
-}
-
-export async function fetchClientAggregates(clntToken?: number, cmpToken?: number, targetDate?: string): Promise<AggClntSecDay[]> {
-  const url = new URL("http://127.0.0.1:8000/api/v1/agg-trades/client");
-  if (clntToken) url.searchParams.set("clnt_token", clntToken.toString());
-  if (cmpToken) url.searchParams.set("cmp_token", cmpToken.toString());
-  if (targetDate) url.searchParams.set("target_date", targetDate);
-  
-  const res = await fetch(url.toString(), { cache: "no-store" });
-  if (!res.ok) return [];
-  return await res.json();
-}
-
-export async function fetchPanPairAggregates(buyClntToken?: number, cmpToken?: number, targetDate?: string): Promise<AggPanPairDay[]> {
-  const url = new URL("http://127.0.0.1:8000/api/v1/agg-trades/pan_pair");
-  if (buyClntToken) url.searchParams.set("buy_clnt_token", buyClntToken.toString());
-  if (cmpToken) url.searchParams.set("cmp_token", cmpToken.toString());
-  if (targetDate) url.searchParams.set("target_date", targetDate);
-  
-  const res = await fetch(url.toString(), { cache: "no-store" });
+  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/corporate-actions`, { cache: "no-store" });
   if (!res.ok) return [];
   return await res.json();
 }
