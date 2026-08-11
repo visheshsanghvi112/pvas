@@ -253,11 +253,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs" style={{ zIndex: 50 }}>
         <div className="flex items-center justify-between px-5 py-0 relative" style={{ height: "56px" }}>
 
-          {/* Centered Header Title */}
-          <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center group">
-            <h1 className="font-extrabold text-base text-slate-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
-              Price Volume Surveillance
-            </h1>
+          {/* Left Brand Logo & Title */}
+          <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 flex items-center justify-center text-white font-black text-xs shadow-xs group-hover:scale-105 transition-transform">
+              PV
+            </div>
+            <div className="flex items-center gap-2">
+              <h1 className="font-extrabold text-sm text-slate-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
+                PVASF <span className="font-semibold text-slate-500 text-xs hidden sm:inline">Surveillance Framework</span>
+              </h1>
+              <span className="text-[10px] font-mono font-bold bg-blue-50 text-blue-700 border border-blue-200/80 px-1.5 py-0.5 rounded-md">
+                v2.4 Live
+              </span>
+            </div>
           </Link>
 
           <div className="flex-1" />

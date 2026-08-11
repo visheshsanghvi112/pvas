@@ -567,10 +567,10 @@ export function AlertsTable({
                       className={cn(
                         "rounded-lg border text-xs font-semibold px-2.5 py-1.5 outline-none cursor-pointer transition-colors",
                         alert.status === "Open"
-                          ? "bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100"
+                          ? "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
                           : alert.status === "Under review"
-                          ? "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100"
-                          : "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+                          ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
+                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
                       )}
                     >
                       <option value="Open">Open</option>
@@ -584,7 +584,7 @@ export function AlertsTable({
                     <div className="flex items-center justify-end gap-2">
                       <Link
                         href={`/analysis/${alert.symbol}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-800 font-extrabold text-xs hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-2xs group-hover:border-slate-300"
                         title="Open Scrip Analysis Workspace"
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -592,7 +592,7 @@ export function AlertsTable({
                       </Link>
                       <Link
                         href="/compare"
-                        className="flex items-center justify-center w-7 h-7 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                        className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
                         title="Compare Scrip"
                       >
                         <GitCompare className="h-3.5 w-3.5" />
