@@ -537,7 +537,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 onExpand={() => setExpandedChart({
                   title: "Price Movement — 180 Day Window",
                   subtitle: "Yellow band = last 15 trading days (PVASF observation window)",
-                  chart: <PriceChart history={history} />
+                  chart: <PriceChart history={history} isExpanded={true} />
                 })}
               />
               <div className="p-5">
@@ -553,8 +553,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   title="Daily Traded Volume"
                   onExpand={() => setExpandedChart({
                     title: "Daily Traded Volume",
-                    subtitle: "Daily traded shares / contracts volume history",
-                    chart: <VolumeChart history={history} />
+                    subtitle: "Daily traded shares / contracts volume history with anomaly highlighting",
+                    chart: <VolumeChart history={history} isExpanded={true} />
                   })}
                 />
                 <div className="p-5"><VolumeChart history={history} /></div>
@@ -567,7 +567,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   onExpand={() => setExpandedChart({
                     title: "Rolling 15-Day Avg Volume",
                     subtitle: "line = 15D MA · bars = daily vol",
-                    chart: <RollingVolumeChart history={history} />
+                    chart: <RollingVolumeChart history={history} isExpanded={true} />
                   })}
                 />
                 <div className="p-5"><RollingVolumeChart history={history} /></div>
