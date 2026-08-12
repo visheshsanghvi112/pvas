@@ -1,196 +1,152 @@
 # Price-Volume Alert Surveillance Framework (PVASF)
+## Internal Engineering, Data Science & Compliance Operations Manual
 
-**Enterprise Market Conduct Surveillance & Anomaly Detection System**
-
----
-
-## Executive Overview
-
-The **Price-Volume Alert Surveillance Framework (PVASF)** is an end-to-end, high-performance market surveillance platform designed for stock exchanges, regulatory compliance bodies, and institutional compliance teams. It automatically detects potential market manipulation—such as artificial price inflation, coordinated volume pump schemes, circular trading, and wash trading—by applying statistical anomaly algorithms over 180-day historical baselines and auditing participant trading conduct down to millisecond-level trade executions.
-
-### Key Capabilities
-
-- **5 Core Statistical Shortlisting Metrics**: Evaluates Price Rise %, Price Z-Score, Volume Z-Score, Price Band Persistence (Circuit Hits), and 180-Day New High Breakouts.
-- **Participant Conduct Audit Engine**: Identifies Last Traded Price (LTP) price pushers, volume concentration per PAN, counterparty trading loops, and same-broker wash trade executions.
-- **Enterprise Data Warehouse Physical Data Model (PDM v10.0) Integration**: Fully integrated with 10 official Shareholding & Corporate Action tables covering **Quarterly Shareholding Results (Section 1.3, 8 Tables)** and **Corporate Actions & Disclosures (Section 1.5, 2 Tables)** across **16 system tables with 580 total physical & system columns**.
-- **Role-Based Access Control (RBAC) & User Management**: Enterprise security layer featuring salted SHA-256 password hashing, signed bearer token authorization, 3-tier user roles (`Admin`, `Analyst`, `Viewer`), and immutable security audit logs (`SYS_AUDIT_LOGS`).
-- **Forensic Case Dossier System (`FORENSIC_CASES`)**: Persistent case management workspace (`/cases`) for creating formal regulatory investigation dossiers, pinning chart/trade evidence, assigning lead officers, and advancing workflow states (`Draft` → `Open Investigation` → `Pending Action` → `Closed`).
-- **Single Continuous Investigation Workspace**: Analysts conduct end-to-end investigations within a unified, interactive workspace (`/investigations/[symbol]`) featuring quarter-by-quarter shareholding trends, corporate action dilution factors, contextual tabs, order book depth modals, and identity resolution profile modals.
-- **Layered Architecture & Database Isolation**: Built with strict boundary isolation allowing seamless execution against local SQLite (development/demo) and enterprise Teradata Data Warehouses (production).
+> **CONFIDENTIAL & PROPRIETARY — FOR INTERNAL TEAM USE ONLY**  
+> This repository contains the complete enterprise codebase, quantitative surveillance algorithms, database schemas, and compliance UI workspace for the Price-Volume Alert Surveillance Framework (PVASF).
 
 ---
 
-## Technology Stack
+## 1. Executive Summary & Internal Architecture Overview
 
-- **Frontend Framework**: Next.js 15 (App Router, React 19, TypeScript)
-- **Styling & UI**: Vanilla CSS Design Tokens, Tailwind CSS, Lucide Icons, Shadcn UI Components
-- **Data Visualization**: Recharts (Candlestick overlays, Volume bars, Moving Averages, Radar charts)
-- **Backend API Engine**: FastAPI (Python 3.10+, Pydantic v2, Uvicorn)
-- **Security & Auth**: SHA-256 salted password hashing, signed token authorization, FastAPI RBAC dependencies
-- **Data Access & ORM**: SQLAlchemy 2.0, Repository Pattern Architecture
-- **Database Support**: SQLite (Development Seed DB) / Teradata SQL via `teradatasql` (Production Warehouse)
+The **Price-Volume Alert Surveillance Framework (PVASF)** is an enterprise market surveillance platform designed to detect artificial price inflation, liquidity pump schemes, circular trading, and wash trading across listed securities.
+
+The platform operates on a **3-Tier Enterprise SEBI Data Warehouse** architecture (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`), combining a **180-day baseline** with a **15-day observation window** to evaluate five core statistical anomaly parameters.
 
 ---
 
-## Repository Structure
+## 2. Internal Documentation Map & Authoritative Guides
+
+The repository contains specialized `.md` specification documents. Every internal team member (Engineers, Quantitative Analysts, DBAs, and Compliance Officers) **must strictly consult the appropriate reference document before modifying code, SQL queries, or scoring parameters**:
+
+| Documentation File | Target Internal Role | Primary Purpose & Contents | How to Use Carefully |
+| :--- | :--- | :--- | :--- |
+| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Full-Stack Engineers, System Architects, Compliance Tech Leads | **Master System Architecture & Codebase Map (v3.3.0)**.<br/>Contains end-to-end data lineage, full file-by-file module directory, 18-table ORM mapping, API service matrix (21 endpoints), RBAC permissions, and UI component ownership. | **MANDATORY**: Read before creating new API endpoints, refactoring services, modifying state management, or altering system topology. Serves as the **Single Source of Truth** for technical implementation. |
+| **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)** | Quantitative Analysts, Surveillance Modelers, Risk Officers | **Regulatory Anomaly Engine & Scoring Formulas**.<br/>Details the mathematical formulas for Price Rise %, Price Z-Score, Volume Z-Score, Upper Circuit Persistence, 180D New Highs, raw score cutoffs (0, 1, 3, 5), default weights ($w_1=25, w_2=20, w_3=25, w_4=15, w_5=15$), and watchlist triage thresholds ($S \ge 15.0$). | **CAUTION**: Consult whenever calibrating surveillance scoring logic, adjusting parameter cutoffs, or verifying mathematical correctness. Do NOT change default weights without updating `pv_alert_surveillance.py` and running tests. |
+| **[`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md)** | Data Engineers, DBAs, Backend Developers | **Enterprise Data Warehouse Physical Schema Reference**.<br/>Column-by-column physical specifications for all 18 database tables (`ASD`, `ACSD`, `APPD`, `DECL`, `DDCL`, `FSHG`, `FPRH`, `FCAC`, etc.), foreign key relationships, surrogate tokens, and indexing strategies. | **MANDATORY**: Check before adding or altering SQLAlchemy models in `backend/db/models.py` or writing raw SQL queries. Ensures 100% compatibility with production Teradata extracts. |
+| **[`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md)** | Data Engineering Team, Database Administrators | **Teradata ETL & Production SQL Extraction Queries**.<br/>Contains ANSI SQL extraction scripts, table join logic, and business column mapping for pulling 260-day EOD market feeds from enterprise Teradata warehouses into the surveillance engine. | **USE WHEN**: Setting up production database pipelines, configuring Teradata ODBC/JDBC connectors, or updating batch ingestion scripts. |
+| **[`TRADE_AGGREGATE_REARCHITECTURE_PLAN.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/TRADE_AGGREGATE_REARCHITECTURE_PLAN.md)** | Backend Engineers, High-Frequency Trading Analysts | **30-Minute VWAP & PAN-Pair Rearchitecture Plan**.<br/>Technical specification documenting 30-minute Volume-Weighted Average Price (VWAP) close calculations, wash trade flags, and millisecond trade execution projections. | **USE WHEN**: Working on millisecond trade match explorer features (`/trades`), wash trade matrix analysis, or CTCL/HFT algo intelligence endpoints. |
+
+---
+
+## 3. Technology Stack & Component Ownership
+
+- **Frontend**: Next.js 15 (App Router, React 19, TypeScript, Tailwind CSS)
+- **Charting Engine**: Recharts (Interactive `<Brush />` zoom, live hover inspector, risk-colored volume bars `#e11d48`, `#f59e0b`, `#3b82f6`)
+- **Backend API**: FastAPI (Python 3.9+, Pydantic v2, Uvicorn)
+- **Surveillance Engine**: Pure-Python `pv_alert_surveillance.py` (Vectorized NumPy/Pandas math)
+- **Data Layer**: SQLAlchemy 2.0 ORM with SQLite (Development/Test) & Teradata Data Warehouse (Production)
+- **Security & Auth**: PBKDF2-HMAC-SHA256 password hashing, Bearer Token Auth, RBAC middleware, and `SYS_AUDIT_LOGS` logging
+
+---
+
+## 4. Repository Directory Structure
 
 ```
-.
-├── app/                        # Next.js App Router Pages
-│   ├── page.tsx                # Executive Surveillance Dashboard & Watchlist
-│   ├── compare/                # Scrip Comparison & Multi-Asset Analysis
-│   ├── clients/                # Exchange & Depository Client Directory (Client 360)
-│   ├── trades/                 # Global Trade Match Explorer
-│   ├── members/                # Trading Member (Broker) Conduct Audit
-│   ├── algo-ctcl/              # CTCL & HFT Order Book Intelligence
-│   ├── cases/                  # Forensic Case Dossier Workspace & Evidence Pinning
-│   ├── settings/               # 3-Tab Administration (Model Config, User Accounts, Audit Trail)
-│   └── investigations/[symbol]/# Single Continuous Investigation Workspace
-├── components/                 # Reusable UI Components
-│   ├── dashboard/              # Watchlist, Alert Cards, Risk Metric Tables
-│   ├── investigation/          # 180D Candlestick Charts, Participant Audits, Dossiers
-│   ├── layout/                 # App Shell, Header, Navigation Sidebar
-│   └── ui/                     # Cards, Modals, Badges, Data Grids
-├── lib/                        # Client-side API Client, User Auth Context & Utilities
-│   ├── api.ts                  # REST API Client Functions
-│   ├── user-context.tsx        # React Context for RBAC Session & Audit Trail
-│   └── utils.ts                # Class Merging & Formatter Utilities
-├── backend/                    # FastAPI Backend Engine
-│   ├── main.py                 # FastAPI Application Server & CORS Setup
-│   ├── security.py             # Password Hashing, Session Token & RBAC Dependencies
-│   ├── requirements.txt        # Python Backend Dependencies
-│   ├── db/                     # Database Configuration, Models & Seed Script
-│   │   ├── database.py         # SQLAlchemy Engine & Session Factory
-│   │   ├── models.py           # 13 Teradata Table Entities (FTRD, DECL, DDCL, FMSH, FSHG, FPRH, FPUH, FDVR, FDRH, FLKD, FCES, FCAC, FCDF, SYS_USERS, SYS_AUDIT_LOGS, FORENSIC_CASES)
-│   │   ├── seed.py             # Synthetic Seed Data Generator (31,200 trade records)
-│   │   └── surveillance.db     # Local Development SQLite Database
-│   ├── repositories/           # Repository Pattern Data Access Layer
-│   │   ├── agg_trades_repo.py  # SEBI Trade Aggregate Repository (AGG_SEC_DAY, ACSS, APPD)
-│   │   ├── trade_matches_repo.py# Trade Execution Matches & Wash Trade Repository
-│   │   ├── dim_exch_clnt_repo.py# DIM_EXCH_CLNT_DTLS Repository
-│   │   └── dim_dep_clnt_repo.py# DIM_DEP_CLNT_DTLS Repository
-│   ├── schemas/                # Pydantic v2 Validation Schemas & DTOs
-│   │   ├── agg_trades.py       # Aggregate Schemas
-│   │   ├── trade_matches.py    # Trade Execution Match Schemas
-│   │   ├── dim_exch_clnt.py    # Exchange Client Account Schemas
-│   │   ├── dim_dep_clnt.py     # Depository Demat Account Schemas
-│   │   └── cases.py            # Forensic Case Schemas
-│   ├── services/               # Core Business Logic & Surveillance Algorithms
-│   │   ├── surveillance_service.py # EOD Scoring Engine & DWBIS Shareholding Analytics
-│   │   ├── agg_trades_service.py # Pre-Calculated Aggregate Analytics Service
-│   │   ├── trade_matches_service.py # Trade Match Filtering & Analytics
-│   │   ├── client_service.py   # Client 360 Identity Resolution
-│   │   └── auth_service.py     # Authentication, User Accounts & Audit Logging
-│   └── routers/                # FastAPI HTTP REST API Endpoints
-│       ├── surveillance.py     # Shortlisting Metrics, Shareholding & Corporate Actions
-│       ├── agg_trades.py       # SEBI Aggregate Endpoints (/api/aggregates/)
-│       ├── trade_matches.py    # Trade Match Explorer & Wash Trade Analytics (/api/v1/trades/)
-│       ├── clients.py          # Client 360 Directory & Identity Resolution
-│       ├── cases.py            # Forensic Case Dossier Persistence API
-│       └── auth.py             # Authentication, User Management & Audit Log API
-├── pv_alert_surveillance.py    # Standalone Pure-Python Surveillance Scoring Engine
-├── README.md                   # Project Overview & Quick Start Guide (This File)
-├── PVASF_SCHEMA_REFERENCE.md   # Enterprise Data Warehouse 13-Table Schema Specifications & Column Matrix
-├── SYSTEM_ARCHITECTURE_GUIDE.md# Master System Architecture, Formulas & Domain Reference
-├── DATA_REQUEST_SPEC.md        # Formal Teradata Data Extraction Spec for Managers/Data Team
-└── PVASF_CORE_SPEC.md          # 5 Core Statistical Shortlisting Metrics & Audit Formulas
+UI_PVASF/
+├── app/                                    # Next.js App Router Page Routes
+│   ├── page.tsx                            # Executive Surveillance Dashboard & Watchlist (Route: /)
+│   ├── analysis/[symbol]/page.tsx          # Single Continuous Stock Workspace (Route: /analysis/[symbol])
+│   ├── analyse/[symbol]/page.tsx           # Route alias for analysis workspace
+│   ├── trades/page.tsx                     # Trade Execution Explorer & Order Matches (Route: /trades)
+│   ├── clients/page.tsx                    # Client 360° Directory & Identity Resolution (Route: /clients)
+│   ├── cases/page.tsx                      # Forensic Case Dossier Workspace (Route: /cases)
+│   ├── compare/page.tsx                    # Multi-Scrip Anomaly Comparison Matrix (Route: /compare)
+│   ├── members/page.tsx                    # Clearing Member & Broker Conduct Monitor (Route: /members)
+│   ├── algo-ctcl/page.tsx                  # CTCL Terminal & HFT Algo Intelligence (Route: /algo-ctcl)
+│   ├── history/page.tsx                    # Regulatory Alert Audit & Triage Log (Route: /history)
+│   └── settings/page.tsx                   # Model Weight Calibration & User Management (Route: /settings)
+│
+├── components/                             # Reusable React UI Components
+│   ├── layout/app-shell.tsx                # Main Layout Shell & Navigation Drawer
+│   ├── dashboard/                          # Watchlist Table, KPI Cards, Filter Panels
+│   ├── investigation/                      # 180D Candlestick Charts, Participant Audits, Dossiers
+│   └── ui/                                 # Shared UI Primitives (Badges, Buttons, Cards, Modals)
+│
+├── lib/                                    # Frontend API Connectors & Client Context
+│   ├── api.ts                              # Unified REST Fetch Client Layer (`getAuthHeaders`)
+│   ├── user-context.tsx                    # React User Session & RBAC Role Context
+│   └── metric-help.ts                      # Parameter Formula Descriptions & Reference Metadata
+│
+├── backend/                                # FastAPI Python Backend
+│   ├── main.py                             # FastAPI Server Entrypoint & CORS Setup
+│   ├── security.py                         # Password Hashing & Bearer Token Authorization
+│   ├── db/                                 # Database Engine, Models & Synthetic Seeder
+│   │   ├── database.py                     # SQLAlchemy Engine & Session Factory
+│   │   ├── models.py                       # 18 Relational Table ORM Models
+│   │   └── seed.py                         # Synthetic Market Data Generator (260 Trading Days)
+│   ├── repositories/                       # Data Access Layer (SQL Query Compilation)
+│   ├── services/                           # Business Domain Services & Score Engine Integration
+│   ├── routers/                            # REST API Endpoints (`surveillance`, `trades`, `cases`, `auth`)
+│   └── schemas/                            # Pydantic v2 Request/Response Validation DTOs
+│
+├── pv_alert_surveillance.py                # Standalone Pure-Python Anomaly Engine & Math Formulas
+├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification (v3.3.0)
+├── PVASF_CORE_SPEC.md                      # SEBI Anomaly Metric Formulas & Score Mapping
+├── PVASF_SCHEMA_REFERENCE.md               # 18-Table Data Warehouse Column Specification
+├── DATA_REQUEST_SPEC.md                    # Teradata ETL & Production SQL Extraction Queries
+└── TRADE_AGGREGATE_REARCHITECTURE_PLAN.md  # 30-Min VWAP Close & Trade Match Projection Plan
 ```
 
 ---
 
-## Quick Start & Installation
+## 5. Local Setup & Execution Guide for Internal Developers
 
-### Prerequisites
-- **Node.js**: v18.0.0 or higher
-- **Python**: v3.10 or higher
-- **npm** / **yarn** / **pnpm**
-
----
-
-### 1. Backend Setup (FastAPI Engine)
+### 5.1 Backend Service (FastAPI) Setup
 
 ```bash
-# Navigate to project root directory
+# 1. Navigate to project root directory
 cd "/Users/vishesh/Downloads/UI_PVASF copy"
 
-# Set up Python Virtual Environment
-python3 -m venv .venv
+# 2. Activate virtual environment (or create one using python -m venv .venv)
 source .venv/bin/activate
 
-# Install Backend Dependencies
+# 3. Install required Python packages
 pip install -r backend/requirements.txt
 
-# Seed Development Database (Generates SQLite DB with 31,200 realistic trade matches & 10 Shareholding & Corporate Action tables)
+# 4. Initialize and seed the development SQLite database
 python3 -c "from backend.db.database import init_db, SessionLocal; from backend.db.seed import seed_database; init_db(); db=SessionLocal(); seed_database(db); db.close()"
 
-# Start FastAPI Development Server (Runs on http://localhost:8000)
+# 5. Start FastAPI development server (runs on http://127.0.0.1:8000)
 python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
-
-*Backend REST documentation is available at `http://localhost:8000/docs` (FastAPI Swagger UI).*
+*Interactive OpenAPI Swagger documentation is available at `http://127.0.0.1:8000/docs`.*
 
 ---
 
-### 2. Frontend Setup (Next.js Application)
+### 5.2 Frontend Workspace (Next.js 15) Setup
 
 ```bash
-# In a new terminal window, navigate to project root directory
+# In a new terminal window:
 cd "/Users/vishesh/Downloads/UI_PVASF copy"
 
-# Install Node Modules
+# 1. Install Node.js dependencies
 npm install
 
-# Start Next.js Development Server (Runs on http://localhost:3000)
+# 2. Start Next.js development server (runs on http://localhost:3000)
 npm run dev
 ```
 
-Open `http://localhost:3000` in your web browser to access the Surveillance Platform.
-
 ---
 
-## Primary Documentation Index
+## 6. Verification & Testing Protocol
 
-The repository maintains **5 primary documentation guides** detailing all technical, database, and algorithmic aspects of the platform:
+Before committing code changes or deploying updates, internal engineers **must run all of the following verification commands**:
 
-| Document File | Target Audience | Content Summary |
-| :--- | :--- | :--- |
-| **[`README.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/README.md)** | Developers & Operators | System Overview, Quick Start, Tech Stack, Directory Map, Verification Commands. |
-| **[`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md)** | DBAs & Schema Architects | Complete column-level specification for all 13 physical Teradata tables (**551 total physical columns**), indexing strategies, foreign keys, and RBAC schemas. |
-| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Architects, Analysts & Auditors | Comprehensive Master Architecture Guide detailing 5 Scoring Formulas, Participant Conduct Audits, Teradata Database Lineage, Single-Workspace UI Blueprint, RBAC Permissions, and Regulatory Compliance Audits. |
-| **[`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md)** | Management & Data Engineering Team | Executive Data Request, Teradata Schema Column Mapping, Business Justifications & Production SQL Extraction Queries. |
-| **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)** | Quantitative Analysts | In-depth specification of the 5 Core Statistical Shortlisting Metrics, raw score mapping (0/1/3/5), weight vector configuration, and participant conduct audit algorithms. |
-
----
-
-## System Health & Verification Commands
-
-### Build & Type Verification
 ```bash
-# Run TypeScript compilation check
+# 1. Verify TypeScript type safety across all React components and API DTOs
 npx tsc --noEmit
 
-# Run Next.js production build verification
+# 2. Run Python backend test suite (verifies engine math, endpoints, DB queries, and auth)
+python3 -m pytest tests/ -v
+
+# 3. Test production Next.js build
 npm run build
 ```
 
-### Backend API Verification
-```bash
-# Run automated API test suite
-python3 -c "
-from fastapi.testclient import TestClient
-from backend.main import app
-client = TestClient(app)
-assert client.get('/api/v1/surveillance/health').status_code == 200
-assert client.get('/api/v1/surveillance/scrip/ALPHATECH/shareholding-breakdown').status_code == 200
-assert client.get('/api/v1/surveillance/scrip/ALPHATECH/corporate-actions').status_code == 200
-assert client.get('/api/v1/cases/').status_code == 200
-assert client.get('/api/v1/auth/users').status_code == 200
-print('All System REST API Endpoints Verified Successfully!')
-"
-```
-
 ---
 
-## License & Support
+## 7. Security & Confidentiality Directives
 
-Confidential & Proprietary — Developed for Enterprise Market Conduct & Compliance Surveillance.
+1. **Do NOT Hardcode Credentials**: Always use authorization bearer headers via `getAuthHeaders()` in `lib/api.ts`.
+2. **Audit Logging**: Any changes to model weights, user permissions, or PII PAN lookups automatically generate immutable entries in `SYS_AUDIT_LOGS`.
+3. **Proprietary Notice**: Source code, quantitative algorithms, and schema definitions are proprietary internal property. Unauthorized copying or external distribution is strictly prohibited.
