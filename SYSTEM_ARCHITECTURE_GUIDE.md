@@ -1,7 +1,7 @@
 # Price-Volume Alert Surveillance Framework (PVASF)
 ## Master System Architecture, Algorithmic Engine & Technical Manual
 
-**Document Version:** 3.3.0 (Comprehensive Code Audit & Specification Synchronized)  
+**Document Version:** 3.3.0 (Absolute Single Source of Truth — Fully Synchronized)  
 **Target Systems:** Enterprise 3-Tier SEBI Data Warehouse (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`) | FastAPI Surveillance Engine | Next.js Enterprise Compliance Suite  
 **Scope:** Complete Architectural Specification, Scoring Algorithms, Database Schemas, User Workflows, Data Lineage, RBAC Security, and Regulatory Compliance Audit  
 
@@ -16,7 +16,7 @@
 6. [Participant Conduct Audit & Algorithmic Intelligence](#6-participant-conduct-audit--algorithmic-intelligence)
 7. [Complete Database Schemas & Entity-Relationship Models](#7-complete-database-schemas--entity-relationship-models)
 8. [End-to-End System Data Lineage](#8-end-to-end-system-data-lineage)
-9. [UI/UX Blueprint & Institutional Charting Engine](#9-uiux-blueprint--institutional-charting-engine)
+9. [UI/UX Blueprint, Navigation & Page Route Matrix](#9-uiux-blueprint-navigation--page-route-matrix)
 10. [API Service Reference Matrix](#10-api-service-reference-matrix)
 11. [Role-Based Access Control (RBAC) & Security Architecture](#11-role-based-access-control-rbac--security-architecture)
 12. [Engineering Audit & Verification Results](#12-engineering-audit--verification-results)
@@ -416,7 +416,7 @@ The official PVASF framework is built on a **3-Tier Enterprise SEBI Data Warehou
 
 ---
 
-## 9. UI/UX Blueprint & Institutional Charting Engine
+## 9. UI/UX Blueprint, Navigation & Page Route Matrix
 
 The PVASF frontend is built with Next.js 15 App Router, Tailwind CSS, Recharts, and Lucide React icons, adhering to a **Single Continuous Workspace Paradigm**.
 
@@ -439,6 +439,23 @@ The PVASF frontend is built with Next.js 15 App Router, Tailwind CSS, Recharts, 
      - **Crimson Red (`#e11d48`)**: Extreme Anomaly ($\ge 3.0\times$ 15D MA).
      - **Amber (`#f59e0b`)**: Elevated Volume Surge ($1.5\times \text{--} 3.0\times$ 15D MA).
      - **Royal Blue (`#3b82f6` / `#93c5fd`)**: Normal Traded Volume.
+
+---
+
+### 9.2 Page Route Code Reference & Functional Matrix
+
+| Route Path | File Location | Primary Purpose & Key Functionality | Main Components Used | API Endpoints Invoked |
+| :--- | :--- | :--- | :--- | :--- |
+| `/` | [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx) | **Executive Surveillance Dashboard**: Main triage workspace displaying high-risk scrips, executive KPI stat cards, and composite risk filters. | `KpiCard`, `AlertsTable`, `FilterPanel` | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/weights` |
+| `/analysis/[symbol]` | [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/[symbol]/page.tsx) | **Single Continuous Stock Workspace**: 5-Tab deep dive for a selected stock (Overview, 5-Metric Breakdown, 180d OHLCV Chart, Trade Execution Matches, Participant Conduct Audit & Case Dossier creation). | `InvestigationWorkspace`, `Charts`, `Timeline`, `MetricCard` | `/api/v1/surveillance/scrip/{scrip_id}`, `/scrip/{scrip_id}/participants`, `/shareholding-breakdown`, `/corporate-actions` |
+| `/trades` | [`app/trades/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/trades/page.tsx) | **Trade Execution Explorer**: Full-featured execution match search with pagination, filtering by wash trade flag, HFT CTCL flag, date range, and order depth. | `Badge`, `Input`, `Button` | `/api/v1/trades/`, `/api/v1/trades/stats/daily`, `/api/v1/trades/analysis/wash-trades` |
+| `/clients` | [`app/clients/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/clients/page.tsx) | **Client 360° Directory**: Entity resolution lookup mapping Exchange Accounts (`DECL`) with Depository Demat Accounts (`DDCL`) by PAN. | `Badge`, `Input` | `/api/v1/clients/exchange`, `/api/v1/clients/depository`, `/api/v1/clients/pan/{pan}` |
+| `/cases` | [`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx) | **Forensic Case Management**: Case dossier triage workspace to track open regulatory investigations, assign investigators, and record notes. | Case Grid, Case Creator Modal | `/api/v1/cases/`, `/api/v1/cases/{case_id}` |
+| `/compare` | [`app/compare/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/compare/page.tsx) | **Multi-Scrip Comparison Matrix**: Side-by-side comparative analysis of scrips across all 5 anomaly metrics. | Comparison Grid, Metric Cards | `/api/v1/surveillance/scrips`, `/api/v1/surveillance/scrip/{symbol}` |
+| `/members` | [`app/members/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/members/page.tsx) | **Broker & Clearing Member Conduct**: Monitor trading member concentration and wash trade ratios across stock brokers. | Member Stat Cards, Broker Table | `/api/v1/trades/analysis/wash-trades`, `/api/v1/trades/analysis/algo-breakdown` |
+| `/algo-ctcl` | [`app/algo-ctcl/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/algo-ctcl/page.tsx) | **CTCL & Algo Intelligence**: Specialized dashboard auditing High-Frequency Trading (HFT) algorithms and terminal IDs. | Algo Distribution Charts | `/api/v1/trades/analysis/algo-breakdown` |
+| `/history` | [`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx) | **Regulatory Audit & Alert History**: Log of historical alert triggers, user actions, and investigation archives. | History Table, Filter Toolbar | `/api/v1/auth/audit-logs`, `/api/v1/surveillance/scrips` |
+| `/settings` | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx) | **System Settings & Model Tuning**: Calibrate metric weights ($w_1 \dots w_5$), set alert thresholds, and manage system users. | Weight Tuning Sliders, User Table | `/api/v1/surveillance/weights`, `/api/v1/auth/users` |
 
 ---
 
