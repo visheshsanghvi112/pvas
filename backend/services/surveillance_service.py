@@ -374,15 +374,22 @@ class EODSurveillanceService:
             
         metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t)
         
+        # Pre-compute MA20 and MA50 across the full historical dataset for complete chart coverage
+        df_t["MA20"] = df_t["Close"].rolling(20).mean().round(2)
+        df_t["MA50"] = df_t["Close"].rolling(50).mean().round(2)
+
         history = []
-        for _, row in df_t.tail(180).iterrows():
+        # Include 181 trading days so item 0 is the exact T-180 baseline price
+        for _, row in df_t.tail(181).iterrows():
             history.append({
                 "date": row["Date"].strftime("%Y-%m-%d") if isinstance(row["Date"], (datetime, pd.Timestamp)) else str(row["Date"]),
                 "open": round(float(row["Open"]), 2),
                 "high": round(float(row["High"]), 2),
                 "low": round(float(row["Low"]), 2),
                 "close": round(float(row["Close"]), 2),
-                "volume": int(row["Volume"])
+                "volume": int(row["Volume"]),
+                "ma20": float(row["MA20"]) if pd.notna(row["MA20"]) else None,
+                "ma50": float(row["MA50"]) if pd.notna(row["MA50"]) else None
             })
             
         risk, status = self._risk_and_status(metrics.final_score)

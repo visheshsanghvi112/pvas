@@ -128,8 +128,8 @@ class SurveillanceConfig:
     """Configuration weights and lookup parameters for the Surveillance Engine."""
     weights: Dict[str, float] = field(default_factory=lambda: {
         "price_rise": 25.0,
-        "price_z": 25.0,
-        "volume_z": 20.0,
+        "price_z": 20.0,
+        "volume_z": 25.0,
         "band_persistence": 15.0,
         "new_high": 15.0,
     })
