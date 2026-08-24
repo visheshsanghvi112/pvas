@@ -34,48 +34,25 @@
 ### Key Capabilities
 * **Top Command Bar**: Displays stock symbol, company name, ISIN, risk badge, and direct navigation links to **Forensic Dossiers**, **Audit Logs**, and **Mark Safe / Active** workflow toggles.
 * **5 Investigation Tabs**:
-  - **Overview Tab**: Displays 5-Parameter Risk Radar Profile, Screener-Style Dual-Axis Master Surveillance Chart (Right Y-Axis: Price with 20 DMA & 50 DMA; Left Y-Axis: Volume with Screener Delivery ratio `D: xx%`; Live Crosshair Stats Subheader; 15D Observation Window Toggle), Anomaly Breakout & Band Persistence Matrix, 15-Day Corporate Announcements, and Shareholder Demographics.
-  - **Participants Conduct Tab**: Displays participant Net LTP contribution % (Price Pushers), concentrated volume shares (HHI), counterparty pairs ($PAN_A \leftrightarrow PAN_B$), and trade reversals (RTR %).
-  - **Trade Matches (P2P) Tab**: Microsecond Execution Log with Order ID filtering and legal case evidence pinning.
-  - **Forensic Dossier Tab**: Investigation journal with case creation, evidence summary, and timeline history.
-  - **Intelligence Graph Tab**: Interactive Entity-to-Entity Network visualization with DFS circular loop detection rings.
+  - **Overview Tab**: 5-Parameter Radar Signature, Screener-Style Dual-Axis Master Surveillance Chart (20 & 50 DMA, Volume bars, Live Crosshair Stats Tracker, Screener `D: xx%` Delivery Metric, 15D Window Toggle, Adaptive Date Ticks), and 180-day breakout & band persistence matrix.
+  - **Shareholders Tab**: Direct comparative tables for Promoter / Top 1% / Public float (Day $t$ vs $T-180$), PAN Demographics (Unique PANs & Avg Trading PANs 15D vs 180D), and 15-Day Corporate Announcements (`FACT_CORP_ACTIONS`).
+  - **Participants Tab**: Participant Suspect Breakdown Table (Net LTP contribution, Buy/Sell volume, Concentration HHI, RTR, MTM PnL), Counterparty Pairs, and DFS Circular Trading Loops.
 * **Client 360° Drawer**: 1-click drill-down on any participant PAN displaying legal entity KYC, UCC, DP/BO accounts, Bank details, and demographic profile.
 
 ---
 
-## 3. Module 3: Head-to-Head Scrip Comparison (`/compare`)
-**Purpose:** Side-by-side comparative analysis of two securities (Scrip A vs Scrip B) to evaluate relative surveillance risk and shared trader overlap.
+## 3. Module 3: Security & System Audit Trail (`/history`)
+**Purpose:** Maintains immutable audit logs of regulatory decisions, parameter calibration updates, and system security events (`SYS_AUDIT_LOGS`).
 
 ### Key Capabilities
-* **Head-to-Head Hero Cards**: Displays Scrip A (Blue accent) vs Scrip B (Indigo accent) summary cards with direct **Analyze** and **Cases** buttons.
-* **PVASF Parameter Scoring Breakdown Tab**: Side-by-side comparison table of all 5 framework parameters with raw metrics, raw scores, weighted points, and variance.
-* **Normalized Price Acceleration Curve Tab**: Overlays 180-day price trends rebased to 100% at T-180 baseline.
-* **Shared Traders & Accounts Tab**: Identifies shared client PANs active across both securities to detect cross-scrip operator syndicates.
+* **Immutable Audit Trail Table**: Displays timestamp, officer, role, action code, target resource, details, and IP address.
+* **Action Code Filtering & Search**: Instant filtering across specific actions and fast keyword search across officers, actions, and targets.
+* **CSV Audit Export**: 1-click audit trail extraction for regulatory record keeping.
+* **Search & Export**: Supports URL parameter pre-filling (`/history?search=SYMBOL`) and CSV export (`PVASF_System_Audit_Log.csv`).
 
 ---
 
-## 4. Module 4: Streamlined Forensic Case Dossiers (`/cases`)
-**Purpose:** Manages persistent regulatory investigation dossiers for shortlisted scrips.
-
-### Key Capabilities
-* **Integrated Header Bar**: Single top bar displaying total dossier count, search bar, status filter tabs (`All`, `Active`, `Pending`, `Closed`), and **New Case Dossier** button.
-* **5-Column Case Table**: Displays Target Security (with clickable stock links), Case Title & Description, Priority (`High`, `Medium`, `Low`), Inline Workflow Status Dropdown, and **`Analyze Scrip`** navigation button.
-* **Direct 1-Step Case Creation**: Clean modal allowing officers to open a case dossier specifying Target Symbol, Title, Priority, and Initial Findings.
-
----
-
-## 5. Module 5: Audit Trail & History Log (`/history`)
-**Purpose:** Maintains immutable audit logs of regulatory decisions and system security events.
-
-### Key Capabilities
-* **Dual-Tab Workspace**:
-  - **Case Investigation History Tab**: Displays past case dossiers, scrip links, workflow statuses, and regulatory outcomes.
-  - **Security & System Audit Logs Tab**: Displays immutable audit records (`SYS_AUDIT_LOGS`) including timestamp, officer username, role, action, target, details, and IP address.
-* **Search & Export**: Supports URL parameter pre-filling (`/history?search=SYMBOL`) and context-aware CSV export (`Case_History.csv` or `System_Audit_Log.csv`).
-
----
-
-## 6. Module 6: Model Calibration & System Administration (`/settings`)
+## 4. Module 4: Model Calibration & System Administration (`/settings`)
 **Purpose:** Model weight recalibration and system user access control.
 
 ### Key Capabilities

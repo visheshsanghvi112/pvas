@@ -622,46 +622,6 @@ class SysAuditLog(Base):
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  FORENSIC_CASES — Surveillance Case Dossier Management
-# ══════════════════════════════════════════════════════════════════════════════
-
-class ForensicCase(Base):
-    """
-    Persists forensic investigation dossiers opened by surveillance officers.
-
-    Status lifecycle:
-        Draft → Open Investigation → Pending Action → Closed
-
-    Evidence items are stored as a JSON-encoded list in `evidence_json`
-    (column-level JSON is not universally supported in SQLite + Teradata the
-    same way, so we use a TEXT column and parse in the service layer).
-    """
-    __tablename__ = "FORENSIC_CASES"
-
-    id:                    Mapped[int]           = mapped_column(Integer, primary_key=True, autoincrement=True)
-    case_id:               Mapped[str]           = mapped_column(String(60),  unique=True, nullable=False, index=True)
-    target_symbol:         Mapped[str]           = mapped_column(String(20),  nullable=False, index=True)
-    title:                 Mapped[str]           = mapped_column(String(300), nullable=False)
-    lead_officer:          Mapped[str]           = mapped_column(String(100), nullable=False)
-    # Status: Draft | Open Investigation | Pending Action | Closed
-    status:                Mapped[str]           = mapped_column(String(30),  nullable=False, default="Draft", index=True)
-    # Priority: High | Medium | Low
-    priority:              Mapped[str]           = mapped_column(String(10),  nullable=False, default="Medium")
-    description:           Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
-    # JSON array of evidence objects: [{title, description, type}]
-    evidence_json:         Mapped[Optional[str]] = mapped_column(String(5000), nullable=True)
-    created_at:            Mapped[datetime]      = mapped_column(DateTime, nullable=False, default=datetime.utcnow, index=True)
-    updated_at:            Mapped[datetime]      = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    closed_at:             Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    # Officer who created the dossier (links to SysUser.username)
-    created_by:            Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
-
-    __table_args__ = (
-        Index("ix_fcases_symbol_status", "target_symbol", "status"),
-    )
-
-
-# ══════════════════════════════════════════════════════════════════════════════
 #  2.1 TRADE AGGREGATE TABLES (3 Key Enterprise Warehouse Aggregate Tables)
 # ══════════════════════════════════════════════════════════════════════════════
 

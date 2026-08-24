@@ -3,10 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import {
-  GitCompare,
-  Send,
-  FolderLock,
   UserCircle,
+  Users,
   X,
   AlertTriangle,
   TrendingUp,
@@ -15,7 +13,12 @@ import {
   Zap,
   Maximize2,
   Minimize2,
-  History
+  History,
+  PieChart,
+  FileText,
+  Building,
+  Layers,
+  ArrowRight
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +45,6 @@ import {
   fetchClient360,
   fetchShareholdingBreakdown,
   fetchCorporateActions,
-  fetchCases,
   getAuthHeaders,
   type ScripDetail,
   type ParticipantAudit,
@@ -52,7 +54,7 @@ import {
 
 import { useUser } from "@/lib/user-context";
 
-const TABS = ["Overview", "Participants", "Case Notes"] as const;
+const TABS = ["Overview", "Shareholders", "Participants"] as const;
 type Tab = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
@@ -219,8 +221,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   const [error, setError] = useState<string | null>(null);
 
   const [analysisStatus, setAnalysisStatus] = useState<"Active" | "Completed">("Active");
-  const [notes, setNotes] = useState<TimelineItem[]>([]);
-  const [newNote, setNewNote] = useState("");
   const [selectedPan, setSelectedPan] = useState<string | null>(null);
   const [selectedTrade, setSelectedTrade] = useState<TradeRow | null>(null);
 
@@ -229,14 +229,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       setLoading(true);
       setError(null);
       try {
-        const [d, p, t, sh, ca, cases] = await Promise.all([
+        const [d, p, t, sh, ca] = await Promise.all([
           fetchScripDetail(symbol),
           fetchScripParticipants(symbol).catch(() => null),
           fetchTradeLog(symbol).catch(() => []),
           fetchShareholdingBreakdown(symbol).catch(() => null),
-          fetchCorporateActions(symbol).catch(() => []),
-          // Bug fix: use centralized fetchCases() instead of raw hardcoded fetch
-          fetchCases().catch(() => [])
+          fetchCorporateActions(symbol).catch(() => [])
         ]);
         setDetail(d);
         if (p) setParticipants(p);
@@ -244,17 +242,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         if (sh) setShBreakdown(sh);
         if (ca) setCorpActions(ca);
         setAnalysisStatus(d.status === "Closed" ? "Completed" : "Active");
-
-        // Map case records for this symbol into timeline notes
-        const symbolCases = cases.filter((c: any) => c.target_symbol === symbol);
-        if (symbolCases.length > 0) {
-          const fetchedNotes = symbolCases.map((c: any) => ({
-            date: (c.created_at || "").replace("T", " ").slice(0, 16) || "Today",
-            officer: c.lead_officer || "Surveillance Officer",
-            text: c.description || c.title,
-          }));
-          setNotes(fetchedNotes);
-        }
       } catch (e: any) {
         console.error("Failed to load investigation workspace data", e);
         setError(e?.message || "Failed to load. Ensure backend is running.");
@@ -274,42 +261,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       setClient360(null);
     }
   }, [selectedPan]);
-
-  const handleAddNote = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newNote.trim()) return;
-
-    const noteText = newNote.trim();
-    const optimisticNote = {
-      date: new Date().toISOString().slice(0, 16).replace("T", " "),
-      officer: currentUser.name,
-      text: noteText,
-    };
-
-    // Optimistic update: show immediately in UI
-    setNotes((prev) => [optimisticNote, ...prev]);
-    setNewNote("");
-
-    // Persist to backend as a new Case record with auth headers
-    try {
-      const baseHost = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
-      await fetch(`${baseHost}/api/v1/cases/`, {
-        method: "POST",
-        headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          target_symbol: symbol,
-          title: `Case Note — ${symbol}`,
-          lead_officer: currentUser.name,
-          status: "Draft",
-          priority: "Low",
-          description: noteText,
-        }),
-      });
-    } catch (err) {
-      console.warn("[InvestigationWorkspace] Failed to persist note to backend:", err);
-      // Note already shown in UI via optimistic update; user is not blocked
-    }
-  };
 
 
   if (loading) {
@@ -396,15 +347,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     ? "bg-rose-50 text-rose-700 border-rose-200"
                     : "bg-emerald-50 text-emerald-700 border-emerald-200"
                 )}>
-                  {analysisStatus === "Active" ? "Active Case" : "Case Closed"}
+                  {analysisStatus === "Active" ? "Active Surveillance" : "Surveillance Resolved"}
                 </span>
-                <Link
-                  href="/cases"
-                  className="h-8 text-xs font-semibold px-3.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                >
-                  <FolderLock className="h-3.5 w-3.5 text-blue-600" />
-                  Forensic Dossiers
-                </Link>
                 <Link
                   href={`/history?search=${detail.symbol}`}
                   className="h-8 text-xs font-semibold px-3.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-2xs"
@@ -595,171 +539,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </Card>
             </div>
 
-
-            {/* CORPORATE ANNOUNCEMENTS */}
-            <Card>
-              <SectionHeader
-                icon={<Zap className="w-4 h-4 text-blue-600" />}
-                title="Details of corporate announcements made in past 15 days"
-                subtitle="Dividends, bonus issues, stock splits, rights issues & related dilution factors (FACT_CORP_ACTIONS)"
-              />
-              <div className="p-5 space-y-4">
-                {corpActions && corpActions.length > 0 ? (
-                  corpActions.map((ca, idx) => (
-                    <div key={idx} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 hover:border-slate-300 transition-colors">
-                      <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono font-semibold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-md">{ca.record_date}</span>
-                          <span className="text-xs font-semibold text-slate-800 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-md">{ca.category}</span>
-                        </div>
-                        <span className="text-xs font-mono font-medium text-slate-600 bg-white border border-slate-200 px-2.5 py-1 rounded-md">
-                          Dilution Factor: {ca.dilution_factor}×
-                        </span>
-                      </div>
-                      <p className="text-sm font-semibold text-slate-900 leading-snug">{ca.purpose}</p>
-                      {ca.bonus_ratio && (
-                        <div className="text-xs font-mono font-medium text-slate-600">Ratio: {ca.bonus_ratio}</div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="p-8 text-center text-slate-500 bg-slate-50 border border-slate-200 rounded-xl">
-                    <p className="text-sm font-semibold text-slate-800">No Corporate Actions Recorded in Past 15 Days</p>
-                    <p className="text-xs text-slate-500 mt-1">No dividend, bonus, or stock split actions recorded for {symbol} in FCAC during observation window.</p>
-                  </div>
-                )}
-              </div>
-            </Card>
-
-            {/* SHAREHOLDER STATISTICS */}
-            <Card>
-              <SectionHeader
-                icon={<UserCircle className="w-4 h-4 text-blue-600" />}
-                title="Shareholder statistics"
-                subtitle="Unique PAN-holders in scrip on day t & T-180 · Avg unique PANs trading in past 15 days & 180 days · Shares held by promoters & top 1% on day t & T-180"
-              />
-              <div className="p-5 space-y-6">
-                {/* Unique PAN-holder counts */}
-                <div className="space-y-2.5">
-                  <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Unique PAN-holders in scrip on day t & day T-180</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                      <div className="text-xs text-slate-600 font-medium mb-1.5">Unique PAN-holders on Day t (Current)</div>
-                      <div className="text-2xl font-bold text-slate-900 font-mono">
-                        {detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? "—"}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">PANs holding the scrip on day t</div>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                      <div className="text-xs text-slate-600 font-medium mb-1.5">Unique PAN-holders on Day T-180</div>
-                      <div className="text-2xl font-bold text-slate-900 font-mono">
-                        {detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? "—"}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">PANs holding the scrip 180 days ago</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Avg unique PANs trading */}
-                <div className="space-y-2.5">
-                  <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">Average number of unique PANs trading in scrip in past 15 days & 180 days</div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                      <div className="text-xs text-slate-600 font-medium mb-1.5">Avg Unique PANs Trading (15D)</div>
-                      <div className="text-2xl font-bold text-slate-900 font-mono">
-                        {detail.shareholders?.avg_trading_pans_15d ?? detail.shareholders?.unique_pans_15d ?? "—"}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">Past 15 trading days average</div>
-                    </div>
-                    <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                      <div className="text-xs text-slate-600 font-medium mb-1.5">Avg Unique PANs Trading (180D)</div>
-                      <div className="text-2xl font-bold text-slate-900 font-mono">
-                        {detail.shareholders?.avg_trading_pans_180d ?? detail.shareholders?.unique_pans_180d ?? "—"}
-                      </div>
-                      <div className="text-xs text-slate-500 mt-1">Past 180 trading days average</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Shares held by promoters & top 1% on day t & T-180 */}
-                {(() => {
-                  const promoter_pct_t = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent ?? 54.2;
-                  const promoter_pct_180 = shBreakdown?.promoter_pct_180 ?? Math.round((promoter_pct_t + 0.8) * 10) / 10;
-                  const promoter_shares_t = shBreakdown?.promoter_shares_t ?? 5420000;
-                  const promoter_shares_180 = shBreakdown?.promoter_shares_180 ?? 5500000;
-
-                  const top1_pct_t = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration ?? 32.5;
-                  const top1_pct_180 = shBreakdown?.top1_pct_180 ?? Math.round(Math.max(10, top1_pct_t - 5.8) * 10) / 10;
-                  const top1_shares_t = shBreakdown?.top1_shares_t ?? 3250000;
-                  const top1_shares_180 = shBreakdown?.top1_shares_180 ?? 2600000;
-
-                  return (
-                    <div className="space-y-2.5">
-                      <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
-                        Shares held by promoters and top 1% shareholders on day t & day T-180
-                      </div>
-
-                      {/* Promoters Comparative Cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                          <div className="text-xs text-slate-600 font-medium mb-1.5 flex items-center justify-between">
-                            <span>Promoters — Day t (Current)</span>
-                            <span className="text-xs font-bold font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-indigo-700">{promoter_pct_t}%</span>
-                          </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">
-                            {promoter_shares_t.toLocaleString("en-IN")}
-                            <span className="text-xs font-medium text-slate-500 ml-1.5 font-sans">shares</span>
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">Total shares held by promoter group on day t</div>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                          <div className="text-xs text-slate-600 font-medium mb-1.5 flex items-center justify-between">
-                            <span>Promoters — Day T-180</span>
-                            <span className="text-xs font-bold font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">{promoter_pct_180}%</span>
-                          </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">
-                            {promoter_shares_180.toLocaleString("en-IN")}
-                            <span className="text-xs font-medium text-slate-500 ml-1.5 font-sans">shares</span>
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">Total shares held by promoter group 180 days ago</div>
-                        </div>
-                      </div>
-
-                      {/* Top 1% Shareholders Comparative Cards */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                          <div className="text-xs text-slate-600 font-medium mb-1.5 flex items-center justify-between">
-                            <span>Top 1% Shareholders — Day t (Current)</span>
-                            <span className="text-xs font-bold font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-blue-700">{top1_pct_t}%</span>
-                          </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">
-                            {top1_shares_t.toLocaleString("en-IN")}
-                            <span className="text-xs font-medium text-slate-500 ml-1.5 font-sans">shares</span>
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">Shares held by top 1% largest shareholders on day t</div>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4">
-                          <div className="text-xs text-slate-600 font-medium mb-1.5 flex items-center justify-between">
-                            <span>Top 1% Shareholders — Day T-180</span>
-                            <span className="text-xs font-bold font-mono bg-white px-2 py-0.5 rounded border border-slate-200 text-slate-700">{top1_pct_180}%</span>
-                          </div>
-                          <div className="text-2xl font-bold text-slate-900 font-mono">
-                            {top1_shares_180.toLocaleString("en-IN")}
-                            <span className="text-xs font-medium text-slate-500 ml-1.5 font-sans">shares</span>
-                          </div>
-                          <div className="text-xs text-slate-500 mt-1">Shares held by top 1% largest shareholders 180 days ago</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
-                </div>
-              </Card>
-
-
-
             {/* Alert Event Trail & Audit Log */}
             <Card>
               <SectionHeader icon={<AlertTriangle className="w-4 h-4 text-amber-600" />} title="Alert Event Trail & Audit Log" />
@@ -767,6 +546,267 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <Timeline items={alertHistory} />
               </div>
             </Card>
+          </div>
+        )}
+
+        {/* TAB: SHAREHOLDERS (Framework Spec §5.2 & §5.3) */}
+        {activeTab === "Shareholders" && (
+          <div className="space-y-6">
+            {(() => {
+              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? 54;
+              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? 55;
+              const unique_pans_diff = unique_pans_t - unique_pans_180;
+              const unique_pans_pct_diff = Number(((unique_pans_diff / Math.max(1, unique_pans_180)) * 100).toFixed(1));
+
+              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? detail.shareholders?.unique_pans_15d ?? 24;
+              const avg_pans_180d = detail.shareholders?.avg_trading_pans_180d ?? detail.shareholders?.unique_pans_180d ?? 23;
+              const avg_pans_diff = avg_pans_15d - avg_pans_180d;
+              const avg_pans_pct_diff = Number(((avg_pans_diff / Math.max(1, avg_pans_180d)) * 100).toFixed(1));
+
+              const promoter_pct_t = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent ?? 64.2;
+              const promoter_pct_180 = shBreakdown?.promoter_pct_180 ?? 68.4;
+              const promoter_shares_t = shBreakdown?.promoter_shares_t ?? 64200000;
+              const promoter_shares_180 = shBreakdown?.promoter_shares_180 ?? 68400000;
+              const promoter_pct_diff = Number((promoter_pct_t - promoter_pct_180).toFixed(2));
+
+              const top1_pct_t = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration ?? 35.8;
+              const top1_pct_180 = shBreakdown?.top1_pct_180 ?? 31.6;
+              const top1_shares_t = shBreakdown?.top1_shares_t ?? 35800000;
+              const top1_shares_180 = shBreakdown?.top1_shares_180 ?? 31600000;
+              const top1_pct_diff = Number((top1_pct_t - top1_pct_180).toFixed(2));
+
+              const total_shares_approx = promoter_pct_t > 0 ? Math.round(promoter_shares_t / (promoter_pct_t / 100)) : 100000000;
+              const public_shares_t = Math.max(0, total_shares_approx - promoter_shares_t);
+              const public_shares_180 = Math.max(0, total_shares_approx - promoter_shares_180);
+              const public_pct_t = Number((100 - promoter_pct_t).toFixed(2));
+              const public_pct_180 = Number((100 - promoter_pct_180).toFixed(2));
+              const public_pct_diff = Number((public_pct_t - public_pct_180).toFixed(2));
+
+              return (
+                <>
+                  {/* Executive Direct KPI Summary Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Unique PANs (Day t)</span>
+                        <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                          <Users className="h-3.5 w-3.5 text-blue-600" />
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{unique_pans_t}</span>
+                        <span className={cn(
+                          "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
+                          unique_pans_diff >= 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                        )}>
+                          {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff} ({unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%)
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{unique_pans_180} PANs</strong></div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Avg Trading PANs (15D)</span>
+                        <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center">
+                          <Activity className="h-3.5 w-3.5 text-indigo-600" />
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{avg_pans_15d}</span>
+                        <span className={cn(
+                          "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
+                          avg_pans_diff >= 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-700 border-slate-200"
+                        )}>
+                          {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff} ({avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%)
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500 font-medium">180D Avg: <strong className="text-slate-800 font-mono">{avg_pans_180d} PANs/day</strong></div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Promoter Holding (Day t)</span>
+                        <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+                          <PieChart className="h-3.5 w-3.5 text-slate-700" />
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{promoter_pct_t}%</span>
+                        <span className={cn(
+                          "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
+                          promoter_pct_diff >= 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                        )}>
+                          {promoter_pct_diff >= 0 ? "+" : ""}{promoter_pct_diff}%
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{promoter_pct_180}%</strong> ({promoter_shares_180.toLocaleString("en-IN")})</div>
+                    </div>
+
+                    <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Top 1% Holding (Day t)</span>
+                        <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center">
+                          <Zap className="h-3.5 w-3.5 text-amber-600" />
+                        </div>
+                      </div>
+                      <div className="mt-2.5 flex items-baseline justify-between">
+                        <span className="text-2xl font-black text-amber-900 font-mono tracking-tight">{top1_pct_t}%</span>
+                        <span className={cn(
+                          "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
+                          top1_pct_diff > 0 ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200"
+                        )}>
+                          {top1_pct_diff >= 0 ? "+" : ""}{top1_pct_diff}%
+                        </span>
+                      </div>
+                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{top1_pct_180}%</strong> ({top1_shares_180.toLocaleString("en-IN")})</div>
+                    </div>
+                  </div>
+
+                  {/* TABLE 1: Shareholder Structure & Equity Breakdown (Day t vs Day T-180) */}
+                  <Card>
+                    <SectionHeader
+                      icon={<PieChart className="w-4 h-4 text-blue-600" />}
+                      title="Shareholder Structure (Day t vs Day T-180)"
+                      subtitle="Holding distribution across Promoters, Top 1% large holders, and Public float"
+                      info="SEBI PVASF Section 5.3.3: Compares shares held by promoters and top 1% shareholders on day t & day T-180."
+                    />
+                    <DataTable
+                      headers={[
+                        "Shareholder Category",
+                        "Shares on Day t",
+                        "Holding % (Day t)",
+                        "Shares on Day T-180",
+                        "Holding % (Day T-180)",
+                        "Net Change (Delta %)"
+                      ]}
+                      rows={[
+                        [
+                          <span key="name-p" className="font-bold text-slate-900 flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 shrink-0" /> Promoters & Promoter Group
+                          </span>,
+                          <span key="p-st" className="font-mono font-bold text-slate-900">{promoter_shares_t.toLocaleString("en-IN")}</span>,
+                          <div key="p-pt" className="flex items-center gap-2">
+                            <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
+                              <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.min(100, promoter_pct_t)}%` }} />
+                            </div>
+                            <span className="font-mono font-bold text-indigo-700">{promoter_pct_t}%</span>
+                          </div>,
+                          <span key="p-s180" className="font-mono text-slate-700">{promoter_shares_180.toLocaleString("en-IN")}</span>,
+                          <span key="p-p180" className="font-mono font-bold text-slate-700">{promoter_pct_180}%</span>,
+                          <span key="p-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", promoter_pct_diff >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
+                            {promoter_pct_diff >= 0 ? "+" : ""}{promoter_pct_diff}%
+                          </span>,
+                        ],
+                        [
+                          <span key="name-top1" className="font-bold text-slate-900 flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" /> Top 1% Largest Shareholders
+                          </span>,
+                          <span key="top1-st" className="font-mono font-bold text-slate-900">{top1_shares_t.toLocaleString("en-IN")}</span>,
+                          <div key="top1-pt" className="flex items-center gap-2">
+                            <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
+                              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${Math.min(100, top1_pct_t)}%` }} />
+                            </div>
+                            <span className="font-mono font-bold text-amber-800">{top1_pct_t}%</span>
+                          </div>,
+                          <span key="top1-s180" className="font-mono text-slate-700">{top1_shares_180.toLocaleString("en-IN")}</span>,
+                          <span key="top1-p180" className="font-mono font-bold text-slate-700">{top1_pct_180}%</span>,
+                          <span key="top1-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", top1_pct_diff >= 0 ? "text-amber-800 bg-amber-50 border border-amber-200" : "text-emerald-700 bg-emerald-50 border border-emerald-100")}>
+                            {top1_pct_diff >= 0 ? "+" : ""}{top1_pct_diff}%
+                          </span>,
+                        ],
+                        [
+                          <span key="name-pub" className="font-bold text-slate-900 flex items-center gap-2">
+                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /> Public & Non-Promoter Free Float
+                          </span>,
+                          <span key="pub-st" className="font-mono font-bold text-slate-900">{public_shares_t.toLocaleString("en-IN")}</span>,
+                          <div key="pub-pt" className="flex items-center gap-2">
+                            <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
+                              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, public_pct_t)}%` }} />
+                            </div>
+                            <span className="font-mono font-bold text-emerald-700">{public_pct_t}%</span>
+                          </div>,
+                          <span key="pub-s180" className="font-mono text-slate-700">{public_shares_180.toLocaleString("en-IN")}</span>,
+                          <span key="pub-p180" className="font-mono font-bold text-slate-700">{public_pct_180}%</span>,
+                          <span key="pub-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", public_pct_diff >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
+                            {public_pct_diff >= 0 ? "+" : ""}{public_pct_diff}%
+                          </span>,
+                        ],
+                      ]}
+                    />
+                  </Card>
+
+                  {/* TABLE 2: PAN Delivery Demographics & Trading Counts */}
+                  <Card>
+                    <SectionHeader
+                      icon={<Users className="w-4 h-4 text-indigo-600" />}
+                      title="PAN Delivery Demographics & Trading Activity"
+                      subtitle="Unique PAN holding counts (Day t vs T-180) & average daily trading counts (15D vs 180D)"
+                      info="SEBI PVASF Section 5.3.1 & 5.3.2: Tracks unique PAN-holders in scrip on day t & T-180 and average unique PANs trading in past 15 days & 180 days."
+                    />
+                    <DataTable
+                      headers={[
+                        "Demographic Parameter",
+                        "Current Observation (Day t / 15D)",
+                        "Historical Baseline (Day T-180 / 180D)",
+                        "Net Change (Delta)"
+                      ]}
+                      rows={[
+                        [
+                          <span key="r-hp" className="font-bold text-slate-900">Unique PAN-holders holding scrip (Day t vs Day T-180)</span>,
+                          <span key="r-hpt" className="font-mono font-bold text-slate-900">{unique_pans_t} PANs</span>,
+                          <span key="r-hp180" className="font-mono font-bold text-slate-700">{unique_pans_180} PANs</span>,
+                          <span key="r-hpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", unique_pans_diff >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-rose-700 bg-rose-50 border border-rose-100")}>
+                            {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff} PANs ({unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%)
+                          </span>,
+                        ],
+                        [
+                          <span key="r-tp" className="font-bold text-slate-900">Average unique PANs trading in scrip (15D vs 180D Avg)</span>,
+                          <span key="r-tpt" className="font-mono font-bold text-slate-900">{avg_pans_15d} PANs / day</span>,
+                          <span key="r-tp180" className="font-mono font-bold text-slate-700">{avg_pans_180d} PANs / day</span>,
+                          <span key="r-tpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", avg_pans_diff >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-slate-700 bg-slate-100 border border-slate-200")}>
+                            {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff} PANs ({avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%)
+                          </span>,
+                        ],
+                      ]}
+                    />
+                  </Card>
+
+                  {/* TABLE 3: Corporate Announcements (Past 15 Days) */}
+                  <Card>
+                    <SectionHeader
+                      icon={<Zap className="w-4 h-4 text-blue-600" />}
+                      title="Details of Corporate Announcements made in Past 15 Days"
+                      subtitle="Dividends, bonus issues, stock splits, rights issues & related dilution factors (FACT_CORP_ACTIONS)"
+                      info="SEBI PVASF Section 5.2: Details of corporate announcements made in past 15 days."
+                    />
+                    {corpActions && corpActions.length > 0 ? (
+                      <DataTable
+                        headers={[
+                          "Record Date",
+                          "Category",
+                          "Announcement Details / Purpose",
+                          "Dilution Factor",
+                          "Ratio / Value"
+                        ]}
+                        rows={corpActions.map((ca, idx) => [
+                          <span key={idx} className="font-mono text-xs font-bold text-slate-800 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">{ca.record_date}</span>,
+                          <span key={`cat-${idx}`} className="font-bold text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md">{ca.category}</span>,
+                          <span key={`p-${idx}`} className="font-medium text-slate-900 leading-snug">{ca.purpose}</span>,
+                          <span key={`d-${idx}`} className="font-mono font-bold text-slate-700">{ca.dilution_factor}×</span>,
+                          <span key={`r-${idx}`} className="font-mono text-xs font-semibold text-slate-600">{ca.bonus_ratio || "—"}</span>,
+                        ])}
+                      />
+                    ) : (
+                      <div className="p-8 text-center text-slate-500 bg-slate-50/50">
+                        <p className="text-sm font-semibold text-slate-800">No Corporate Actions Recorded in Past 15 Days</p>
+                        <p className="text-xs text-slate-500 mt-1">No dividend, bonus, or stock split actions recorded for {symbol} in FCAC during observation window.</p>
+                      </div>
+                    )}
+                  </Card>
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -806,10 +846,22 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         >
                           <UserCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />{p.participant}
                         </button>,
-                        <span key="push" className="font-mono text-xs font-semibold text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded border border-indigo-100/80">
-                          {p.net_val !== undefined && p.net_val > 0
-                            ? `+₹${p.net_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : `+${Number(p.contribution || 0).toFixed(1)}%`}
+                        <span
+                          key="push"
+                          className={cn(
+                            "font-mono text-xs font-semibold px-2 py-0.5 rounded border",
+                            (p.net_val ?? p.contribution ?? 0) >= 0
+                              ? "text-indigo-700 bg-indigo-50/80 border-indigo-100/80"
+                              : "text-rose-700 bg-rose-50/80 border-rose-100/80"
+                          )}
+                        >
+                          {p.net_val !== undefined
+                            ? p.net_val >= 0
+                              ? `+₹${p.net_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `-₹${Math.abs(p.net_val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : Number(p.contribution || 0) >= 0
+                              ? `+${Number(p.contribution || 0).toFixed(1)}%`
+                              : `${Number(p.contribution || 0).toFixed(1)}%`}
                         </span>,
                         <div key="bar" className="flex items-center gap-2.5">
                           <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
@@ -905,8 +957,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         >
                           <UserCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />{p.participant}
                         </button>,
-                        <span key="pnl" className={Number(p.net_pnl || 0) >= 0 ? "text-emerald-700 font-bold" : "text-rose-600 font-bold"}>
-                          {Number(p.net_pnl || 0) >= 0 ? "+" : ""}₹{Number(p.net_pnl || 0).toLocaleString("en-IN")}
+                        <span key="pnl" className={Number(p.net_pnl || 0) >= 0 ? "text-emerald-700 font-bold font-mono" : "text-rose-600 font-bold font-mono"}>
+                          {Number(p.net_pnl || 0) >= 0
+                            ? `+₹${Number(p.net_pnl || 0).toLocaleString("en-IN")}`
+                            : `-₹${Math.abs(Number(p.net_pnl || 0)).toLocaleString("en-IN")}`}
                         </span>,
                         Number(p.buy_volume || 0).toLocaleString("en-IN"),
                         Number(p.sell_volume || 0).toLocaleString("en-IN"),
@@ -959,66 +1013,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </div>
               </>
             )}
-          </div>
-        )}
-
-
-
-        {/* TAB: CASE NOTES */}
-        {activeTab === "Case Notes" && (
-          <div className="space-y-5">
-            {/* Case Dossier Card */}
-            <Card>
-              <SectionHeader icon={<FolderLock className="w-4 h-4" />} title="Case Dossier & Investigation Summary" subtitle="Regulatory surveillance profile & metadata" />
-              <div className="p-5 space-y-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                  {[
-                    { label: "Scrip", val: detail.symbol },
-                    { label: "Risk Level", val: risk, colored: true },
-                    { label: "Status", val: detail.status },
-                    { label: "PVASF Score", val: metrics.final_score.toString() },
-                    { label: "ISIN", val: detail.isin || "—" },
-                    { label: "Analyst", val: currentUser.name },
-                  ].map((item) => (
-                    <div key={item.label} className="bg-slate-50 border border-slate-200/90 p-3 rounded-xl">
-                      <div className="text-xs font-semibold text-slate-500 mb-1">{item.label}</div>
-                      <div className={cn(
-                        "text-base font-bold font-mono",
-                        item.colored
-                          ? risk === "High" ? "text-rose-600 font-extrabold" : risk === "Medium" ? "text-amber-600 font-extrabold" : "text-emerald-600 font-extrabold"
-                          : "text-slate-900"
-                      )}>
-                        {item.val}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <div className="pt-2 flex justify-end">
-                  <Button className="h-9 px-5 text-xs font-extrabold rounded-xl border border-slate-300 bg-white text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs" variant="outline">
-                    Generate Report
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* Timeline Notes */}
-            <Card>
-              <SectionHeader title="Officer Investigation Notes & Timeline" subtitle={`${notes.length} log entries recorded`} />
-              <div className="p-5 space-y-4">
-                <Timeline items={notes} />
-                <form onSubmit={handleAddNote} className="flex gap-2 border-t border-slate-100 pt-4">
-                  <Input
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    placeholder={`Add investigation note as ${currentUser.name}…`}
-                    className="h-9 text-xs flex-1 bg-slate-50"
-                  />
-                  <Button type="submit" className="h-9 text-xs shrink-0 px-4">
-                    <Send className="h-3.5 w-3.5 mr-1.5" /> Add Note
-                  </Button>
-                </form>
-              </div>
-            </Card>
           </div>
         )}
       </div>
@@ -1114,7 +1108,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           <div className="bg-white rounded-lg border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
             <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-100">
               <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                <GitCompare className="w-4 h-4 text-blue-600" />
+                <Activity className="w-4 h-4 text-blue-600" />
                 Trade #{selectedTrade.Ftrd_Trd_Num}
               </div>
               <button

@@ -105,7 +105,7 @@ const CustomPriceTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-md p-3 text-xs shadow-2xl font-sans min-w-[200px]">
+      <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-md p-3 text-xs shadow-2xl font-sans min-w-[200px] pointer-events-none select-none">
         <div className="font-black text-slate-900 pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
           <span>{label}</span>
           {data.pctFromBaseline != null && (
@@ -154,7 +154,7 @@ const CustomVolumeTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
     return (
-      <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-md p-3 text-xs shadow-2xl font-sans min-w-[210px]">
+      <div className="rounded-xl border border-slate-200 bg-white/95 backdrop-blur-md p-3 text-xs shadow-2xl font-sans min-w-[210px] pointer-events-none select-none">
         <div className="font-black text-slate-900 pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
           <span>{label}</span>
           {data.surgeRatio != null && (
@@ -189,7 +189,7 @@ const CustomVolumeTooltip = ({ active, payload, label }: any) => {
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="rounded border border-slate-200 bg-white p-2.5 text-xs shadow-xl font-mono">
+      <div className="rounded border border-slate-200 bg-white p-2.5 text-xs shadow-xl font-mono pointer-events-none select-none">
         <p className="font-bold text-slate-800 mb-1 font-sans">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2">
@@ -379,7 +379,10 @@ export function UnifiedPriceVolumeChart({
               margin={{ top: 10, right: 15, left: 0, bottom: 0 }}
               onMouseMove={(state: any) => {
                 if (state && state.activePayload && state.activePayload.length) {
-                  setHoverData(state.activePayload[0].payload);
+                  const nextP = state.activePayload[0].payload;
+                  if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                    setHoverData(nextP);
+                  }
                 }
               }}
               onMouseLeave={() => setHoverData(null)}
@@ -387,7 +390,12 @@ export function UnifiedPriceVolumeChart({
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
               <YAxis stroke="#94a3b8" tick={{ fontSize: 10 }} domain={["auto", "auto"]} width={55} tickFormatter={(v) => `₹${v}`} />
-              <Tooltip content={<CustomPriceTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+              <Tooltip
+                content={<CustomPriceTooltip />}
+                isAnimationActive={false}
+                wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+                cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+              />
               
               {showWindow && recentStart && recentEnd && timeRange === "ALL" && (
                 <ReferenceArea
@@ -440,7 +448,10 @@ export function UnifiedPriceVolumeChart({
               margin={{ top: 5, right: 15, left: 0, bottom: 0 }}
               onMouseMove={(state: any) => {
                 if (state && state.activePayload && state.activePayload.length) {
-                  setHoverData(state.activePayload[0].payload);
+                  const nextP = state.activePayload[0].payload;
+                  if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                    setHoverData(nextP);
+                  }
                 }
               }}
               onMouseLeave={() => setHoverData(null)}
@@ -454,7 +465,12 @@ export function UnifiedPriceVolumeChart({
               <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
               <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
               <YAxis stroke="#94a3b8" tick={{ fontSize: 9 }} width={55} tickFormatter={formatVolumeNum} />
-              <Tooltip content={<CustomVolumeTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+              <Tooltip
+                content={<CustomVolumeTooltip />}
+                isAnimationActive={false}
+                wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+                cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+              />
               
               <Bar dataKey="volume" name="Daily Vol" radius={[2, 2, 0, 0]}>
                 {filtered.map((entry, index) => (
@@ -633,7 +649,10 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
             margin={{ top: 12, right: 15, left: 0, bottom: 0 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
-                setHoverData(state.activePayload[0].payload);
+                const nextP = state.activePayload[0].payload;
+                if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                  setHoverData(nextP);
+                }
               }
             }}
             onMouseLeave={() => setHoverData(null)}
@@ -641,7 +660,12 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={formatDateTick} interval={timeRange === "15D" ? 0 : "preserveStartEnd"} />
             <YAxis stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} domain={["auto", "auto"]} width={55} tickFormatter={(v) => `₹${v}`} />
-            <Tooltip content={<CustomPriceTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+            <Tooltip
+              content={<CustomPriceTooltip />}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+            />
             
             {showWindow && recentStart && recentEnd && timeRange === "ALL" && (
               <ReferenceArea
@@ -763,7 +787,10 @@ export function VolumeChart({ history = [], isExpanded = false }: { history?: Pr
             margin={{ top: 5, right: 15, left: 0, bottom: 0 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
-                setHoverData(state.activePayload[0].payload);
+                const nextP = state.activePayload[0].payload;
+                if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                  setHoverData(nextP);
+                }
               }
             }}
             onMouseLeave={() => setHoverData(null)}
@@ -771,7 +798,12 @@ export function VolumeChart({ history = [], isExpanded = false }: { history?: Pr
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 9 }} interval="preserveStartEnd" />
             <YAxis stroke="#94a3b8" tick={{ fontSize: 9 }} width={55} tickFormatter={formatVolumeNum} />
-            <Tooltip content={<CustomVolumeTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+            <Tooltip
+              content={<CustomVolumeTooltip />}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+            />
             <Bar dataKey="volume" name="Volume" radius={[3, 3, 0, 0]}>
               {filtered.map((entry, index) => (
                 <Cell key={`cell-${index}`} fill={entry.barColor} />
@@ -932,7 +964,10 @@ export function RollingVolumeChart({ history = [], isExpanded = false }: { histo
             margin={{ top: 12, right: 15, left: 0, bottom: 0 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
-                setHoverData(state.activePayload[0].payload);
+                const nextP = state.activePayload[0].payload;
+                if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                  setHoverData(nextP);
+                }
               }
             }}
             onMouseLeave={() => setHoverData(null)}
@@ -946,7 +981,12 @@ export function RollingVolumeChart({ history = [], isExpanded = false }: { histo
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={formatDateTick} interval={timeRange === "15D" ? 0 : "preserveStartEnd"} />
             <YAxis stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} width={55} tickFormatter={formatVolumeNum} />
-            <Tooltip content={<CustomVolumeTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+            <Tooltip
+              content={<CustomVolumeTooltip />}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+            />
 
             {recentStart && recentEnd && timeRange === "ALL" && (
               <ReferenceArea
@@ -1222,7 +1262,10 @@ export function RollingPriceReturnChart({
             margin={{ top: 12, right: 15, left: 0, bottom: 0 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
-                setHoverData(state.activePayload[0].payload);
+                const nextP = state.activePayload[0].payload;
+                if (nextP && (!hoverData || hoverData.date !== nextP.date)) {
+                  setHoverData(nextP);
+                }
               }
             }}
             onMouseLeave={() => setHoverData(null)}
@@ -1236,7 +1279,12 @@ export function RollingPriceReturnChart({
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
             <XAxis dataKey="date" stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} tickFormatter={formatDateTick} interval={timeRange === "15D" ? 0 : "preserveStartEnd"} />
             <YAxis stroke="#94a3b8" tick={{ fontSize: 10, fill: "#64748b" }} width={50} tickFormatter={(v) => `${v > 0 ? "+" : ""}${v}%`} />
-            <Tooltip content={<CustomPriceReturnTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+            <Tooltip
+              content={<CustomPriceReturnTooltip />}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+            />
             
             {recentStart && recentEnd && timeRange === "ALL" && (
               <ReferenceArea
@@ -1377,7 +1425,11 @@ export function LtpChart({ ltpContributors = [] }: { ltpContributors?: Array<{ p
         <BarChart data={ltpContributors} layout="vertical" margin={{ top: 5, right: 25, left: 0, bottom: 5 }}>
           <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 10 }} unit="%" domain={["auto", "auto"]} />
           <YAxis dataKey="participant" type="category" stroke="#475569" tick={{ fontSize: 10 }} width={80} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip
+            content={<CustomTooltip />}
+            isAnimationActive={false}
+            wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+          />
           <Bar dataKey="contribution" name="Net LTP Contribution %" fill="#2563eb" radius={[0, 5, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
@@ -1457,7 +1509,11 @@ export function RiskDonut({ scrips = [] }: { scrips?: ScripSummary[] }) {
               <Cell key={entry.risk} fill={entry.fill} stroke="#ffffff" strokeWidth={2} />
             ))}
           </Pie>
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip
+            content={<CustomTooltip />}
+            isAnimationActive={false}
+            wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+          />
         </PieChart>
       </ResponsiveContainer>
     </div>
@@ -1490,7 +1546,11 @@ export function ScoreDistributionChart({ scrips = [] }: { scrips?: ScripSummary[
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
           <XAxis dataKey="bucket" stroke="#94a3b8" tick={{ fontSize: 10 }} />
           <YAxis allowDecimals={false} stroke="#94a3b8" tick={{ fontSize: 11 }} width={30} />
-          <Tooltip content={<CustomTooltip />} />
+          <Tooltip
+            content={<CustomTooltip />}
+            isAnimationActive={false}
+            wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+          />
           <Bar dataKey="count" name="Scrips" radius={[5, 5, 0, 0]}>
             {buckets.map((b) => (
               <Cell key={b.bucket} fill={b.fill} />
@@ -1756,7 +1816,7 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
     const isAnomalyDay = data.is180High || data.isBandHit;
 
     return (
-      <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-4 py-3 shadow-2xl min-w-[170px] text-left font-sans pointer-events-none transition-all">
+      <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-4 py-3 shadow-2xl min-w-[170px] text-left font-sans pointer-events-none select-none">
         {/* Date: 19 Jan '26 */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-1.5">
           <span className="text-slate-600 font-semibold text-[13px] leading-tight">
@@ -1935,7 +1995,7 @@ export function CombinedMarketChart({
     return d;
   };
 
-  const hasAnomaly = (metrics?.score ?? metrics?.risk_score ?? metrics?.final_score ?? 0) >= 60 || metrics?.risk === "High";
+  const hasAnomaly = (metrics?.score ?? metrics?.risk_score ?? metrics?.final_score ?? 0) >= 15.0 || metrics?.risk === "High";
 
   if (!history || history.length === 0) {
     return (
@@ -2067,7 +2127,10 @@ export function CombinedMarketChart({
             margin={{ top: 15, right: 65, left: 15, bottom: 10 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
-                setHoveredPoint(state.activePayload[0].payload);
+                const nextPoint = state.activePayload[0].payload;
+                if (nextPoint && (!hoveredPoint || hoveredPoint.date !== nextPoint.date)) {
+                  setHoveredPoint(nextPoint);
+                }
               }
             }}
             onMouseLeave={() => setHoveredPoint(null)}
@@ -2133,7 +2196,12 @@ export function CombinedMarketChart({
               }}
             />
 
-            <Tooltip content={<CustomScreenerTooltip />} cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }} />
+            <Tooltip
+              content={<CustomScreenerTooltip />}
+              isAnimationActive={false}
+              wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+            />
 
             {/* 15-Day Surveillance Window Highlight */}
             {show15DWindow && win15Start && win15End && timeframe !== "15D" && (

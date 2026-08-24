@@ -49,27 +49,13 @@ $$\text{Final Score} = (w_1 \times S_1 + w_2 \times S_2 + w_3 \times S_3 + w_4 \
 
 ---
 
-### Module 2: Head-to-Head Scrip Comparison (`/compare`)
-* **What is it for?**  
-  Comparing two securities side-by-side (e.g., Scrip A vs Scrip B) to see which is higher risk and whether the **same syndicate or operator group** is active in both.
-* **Key Components on Screen:**
-  - **Hero Summary Cards:** Quick side-by-side view of Scrip A and Scrip B with their respective risk scores.
-  - **Tab 1: Parameter Scoring Breakdown:** A direct comparison table showing raw metric values, raw scores (0–5), weighted scores, and score variance for all 5 parameters.
-  - **Tab 2: Normalized Price Acceleration Curve:** A dual-line chart where both stocks are rebased to $100\%$ at $T-180$ baseline so you can visually see how their rally trajectories compare.
-  - **Tab 3: Shared Traders & Accounts (Syndicate Detection):** Automatically finds common client PANs trading both scrips, highlighting potential cross-stock operator cartels.
-* **Database Tables & Columns Used:**
-  - `AGG_SEC_DAY` for price curves.
-  - `AGG_CLNT_SEC_DAY` joined with `DIM_EXCH_CLNT_DTLS` (`Decl_Clnt_Pan`) to intersect client PANs across both securities.
-
----
-
-### Module 3: Single-Stock Forensic Analysis Workspace (`/analysis/[symbol]`)
+### Module 2: Single-Stock Forensic Analysis Workspace (`/analysis/[symbol]`)
 * **What is it for?**  
   The deep-dive workspace for investigating a flagged stock.
 * **Top Command Header:**  
-  Displays Stock Symbol, Company Name, ISIN, Risk Badge, Case Status (`Active` / `Safe`), and quick links to Case Dossiers and Audit Logs.
+  Displays Stock Symbol, Company Name, ISIN, Risk Badge, Surveillance Status (`Active` / `Safe`), and quick links to Audit Logs.
 
-#### Inside the 5 Investigation Tabs:
+#### Inside the 3 Surveillance Tabs:
 
 #### Tab 1: Overview
 1. **5-Parameter Risk Radar Profile:** Visual spider/radar chart showing the stock's anomaly profile across all 5 scoring dimensions.
@@ -159,17 +145,14 @@ Based on the Price-Volume Surveillance Framework you shared with me, I have deve
 1. [Open Watchlist Dashboard - /]
 Here is our main Surveillance Watchlist. Every day, the system queries AGG_SEC_DAY, calculates our 5 framework parameters using a 180-day historical baseline and 15-day observation window, and scores every stock. High-risk scrips hitting our threshold (score >= 15) are automatically shortlisted here.
 
-2. [Open Scrip Comparison - /compare]
-Here we have the Head-to-Head Compare tool. We can pick two scrips, compare their 5 parameter scores side-by-side, view their rebased price trajectories, and importantly, check the 'Shared Traders' tab to detect if the same operator syndicate is trading across both stocks.
-
-3. [Open Analyse Scrip - /analysis/ALPHATECH]
+2. [Open Analyse Scrip - /analysis/ALPHATECH]
 When an analyst clicks on any high-risk stock, it opens this forensic workspace:
-- On the Overview tab: We have the 5-parameter Radar chart, the 180-day Candlestick OHLC + Volume chart with circuit bands and moving averages, corporate action history (to rule out stock splits/bonuses), and quarterly shareholding distribution.
-- On the Participants tab: This is where we identify suspects. We show Net LTP Contribution (who pushed the price up), top concentrated volume PANs, counterparty buy-sell pairings from AGG_PAN_PAIR_DAY, and top profit gainers. Clicking any PAN opens our Client 360 drawer with full KYC, Demat, and Bank details.
-- On the Case Notes tab: Officers can record investigation notes that save to our FORENSIC_CASES table.
+- On the Overview tab: We have the 5-parameter Radar signature, the 180-day Dual-Axis Candlestick OHLC + Volume chart with circuit bands, 20/50 DMAs and delivery %, and the 180-day breakout & band persistence matrix.
+- On the Shareholders tab: Direct comparative tables for Promoter / Top 1% / Public shareholding on Day t vs T-180, unique PAN demographics, and 15-day corporate announcements with dilution factors.
+- On the Participants tab: This is where we identify suspects. We show Net LTP Contribution (who pushed the price up), top concentrated volume PANs, counterparty buy-sell pairings from AGG_PAN_PAIR_DAY, and circular loops. Clicking any PAN opens our Client 360 drawer with full KYC, Demat, and Bank details.
 
-4. [Mention the Backend & Data]
-To test and validate everything before live deployment, I built a synthetic market data generator simulating 260 trading days across all 19 enterprise warehouse tables with 754 columns matching our exact Teradata PDM schema. Because we used a strict service-repository pattern, connecting to live Teradata in production only requires updating our database connection string — all our tables, column mappings, and algorithms are already 100% aligned.
+3. [Mention the Backend & Data]
+To test and validate everything before live deployment, I built a synthetic market data generator simulating 260 trading days across all 18 enterprise warehouse tables with 741 columns matching our exact Teradata PDM schema. Because we used a strict service-repository pattern, connecting to live Teradata in production only requires updating our database connection string — all our tables, column mappings, and algorithms are already 100% aligned.
 
 Would you like to drill into any specific module or formula?"
 ```

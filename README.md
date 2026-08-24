@@ -53,9 +53,7 @@ UI_PVASF/
 ├── app/                                    # Next.js App Router Page Routes
 │   ├── page.tsx                            # Executive Surveillance Watchlist Dashboard (Route: /)
 │   ├── analysis/[symbol]/page.tsx          # Single-Stock Forensic Analysis Workspace (Route: /analysis/[symbol])
-│   ├── compare/page.tsx                    # Head-to-Head Scrip Comparison Workspace (Route: /compare)
-│   ├── cases/page.tsx                      # Streamlined Forensic Case Dossier Workspace (Route: /cases)
-│   ├── history/page.tsx                    # Dual-Tab Case History & Security Audit Logs (Route: /history)
+│   ├── history/page.tsx                    # Immutable Security & System Audit Logs (Route: /history)
 │   └── settings/page.tsx                   # Model Weight Calibration & User Management (Route: /settings)
 │
 ├── components/                             # Reusable React UI Components
@@ -78,9 +76,9 @@ UI_PVASF/
 │   ├── security.py                         # Password Hashing & Bearer Token Authentication
 │   ├── db/                                 # Database Engine, Models & Synthetic Seeder
 │   │   ├── database.py                     # SQLAlchemy Engine & Session Factory
-│   │   ├── models.py                       # Relational Table ORM Models (`SYS_USERS`, `SYS_AUDIT_LOGS`, `FORENSIC_CASES`, `MODEL_SETTINGS`, etc.)
+│   │   ├── models.py                       # Relational Table ORM Models (`SYS_USERS`, `SYS_AUDIT_LOGS`, `MODEL_SETTINGS`, `AGG_SEC_DAY`, etc.)
 │   │   └── seed.py                         # Synthetic Market Data Generator (260 Trading Days)
-│   ├── routers/                            # REST API Endpoints (`surveillance`, `cases`, `auth`, `clients`)
+│   ├── routers/                            # REST API Endpoints (`surveillance`, `auth`, `clients`, `trades`)
 │   └── services/                           # Business Domain Services & Score Engine Integration
 │
 ├── pv_alert_surveillance.py                # Standalone Pure-Python Anomaly Engine & Math Formulas

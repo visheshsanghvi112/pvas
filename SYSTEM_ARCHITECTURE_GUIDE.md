@@ -75,9 +75,7 @@ UI_PVASF/
 │   ├── layout.tsx                          # Root Application Layout Shell
 │   ├── page.tsx                            # Executive Surveillance Watchlist Dashboard (Route: /)
 │   ├── analysis/[symbol]/page.tsx          # Single-Stock Forensic Analysis Workspace (Route: /analysis/[symbol])
-│   ├── compare/page.tsx                    # Head-to-Head Scrip Comparison Workspace (Route: /compare)
-│   ├── cases/page.tsx                      # Streamlined Forensic Case Dossier Workspace (Route: /cases)
-│   ├── history/page.tsx                    # Dual-Tab Case History & Security Audit Logs (Route: /history)
+│   ├── history/page.tsx                    # Immutable Security Audit Logs (Route: /history)
 │   └── settings/page.tsx                   # Model Parameter Calibration & User Management (Route: /settings)
 │
 ├── components/                             # UI Component Layer
@@ -214,19 +212,6 @@ The platform executes six distinct forensic algorithms across client trading log
 - `details` (TEXT)
 - `ip_address` (VARCHAR(45))
 
-#### `FORENSIC_CASES` (Forensic Investigation Dossiers)
-- `id` (INTEGER PRIMARY KEY)
-- `case_id` (VARCHAR(50) UNIQUE)
-- `target_symbol` (VARCHAR(20))
-- `title` (VARCHAR(255))
-- `description` (TEXT)
-- `status` (VARCHAR(30)) — `Draft`, `Open Investigation`, `Pending Action`, `Closed`
-- `priority` (VARCHAR(20)) — `High`, `Medium`, `Low`
-- `lead_officer` (VARCHAR(100))
-- `evidence_json` (TEXT) — JSON-serialized forensic evidence items
-- `created_at` (DATETIME)
-- `updated_at` (DATETIME)
-
 #### `MODEL_SETTINGS` (Model Weights & Calibration)
 - `id` (INTEGER PRIMARY KEY)
 - `price_rise_weight` (FLOAT) — Default: 25.0
@@ -251,10 +236,10 @@ The platform executes six distinct forensic algorithms across client trading log
                                      ▼
         Next.js Centralized Client (`lib/api.ts` with `getAuthHeaders()`)
                                      │
-    ┌───────────┼─────────────────────────┬─────────────────────────┐
-    ▼           ▼                         ▼                         ▼
-Dashboard   Analysis Workspace    Forensic Cases        Audit Trail & History
-  (/)       (/analysis/[symbol])     (/cases)                 (/history)
+    ┌────────────────────────┬───────┴────────────────────────┐
+    ▼                        ▼                                ▼
+Dashboard            Analysis Workspace             Audit Trail & History
+  (/)               (/analysis/[symbol])                 (/history)
 ```
 
 ---
@@ -263,11 +248,9 @@ Dashboard   Analysis Workspace    Forensic Cases        Audit Trail & History
 
 | Page Route | Purpose | Key UI Features |
 | :--- | :--- | :--- |
-| **`/`** | Executive Watchlist Dashboard | Clean AppHeader, KPI summary, risk distribution, Watchlist Table with status dropdown & direct action links (`Analyze Scrip`, `Cases`, `Compare`). |
-| **`/analysis/[symbol]`** | Single-Stock Forensic Analysis Workspace | **5 Investigation Tabs**:<br/>• **`Overview`**: 5-Parameter Radar Signature, Screener-Style Dual-Axis Master Surveillance Chart (20 & 50 DMA, Volume bars, Live Crosshair Stats Tracker, Screener `D: xx%` Delivery Metric, 15D Window Toggle, Adaptive Date Ticks, High-Contrast Palette), Breakout & Band Persistence Matrix, 15-Day Corporate Announcements, and Shareholder Statistics.<br/>• **`Participants Conduct`**: Net LTP Pusher Metric, Volume Cornering (HHI), Counterparty Pairs, and Trade Reversals (RTR).<br/>• **`Trade Matches (P2P)`**: Microsecond Execution Log with Order ID filtering and legal case evidence pinning.<br/>• **`Forensic Dossier`**: Investigation journal with case creation & timeline history.<br/>• **`Intelligence Graph`**: Interactive Entity-to-Entity Network visualization with DFS circular loop detection. |
-| **`/compare`** | Head-to-Head Scrip Comparison | Scrip A vs Scrip B Hero Cards, 3 Tabs (`PVASF Parameter Scoring`, `Normalized Trajectory Curve`, `Shared Traders & Accounts`). |
-| **`/cases`** | Forensic Case Dossiers | Single integrated header bar, total count, search, status filter tabs, inline workflow status dropdowns, 4-field creation modal, `Analyze Scrip` navigation. |
-| **`/history`** | Audit Trail & History Log | Dual tabs (`Case Investigation History` & `Security Audit Logs`), search query pre-fill (`/history?search=SYMBOL`), CSV exporter. |
+| **`/`** | Executive Watchlist Dashboard | Clean AppHeader, KPI summary, risk distribution, Watchlist Table with status dropdown & direct action links (`Analyze Scrip`). |
+| **`/analysis/[symbol]`** | Single-Stock Forensic Analysis Workspace | **3 Surveillance Tabs**:<br/>• **`Overview`**: Dual-Axis Surveillance Master Chart (20 & 50 DMA, Volume bars, Live Crosshair Stats Tracker, Screener `D: xx%` Delivery Metric, 15D Window Toggle, Adaptive Date Ticks), 180-Day Breakout & Band Persistence Matrix, 5-Parameter Radar Signature.<br/>• **`Shareholders`**: Direct comparative tables for Promoter / Top 1% / Public float (Day $t$ vs $T-180$), PAN Demographics (Unique PANs & Avg Trading PANs 15D vs 180D), and 15-Day Corporate Announcements (`FACT_CORP_ACTIONS`).<br/>• **`Participants`**: Participant Suspect Breakdown Table (Net LTP contribution, Buy/Sell volume, Concentration HHI, RTR, MTM PnL), Counterparty Pairs, and DFS Circular Trading Loops. |
+| **`/history`** | Immutable System Audit Trail | Immutable Security & System Audit Logs (`SYS_AUDIT_LOGS`), action filtering, search query pre-fill (`/history?search=SYMBOL`), CSV exporter. |
 | **`/settings`** | Model Settings & User Admin | Single consolidated Model Weight Calibration card with 1-click **Reset to Framework Defaults** button, User Management table (`SYS_USERS`), Security Audit Logs. |
 
 ---
@@ -279,10 +262,8 @@ Dashboard   Analysis Workspace    Forensic Cases        Audit Trail & History
 | `/api/v1/surveillance/summary` | GET | Returns Watchlist scrip summaries & risk categories. | Public / All |
 | `/api/v1/surveillance/scrip/{symbol}` | GET | Returns detailed scrip metrics & historical EOD price/volume series. | Public / All |
 | `/api/v1/surveillance/scrip/{symbol}/participants` | GET | Returns participant Net LTP contributions, volume shares, counterparty pairs, RTR, and circular loops. | Authenticated |
-| `/api/v1/cases/` | GET | Returns list of forensic cases with optional status/symbol filters. | Authenticated |
-| `/api/v1/cases/` | POST | Creates a new forensic case dossier. | Analyst / Admin |
-| `/api/v1/cases/{case_id}` | PATCH | Updates forensic case status or priority. | Analyst / Admin |
-| `/api/v1/cases/{case_id}` | DELETE | Deletes case (closed/draft only). | Admin Only |
+| `/api/v1/surveillance/scrip/{symbol}/shareholding-breakdown` | GET | Returns Day $t$ vs $T-180$ promoter & top 1% shareholder details. | Authenticated |
+| `/api/v1/surveillance/scrip/{symbol}/corporate-actions` | GET | Returns 15-day corporate announcements and dilution factors. | Authenticated |
 | `/api/v1/auth/login` | POST | Authenticates user & issues 24-hour access token. | Public |
 | `/api/v1/auth/me` | GET | Returns current logged-in user profile. | Authenticated |
 | `/api/v1/auth/users` | GET | Returns all system users. | Admin Only |

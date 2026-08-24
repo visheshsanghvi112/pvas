@@ -15,7 +15,6 @@ from backend.routers.surveillance import router as surveillance_router
 from backend.routers.trade_matches import router as trade_matches_router
 from backend.routers.clients import router as clients_router
 from backend.routers.auth import router as auth_router
-from backend.routers.cases import router as cases_router
 
 
 @asynccontextmanager
@@ -45,7 +44,7 @@ app = FastAPI(
     description=(
         "Price-Volume Alert Surveillance Framework (PVASF) API. "
         "Backed by Regulatory DWBIS Teradata schema (SQLite dev mode). "
-        "Endpoints: /api/v1/surveillance/* | /api/v1/trades/* | /api/v1/clients/pan/* | /api/v1/cases/*"
+        "Endpoints: /api/v1/surveillance/* | /api/v1/trades/* | /api/v1/clients/pan/*"
     ),
     version="2.5.0",
     lifespan=lifespan,
@@ -65,7 +64,6 @@ app.include_router(surveillance_router)
 app.include_router(trade_matches_router)
 app.include_router(clients_router)
 app.include_router(auth_router)
-app.include_router(cases_router)
 
 if __name__ == "__main__":
     import uvicorn

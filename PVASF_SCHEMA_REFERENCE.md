@@ -383,26 +383,7 @@
 
 ---
 
-### Table 14: `FORENSIC_CASES` (CASES) — 13 Columns
-| Field Name | Type | Req'd | Description |
-|---|---|---|---|
-| `id` | Integer | Y | Auto-increment Primary Key |
-| `case_id` | Varchar(50) | Y | Unique Case Dossier ID string (e.g. `CASE-2026-ALPHATECH-001`) |
-| `target_symbol` | Varchar(20) | Y | Target Security Symbol |
-| `title` | Varchar(300) | Y | Investigation Dossier Subject & Title |
-| `lead_officer` | Varchar(100) | Y | Assigned Lead Compliance / Surveillance Officer |
-| `status` | Varchar(30) | Y | Workflow Status (`Draft`, `Open Investigation`, `Pending Action`, `Closed`) |
-| `priority` | Varchar(10) | Y | Priority Triage Level (`High`, `Medium`, `Low`) |
-| `description` | Text | N | Surveillance Officer Detailed Investigation Findings |
-| `evidence_json` | Text | Y | JSON Array of Pinned Evidence Cards (Charts, Trade Logs, KYC Profiles) |
-| `created_at` | DateTime | Y | Dossier Creation Timestamp |
-| `updated_at` | DateTime | Y | Last Modified Timestamp |
-| `closed_at` | DateTime | N | Investigation Completion Timestamp |
-| `created_by` | Varchar(50) | N | User Identity of Dossier Creator |
-
----
-
-### Table 15: `SYS_USERS` (USERS) — 9 Columns
+### Table 14: `SYS_USERS` (USERS) — 9 Columns
 | Field Name | Type | Req'd | Description |
 |---|---|---|---|
 | `id` | Integer | Y | Auto-increment Primary Key |
@@ -417,7 +398,7 @@
 
 ---
 
-### Table 16: `SYS_AUDIT_LOGS` (LOGS) — 7 Columns
+### Table 15: `SYS_AUDIT_LOGS` (LOGS) — 7 Columns
 | Field Name | Type | Req'd | Description |
 |---|---|---|---|
 | `id` | Integer | Y | Auto-increment Primary Key |
@@ -432,7 +413,7 @@
 
 ## 2.1 Trade Aggregate Tables (3 Key Enterprise Warehouse Aggregate Tables)
 
-### Table 17: `AGG_SEC_DAY` (ASD) — 83 Columns
+### Table 16: `AGG_SEC_DAY` (ASD) — 83 Columns
 **Description:** Security level day-wise trading aggregate table. Stores official 30-minute VWAP Closing Price (`Asd_Close_Price`), OHLC price bars, 52-week High/Low, circuit limits, and daily wash trade summary totals.
 
 | Field Name | Type | Req'd | Description |
@@ -453,7 +434,7 @@
 
 ---
 
-### Table 18: `AGG_CLNT_SEC_DAY` (ACSD) — 31 Columns
+### Table 17: `AGG_CLNT_SEC_DAY` (ACSD) — 31 Columns
 **Description:** Client & Security level day-wise trading aggregate table. Pre-calculates daily buy/sell traded volume, turnover value, wash trades, and price contributions for individual clients per security.
 
 | Field Name | Type | Req'd | Description |
@@ -471,7 +452,7 @@
 
 ---
 
-### Table 19: `AGG_PAN_PAIR_DAY` (APPD) — 60 Columns
+### Table 18: `AGG_PAN_PAIR_DAY` (APPD) — 60 Columns
 **Description:** Buyer-Seller PAN pair concentration table. Pre-aggregates daily trade counts, matched volume, turnover value, and price push metrics between counterparty client pairs per security.
 
 | Field Name | Type | Req'd | Description |
@@ -504,13 +485,12 @@
 | 11 | `FACT_CMP_EXCH_SHLDNG` | FCES | **5** | Company Exchange Shareholding Index |
 | 12 | `FACT_CORP_ACTIONS` | FCAC | **49** | Corporate Actions & Announcements |
 | 13 | `FACT_CA_DIL_FCTR` | FCDF | **13** | Corporate Actions Dilution Factor |
-| 14 | `FORENSIC_CASES` | CASES | **13** | Forensic Case Dossier Persistence |
-| 15 | `SYS_USERS` | USERS | **9** | Security User Management & RBAC |
-| 16 | `SYS_AUDIT_LOGS` | LOGS | **7** | Immutable Security Audit Trail |
-| 17 | `AGG_SEC_DAY` | ASD | **83** | Security Daily Aggregate & Closing Price |
-| 18 | `AGG_CLNT_SEC_DAY` | ACSD | **31** | Client Security Daily Aggregate |
-| 19 | `AGG_PAN_PAIR_DAY` | APPD | **60** | Counterparty PAN Pair Daily Aggregate |
-| **Total** | **19 System Tables** | | **754 Columns** | **Complete Enterprise Physical Data Warehouse & Persistence Engine** |
+| 14 | `SYS_USERS` | USERS | **9** | Security User Management & RBAC |
+| 15 | `SYS_AUDIT_LOGS` | LOGS | **7** | Immutable Security Audit Trail |
+| 16 | `AGG_SEC_DAY` | ASD | **83** | Security Daily Aggregate & Closing Price |
+| 17 | `AGG_CLNT_SEC_DAY` | ACSD | **31** | Client Security Daily Aggregate |
+| 18 | `AGG_PAN_PAIR_DAY` | APPD | **60** | Counterparty PAN Pair Daily Aggregate |
+| **Total** | **18 System Tables** | | **741 Columns** | **Complete Enterprise Physical Data Warehouse & Persistence Engine** |
 
 
 

@@ -8,7 +8,6 @@ import {
   ArrowUp,
   ArrowDown,
   Eye,
-  GitCompare,
   Search,
   X,
   Filter,
@@ -23,7 +22,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  FolderLock,
   Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -93,56 +91,6 @@ export function AlertsTable({
 
   const router = useRouter();
   const { currentUser } = useUser();
-
-  // Quick Case Modal State
-  const [quickCaseScrip, setQuickCaseScrip] = useState<ScripSummary | null>(null);
-  const [caseTitle, setCaseTitle] = useState("");
-  const [casePriority, setCasePriority] = useState<"High" | "Medium" | "Low">("High");
-  const [caseDesc, setCaseDesc] = useState("");
-  const [creatingCase, setCreatingCase] = useState(false);
-
-  const handleOpenQuickCaseModal = (scrip: ScripSummary) => {
-    setQuickCaseScrip(scrip);
-    setCaseTitle(`${scrip.symbol} — Anomaly Surveillance Review (Score: ${scrip.score})`);
-    setCasePriority(scrip.risk as "High" | "Medium" | "Low");
-    setCaseDesc(`Surveillance case opened from Watchlist Table for ${scrip.company || scrip.symbol}. Price Rise: +${scrip.price_rise_pct.toFixed(1)}%, Volume Z: ${scrip.volume_z.toFixed(2)}σ.`);
-  };
-
-  const handleCreateQuickCaseSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quickCaseScrip) return;
-    setCreatingCase(true);
-    const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
-    const caseId = `CASE-${new Date().getFullYear()}-${quickCaseScrip.symbol.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
-
-    try {
-      const res = await fetch(`${BASE_HOST}/api/v1/cases/`, {
-        method: "POST",
-        headers: getAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({
-          case_id: caseId,
-          target_symbol: quickCaseScrip.symbol,
-          title: caseTitle,
-          lead_officer: currentUser.name || "Surveillance Officer",
-          priority: casePriority,
-          status: "Open Investigation",
-          description: caseDesc,
-        }),
-      });
-
-      if (res.ok) {
-        if (onStatusChange) {
-          onStatusChange(quickCaseScrip.symbol, "Under review");
-        }
-        setQuickCaseScrip(null);
-        router.push("/cases");
-      }
-    } catch (err) {
-      console.error("Failed to create case from watchlist", err);
-    } finally {
-      setCreatingCase(false);
-    }
-  };
 
   // Sync riskTab with parent prop when parent changes
   useEffect(() => {
@@ -693,20 +641,6 @@ export function AlertsTable({
                       >
                         <Eye className="h-3.5 w-3.5" />
                         Analyze Scrip
-                      </Link>
-                      <Link
-                        href={`/cases?search=${alert.symbol}`}
-                        className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
-                        title="View Forensic Cases"
-                      >
-                        <FolderLock className="h-3.5 w-3.5" />
-                      </Link>
-                      <Link
-                        href="/compare"
-                        className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
-                        title="Compare Scrip"
-                      >
-                        <GitCompare className="h-3.5 w-3.5" />
                       </Link>
                     </div>
                   </td>

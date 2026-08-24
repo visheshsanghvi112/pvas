@@ -121,7 +121,6 @@ const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API
 const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
 const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
 const CLIENTS_API_BASE = `${BASE_HOST}/api/v1/clients`;
-const CASES_API_BASE = `${BASE_HOST}/api/v1/cases`;
 
 function hashString(str: string): number {
   let hash = 0;
@@ -320,31 +319,6 @@ export async function fetchShareholdingBreakdown(scripId: string) {
   const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`, { cache: "no-store" });
   if (!res.ok) return { symbol: cleanId, quarterly_history: [], promoter_group: [] };
   return await res.json();
-}
-
-export interface CaseRecord {
-  id: number | string;
-  case_id: string;
-  target_symbol: string;
-  title: string;
-  lead_officer: string;
-  status: string;
-  priority: "High" | "Medium" | "Low";
-  description?: string;
-  created_at: string;
-  updated_at?: string;
-  closed_at?: string;
-  pinned_evidence_count?: number;
-}
-
-export async function fetchCases(): Promise<CaseRecord[]> {
-  try {
-    const res = await fetchWithAuth(`${CASES_API_BASE}/`, { cache: "no-store" });
-    if (!res.ok) return [];
-    return await res.json();
-  } catch {
-    return [];
-  }
 }
 
 export async function fetchCorporateActions(scripId: string) {

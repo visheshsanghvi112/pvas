@@ -232,11 +232,11 @@ Below is the complete physical table inventory consumed by the surveillance engi
 ---
 
 ### 3.10 Module 10: System Storage (Users, Audit Logs, Cases & Settings)
-- **Consuming UI / Service**: System Settings (`/settings`), Forensic Case Dossiers (`/cases`), Auth Security (`security.py`).
-- **Primary Objective**: Manages user profiles, PBKDF2 password encryption, 3-tier RBAC, scoring model weights, risk tier cutoffs, forensic case dossiers with JSON evidence, and security audit trails.
-- **Source Tables**: `SYS_USERS`, `SYS_AUDIT_LOGS`, `FORENSIC_CASES`, `MODEL_SETTINGS`.
+- **Consuming UI / Service**: System Settings (`/settings`), Auth Security (`security.py`), Audit Log (`/history`).
+- **Primary Objective**: Manages user profiles, PBKDF2 password encryption, 3-tier RBAC, scoring model weights, risk tier cutoffs, and security audit trails.
+- **Source Tables**: `SYS_USERS`, `SYS_AUDIT_LOGS`, `MODEL_SETTINGS`.
 
-#### Required Column Specifications (`SYS_USERS` + `SYS_AUDIT_LOGS` + `FORENSIC_CASES` + `MODEL_SETTINGS`)
+#### Required Column Specifications (`SYS_USERS` + `SYS_AUDIT_LOGS` + `MODEL_SETTINGS`)
 
 | Table | Column Name | Data Type | Req'd | Sample Value | Business Justification & Profile Role |
 | :--- | :--- | :--- | :---: | :--- | :--- |
@@ -244,9 +244,6 @@ Below is the complete physical table inventory consumed by the surveillance engi
 | `SYS_USERS` | `hashed_password` | `VARCHAR(255)`| **Y** | `'pbkdf2_sha256$100000$...'`| PBKDF2 encrypted password (100k rounds + 16B salt). |
 | `SYS_USERS` | `role` | `VARCHAR(20)` | **Y** | `'Admin'` | RBAC user role (`Admin`, `Analyst`, `Viewer`). |
 | `SYS_AUDIT_LOGS` | `action` | `VARCHAR(100)`| **Y** | `'UPDATE_WEIGHTS'` | Security audit log action type. |
-| `FORENSIC_CASES` | `case_id` | `VARCHAR(50)` | **Y** | `'CASE-2026-ALPHATECH-001'` | Forensic investigation dossier ID. |
-| `FORENSIC_CASES` | `evidence_json` | `TEXT` | **Y** | `'[{"metric":"Price Rise"}]'`| Serialized JSON evidence attachments. |
-| `FORENSIC_CASES` | `status` | `VARCHAR(30)` | **Y** | `'Open Investigation'`| Lifecycle status (`Draft`, `Open Investigation`, `Pending Action`, `Closed`). |
 | `MODEL_SETTINGS` | `score_cutoff` | `FLOAT` | **Y** | `15.0` | SEBI framework alert trigger threshold score cutoff. |
 
 ---
@@ -391,7 +388,7 @@ ORDER BY fcac.Fcac_Symbol ASC, fcdf.Fcdf_Appl_From_Date DESC;
 | `DIM_DEP_CLNT_DTLS` (`DDCL`) | `Ddcl_BP_Id`, `Ddcl_Clnt_Id`, `Ddcl_Thrd_Hldr_Pan`, `Ddcl_Poa_Enbld_Indc` | **Module 5**: Client 360° Identity Resolution | Cross-references Demat accounts and connected entity networks (Joint Holders, POA). | [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/%5Bsymbol%5D/page.tsx), [`backend/routers/clients.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/clients.py) |
 | `FACT_MAIN_SHLDNG` (`FSHG`), `FACT_PROM_SHLDR_DTLS` (`FPRH`) | `Fshg_Symbol`, `Fshg_Qrtr_Num`, `Fshg_Shldng_Catg_Type`, `Fshg_Tot_Shares_Pct`, `Fprh_Shldr_Name` | **Module 6**: Enterprise Shareholding | Audits quarterly promoter vs public float distribution, promoter entity holdings, and pledge %. | [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/%5Bsymbol%5D/page.tsx), [`surveillance_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/surveillance_service.py) |
 | `FACT_CORP_ACTIONS` (`FCAC`), `FACT_CA_DIL_FCTR` (`FCDF`) | `Fcac_Symbol`, `Fcac_Corp_Action_Catg`, `Fcac_Divnd_Prpse`, `Fcac_Rec_Date`, `Fcdf_Price_Adj_Factor` | **Module 7**: Announcements & **Module 9**: Dilution | Renders corporate disclosures and price dilution adjustment factors ($F_{\text{CDF}}$). | [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/%5Bsymbol%5D/page.tsx), [`surveillance_service.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/services/surveillance_service.py) |
-| `FORENSIC_CASES`, `SYS_USERS`, `SYS_AUDIT_LOGS`, `MODEL_SETTINGS` | `case_id`, `target_symbol`, `username`, `role`, `action`, `details`, `timestamp`, `score_cutoff` | **Module 10**: User Profiles, RBAC, Cases & Settings | Powers user profiles, PBKDF2 auth, RBAC roles, case dossiers, model settings, and security audit logs. | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx), [`app/cases/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/cases/page.tsx) |
+| `SYS_USERS`, `SYS_AUDIT_LOGS`, `MODEL_SETTINGS` | `username`, `role`, `action`, `details`, `timestamp`, `score_cutoff` | **Module 10**: User Profiles, RBAC & Settings | Powers user profiles, PBKDF2 auth, RBAC roles, model calibration settings, and security audit logs. | [`app/settings/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/settings/page.tsx), [`app/history/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/history/page.tsx) |
 
 ---
 

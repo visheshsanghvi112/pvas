@@ -539,11 +539,11 @@ class EODSurveillanceService:
 
             if clnt_records:
                 dates = [r[1] for r in clnt_records if r[1] is not None]
-                max_date = max(dates) if dates else datetime.now()
-                cutoff_15d = max_date - timedelta(days=15)
+                distinct_dates = sorted(list(set(dates)))
+                last_15_trading_dates = set(distinct_dates[-15:]) if len(distinct_dates) >= 15 else set(distinct_dates)
 
                 pans_180d = set(r[0].Acsd_Clnt_Token for r in clnt_records if r[0].Acsd_Clnt_Token)
-                pans_15d = set(r[0].Acsd_Clnt_Token for r in clnt_records if r[0].Acsd_Clnt_Token and r[1] and r[1] >= cutoff_15d)
+                pans_15d = set(r[0].Acsd_Clnt_Token for r in clnt_records if r[0].Acsd_Clnt_Token and r[1] in last_15_trading_dates)
 
                 unique_pans_15d = len(pans_15d) if pans_15d else len(pans_180d)
                 unique_pans_180d = len(pans_180d)
@@ -556,7 +556,7 @@ class EODSurveillanceService:
                     dt = r[1]
                     if rec.Acsd_Clnt_Token and dt:
                         daily_180d.setdefault(dt, set()).add(rec.Acsd_Clnt_Token)
-                        if dt >= cutoff_15d:
+                        if dt in last_15_trading_dates:
                             daily_15d.setdefault(dt, set()).add(rec.Acsd_Clnt_Token)
 
                 counts_15 = [len(s) for s in daily_15d.values()]
@@ -660,8 +660,10 @@ class EODSurveillanceService:
         total_vol = float(df_t["Volume"].tail(15).sum()) if not df_t.empty else 1000000.0
         
         # Actual 15-day Net Stock Price Movement (Close_T - Close_{T-15}) per PVASF_CORE_SPEC 4.1
-        if len(df_t) >= 15:
-            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-15]))
+        if len(df_t) >= 16:
+            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-16]))
+        elif len(df_t) >= 2:
+            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[0]))
         else:
             scrip_15d_price_change = 1.0
         scrip_15d_price_change = max(scrip_15d_price_change, 1e-4)

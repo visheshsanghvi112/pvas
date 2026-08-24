@@ -5,7 +5,7 @@ FastAPI router for Security, Authentication, User Management, and Audit Logs.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 
@@ -39,6 +39,8 @@ class UserRoleUpdateRequest(BaseModel):
     role: str
 
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     username: str
     email: str
@@ -47,10 +49,9 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
 
-    class Config:
-        from_attributes = True
-
 class AuditLogResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     timestamp: str
     username: str
@@ -59,9 +60,6 @@ class AuditLogResponse(BaseModel):
     target: Optional[str] = None
     details: Optional[str] = None
     ip_address: Optional[str] = None
-
-    class Config:
-        from_attributes = True
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────

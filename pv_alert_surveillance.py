@@ -348,10 +348,10 @@ class SurveillanceEngine:
             if band_percent > 1.0:
                 band_percent /= 100.0
 
-        close = df["Close"]
-        volume = df["Volume"]
-        high = df["High"]
-        low = df["Low"]
+        close = pd.to_numeric(df["Close"], errors="coerce").ffill().bfill().fillna(1e-4)
+        volume = pd.to_numeric(df["Volume"], errors="coerce").fillna(0.0).clip(lower=0.0)
+        high = pd.to_numeric(df["High"], errors="coerce").ffill().bfill().fillna(1e-4)
+        low = pd.to_numeric(df["Low"], errors="coerce").ffill().bfill().fillna(1e-4)
 
         # --- 1. Price Rise % ---
         # Compare highest price in the last 15 days against the price 180 days ago
@@ -417,7 +417,7 @@ class SurveillanceEngine:
         band_score = self.score_band_persistence(band_hit_days)
 
         # --- 5. 180-Day New High Breakout ---
-        # Counts days where today's high exceeded the previous 180-day peak
+        # Counts days where today's high broke past the previous 180-day ceiling (PVASF 2.5.1)
         rolling_180_high_prev = high.shift(1).rolling(lookback).max()
         is_new_high = high > rolling_180_high_prev
         new_high_days = int(is_new_high.iloc[-recent:].sum())
@@ -489,29 +489,37 @@ class SurveillanceEngine:
             r.pop("AbsLTPContribution", None)
 
         # --- 4.2 Volume Share (The "Dominance" Metric) ---
-        # Formula: (Entity Gross Volume / Total Scrip Volume over 15d) * 100
+        # Formula: (Individual PAN Volume over 15d / Total Scrip Volume over 15d) * 100 (PVASF 4.2)
         # Rationale: Flags single entities cornering or monopolizing liquidity.
         df["PANVolume"] = df["BuyVolume"] + df["SellVolume"]
         vol_group = df.groupby("PAN")["PANVolume"].sum().reset_index()
-        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / max(1.0, total_exchange_vol)) * 100
+        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / max(1.0, total_exchange_vol)) * 100.0
         top_vol = vol_group.sort_values("VolumeSharePercent", ascending=False).head(5).to_dict("records")
 
+        # Extract directed flow mapping between counterparties
+        df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
+        flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
+        flows = {(r["PAN"], r["CounterpartyPAN"]): r["BuyVolume"] for _, r in flow_df.iterrows()}
+
         # --- 4.3 Counterparty Concentration (The "Collusive Pair" Metric) ---
-        # Formula: (Volume within Bilateral Pair / Total Scrip Volume over 15d) * 100
+        # Formula: (Bilateral Matched Volume / Total Scrip Volume over 15d) * 100
         # Rationale: Flags pairs of accounts repeatedly exchanging shares with each other.
-        pair_records = []
-        for _, r in df.iterrows():
-            p1, p2 = sorted([r["PAN"], r["CounterpartyPAN"]])
-            pair_records.append({
-                "Pair": f"{p1} <-> {p2}",
-                "Volume": r["BuyVolume"] + r["SellVolume"]
-            })
-        
-        pair_df = pd.DataFrame(pair_records)
-        if not pair_df.empty:
-            pair_group = pair_df.groupby("Pair")["Volume"].sum().reset_index()
-            pair_group["SharePercent"] = (pair_group["Volume"] / max(1.0, total_exchange_vol)) * 100
-            top_pairs = pair_group.sort_values("SharePercent", ascending=False).head(5).to_dict("records")
+        pair_dict = {}
+        for (A, B), vol in flows.items():
+            if vol > 0:
+                p1, p2 = sorted([A, B])
+                pair_name = f"{p1} <-> {p2}"
+                pair_dict[pair_name] = pair_dict.get(pair_name, 0.0) + vol
+
+        if pair_dict:
+            top_pairs = [
+                {
+                    "Pair": pair_name,
+                    "Volume": vol,
+                    "SharePercent": (vol / max(1.0, total_exchange_vol)) * 100.0
+                }
+                for pair_name, vol in sorted(pair_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+            ]
         else:
             top_pairs = []
 
@@ -519,10 +527,6 @@ class SurveillanceEngine:
         # Formula: RTR = [ 2 * min(Vol(A->B), Vol(B->A)) / (Vol(A->B) + Vol(B->A)) ] * 100
         # Rationale: Detects perfectly synchronized buying and selling between two entities
         # where shares are passed back and forth without genuine transfer of beneficial ownership.
-        df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
-        flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
-        flows = {(r["PAN"], r["CounterpartyPAN"]): r["BuyVolume"] for _, r in flow_df.iterrows()}
-        
         undir_pairs = set()
         for A, B in flows.keys():
             p1, p2 = sorted([A, B])
@@ -540,7 +544,7 @@ class SurveillanceEngine:
                     "GrossVolume": float(gross),
                     "ReversalRatio": round(rtr, 2)
                 })
-        top_reversals = sorted(reversal_list, key=lambda x: x["ReversalRatio"], reverse=True)[:5]
+        top_reversals = sorted(reversal_list, key=lambda x: (x["ReversalRatio"], x["GrossVolume"]), reverse=True)[:5]
 
         # --- 4.5 Circular Trade Loops Detection ---
         # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)

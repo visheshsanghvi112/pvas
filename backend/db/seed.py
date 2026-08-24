@@ -28,7 +28,7 @@ from backend.db.models import (
     FactMstrSharehldg, FactMainShldng, FactPromShldrDtls, FactPubShldrDtls,
     FactDvrShldng, FactDrHolding, FactLkdinShldng, FactCmpExchShldng,
     FactCorpActions, FactCaDilFctr,
-    SysUser, SysAuditLog, ForensicCase,
+    SysUser, SysAuditLog,
     AggSecDay, AggClntSecDay, AggPanPairDay
 )
 from backend.security import hash_password
@@ -287,129 +287,6 @@ def _seed_users(db: Session):
         db.commit()
 
 
-def _seed_forensic_cases(db: Session):
-    """Seed realistic sample forensic case dossiers if the table is empty."""
-    if db.query(ForensicCase).first() is not None:
-        return
-
-    import json as _json
-    now = datetime.utcnow()
-
-    sample_cases = [
-        {
-            "case_id":        "CASE-2026-ALPHATECH-001",
-            "target_symbol":  "ALPHATECH",
-            "title":          "Self-Matched Wash Trade Network & LTP Ramping Investigation",
-            "lead_officer":   "Surveillance Officer #104",
-            "status":         "Open Investigation",
-            "priority":       "High",
-            "description":    (
-                "Multiple same-broker wash trades detected across 15 trading sessions. "
-                "Buy and sell orders placed within milliseconds by clients sharing the same TM ID. "
-                "LTP artificially ramped by 22.4% over 5 days without fundamental catalyst."
-            ),
-            "evidence_json":  _json.dumps([
-                {"title": "180D Price Spike Chart",     "description": "+124.5% surge with upper circuit hits",   "type": "Chart"},
-                {"title": "Wash Trade Summary",         "description": "1,250,000 shares same-broker matches",   "type": "Trade Log"},
-                {"title": "Joint Demat Account Proof",  "description": "Shared bank account HDFC-9845***",       "type": "KYC"},
-                {"title": "Order Book Depth Log",       "description": "54.2x Pending Spoofing Volume",          "type": "Trade Log"},
-                {"title": "LTP Ramping Timeline",       "description": "Tick-level LTP manipulation evidence",   "type": "Chart"},
-            ]),
-            "created_by":     "vishesh_admin",
-            "created_at":     now.replace(day=max(1, now.day - 8)),
-        },
-        {
-            "case_id":        "CASE-2026-NOVAENERGY-002",
-            "target_symbol":  "NOVAENERGY",
-            "title":          "Upper Circuit Persistence & Promoter Holding Shift Audit",
-            "lead_officer":   "Surveillance Officer #212",
-            "status":         "Pending Action",
-            "priority":       "High",
-            "description":    (
-                "NOVAENERGY hit upper circuit on 11 of the last 15 trading days. "
-                "Promoter holding dropped 4.2% over the same window, suggesting coordinated exit. "
-                "Pending referral to Enforcement Division."
-            ),
-            "evidence_json":  _json.dumps([
-                {"title": "Circuit Hit Calendar",        "description": "11/15 days at upper circuit (20%)",     "type": "Chart"},
-                {"title": "Shareholding Change Report",  "description": "Promoter reduced from 68.4% to 64.2%", "type": "KYC"},
-                {"title": "Participant Volume Share",    "description": "Top 3 clients = 78% of buy volume",     "type": "Trade Log"},
-            ]),
-            "created_by":     "vsanghvi_analyst",
-            "created_at":     now.replace(day=max(1, now.day - 10)),
-        },
-        {
-            "case_id":        "CASE-2026-ORBITCEM-003",
-            "target_symbol":  "ORBITCEM",
-            "title":          "Spoofing & Pending Order Book Imbalance Audit",
-            "lead_officer":   "HFT Specialist #402",
-            "status":         "Open Investigation",
-            "priority":       "Medium",
-            "description":    (
-                "Large pending orders placed and cancelled within 50ms repeatedly over 3 days. "
-                "Bid/ask imbalance consistently >10:1 before significant price moves. "
-                "Classic spoofing signature detected by the algo-CTCL scanner."
-            ),
-            "evidence_json":  _json.dumps([
-                {"title": "Order Cancel Rate Chart",     "description": "92% cancel rate on large bids",         "type": "Chart"},
-                {"title": "CTCL Algo Log Extract",       "description": "ALGO0011 — 4,820 cancel events",        "type": "Trade Log"},
-                {"title": "Order Book Depth Log",        "description": "54.2x Pending vs Executed ratio",       "type": "Trade Log"},
-                {"title": "IP Address Trace",            "description": "Consistent source IP: 10.42.18.77",     "type": "KYC"},
-            ]),
-            "created_by":     "arao_analyst",
-            "created_at":     now.replace(day=max(1, now.day - 13)),
-        },
-        {
-            "case_id":        "CASE-2026-SBIN-004",
-            "target_symbol":  "SBIN",
-            "title":          "Close-to-Close Volume Z-Score Anomaly Review",
-            "lead_officer":   "Surveillance Officer #104",
-            "status":         "Closed",
-            "priority":       "Low",
-            "description":    (
-                "Volume Z-score of +3.8 flagged on T-3. Subsequent investigation found volume spike "
-                "correlated with a scheduled block deal disclosure. No manipulation evidence found."
-            ),
-            "evidence_json":  _json.dumps([
-                {"title": "Volume Z-Score Chart",        "description": "Z = +3.8 on 2026-07-10",               "type": "Chart"},
-                {"title": "Block Deal Disclosure",       "description": "Regulatory bulk deal filing verified",       "type": "General"},
-            ]),
-            "created_by":     "arao_analyst",
-            "created_at":     now.replace(day=max(1, now.day - 18)),
-            "closed_at":      now.replace(day=max(1, now.day - 5)),
-        },
-        {
-            "case_id":        "CASE-2026-ZENITHBIO-005",
-            "target_symbol":  "ZENITHBIO",
-            "title":          "Circular Trading Ring — Intra-Day Price Coordination",
-            "lead_officer":   "Surveillance Officer #212",
-            "status":         "Draft",
-            "priority":       "High",
-            "description":    (
-                "Three client PANs suspected of rotating buy/sell activity to maintain "
-                "artificial price level. Circular loop detected by participant audit engine "
-                "with gross volume 3.2× net volume."
-            ),
-            "evidence_json":  _json.dumps([
-                {"title": "Circular Loop Report",        "description": "3-node loop: CL00000045→CL00000187→CL00000312", "type": "Trade Log"},
-            ]),
-            "created_by":     "vsanghvi_analyst",
-            "created_at":     now.replace(day=max(1, now.day - 2)),
-        },
-    ]
-
-    rows = []
-    for c in sample_cases:
-        kwargs = {k: v for k, v in c.items()}
-        # updated_at = created_at for seed data
-        kwargs.setdefault("updated_at", kwargs["created_at"])
-        rows.append(ForensicCase(**kwargs))
-
-    db.bulk_save_objects(rows)
-    db.commit()
-    print(f"[seed] Seeded {len(rows)} forensic case dossiers.")
-
-
 def _seed_sh_and_ann(db: Session):
     if db.query(FactMainShldng).first() is not None:
         return
@@ -628,7 +505,6 @@ def _seed_sh_and_ann(db: Session):
 def seed_database(db: Session) -> dict:
     """Seed all aggregate tables directly."""
     _seed_users(db)
-    _seed_forensic_cases(db)
     _seed_sh_and_ann(db)
 
     if db.query(AggSecDay).first() is not None and db.query(AggSecDay).count() > 50:
@@ -642,7 +518,6 @@ def seed_database(db: Session) -> dict:
         count_fcac = db.query(FactCorpActions).count()
         count_usr  = db.query(SysUser).count()
         count_log  = db.query(SysAuditLog).count()
-        count_case = db.query(ForensicCase).count()
         return {
             "status": "already_seeded",
             "DIM_EXCH_CLNT_DTLS": count_decl,
@@ -654,8 +529,7 @@ def seed_database(db: Session) -> dict:
             "FACT_MAIN_SHLDNG": count_fshg,
             "FACT_CORP_ACTIONS": count_fcac,
             "SYS_USERS": count_usr,
-            "SYS_AUDIT_LOGS": count_log,
-            "FORENSIC_CASES": count_case
+            "SYS_AUDIT_LOGS": count_log
         }
 
     print("[seed] Generating DIM_EXCH_CLNT_DTLS rows …")
@@ -962,7 +836,6 @@ def seed_database(db: Session) -> dict:
     count_fcac = db.query(FactCorpActions).count()
     count_usr  = db.query(SysUser).count()
     count_log  = db.query(SysAuditLog).count()
-    count_case = db.query(ForensicCase).count()
     count_asd  = db.query(AggSecDay).count()
     count_acsd = db.query(AggClntSecDay).count()
     count_appd = db.query(AggPanPairDay).count()
@@ -979,7 +852,6 @@ def seed_database(db: Session) -> dict:
         "FACT_MAIN_SHLDNG": count_fshg,
         "FACT_CORP_ACTIONS": count_fcac,
         "SYS_USERS": count_usr,
-        "SYS_AUDIT_LOGS": count_log,
-        "FORENSIC_CASES": count_case
+        "SYS_AUDIT_LOGS": count_log
     }
 

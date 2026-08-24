@@ -9,8 +9,6 @@ import {
   Settings,
   X,
   AlertTriangle,
-  FolderLock,
-  GitCompare,
   ChevronDown,
   LayoutDashboard,
   CheckCircle2,
@@ -23,7 +21,7 @@ import {
   UserCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fetchWatchlist, fetchCases, type ScripSummary, type CaseRecord } from "@/lib/api";
+import { fetchWatchlist, type ScripSummary } from "@/lib/api";
 import { useUser, type UserRole } from "@/lib/user-context";
 
 // Alert polling interval: refresh every 5 minutes
@@ -31,8 +29,6 @@ const ALERT_POLL_INTERVAL_MS = 5 * 60 * 1000;
 
 const nav = [
   { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { key: "compare", href: "/compare", label: "Compare", icon: GitCompare },
-  { key: "cases", href: "/cases", label: "Cases", icon: FolderLock },
   { key: "history", href: "/history", label: "History", icon: History },
   { key: "settings", href: "/settings", label: "Admin", icon: Settings },
 ];
@@ -88,81 +84,35 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   const buildAlerts = useCallback(
-    (scrips: ScripSummary[], cases: CaseRecord[]): AlertItem[] => {
+    (scrips: ScripSummary[]): AlertItem[] => {
       const now = new Date();
-      const caseMap = new Map<string, CaseRecord>();
-      cases.forEach((c) => {
-        if (c.status !== "Closed") {
-          caseMap.set(c.target_symbol, c);
-        }
-      });
-
       const alertItems: AlertItem[] = [];
 
-      // Process all scrips and build alerts from live surveillance metrics & linked cases
+      // Process all scrips and build alerts from live surveillance metrics
       scrips.forEach((s) => {
-        const openCase = caseMap.get(s.symbol);
         const hasZFlag = Math.abs(s.price_z) >= 1.645 || Math.abs(s.volume_z) >= 1.645;
-        const isHigh = s.risk === "High" || (openCase && openCase.priority === "High");
-        const isMedium =
-          s.risk === "Medium" ||
-          (openCase && openCase.priority === "Medium") ||
-          s.watchlist ||
-          hasZFlag;
+        const isHigh = s.risk === "High";
+        const isMedium = s.risk === "Medium" || s.watchlist || hasZFlag;
 
         if (isHigh || isMedium) {
-          const alertId = openCase ? `case-${openCase.id}` : `wl-${s.symbol}`;
-          const caseTitle = openCase?.title
-            ? `${s.symbol} — ${openCase.title}`
-            : `${s.symbol} — ${s.risk} Risk Surveillance Alert`;
-          const caseIdStr = openCase ? `Case ${openCase.case_id} (${openCase.status}) · ` : "";
+          const alertId = `wl-${s.symbol}`;
+          const alertTitle = `${s.symbol} — ${s.risk} Risk Surveillance Alert`;
           const metricStr = `Risk: ${s.risk} · Score: ${s.score.toFixed(0)} · Price Z: ${s.price_z >= 0 ? "+" : ""}${s.price_z.toFixed(2)}σ · Vol Z: ${s.volume_z >= 0 ? "+" : ""}${s.volume_z.toFixed(2)}σ`;
 
           alertItems.push({
             id: alertId,
             symbol: s.symbol,
-            title: caseTitle,
-            description: `${caseIdStr}${metricStr}`,
-            time: openCase?.created_at
-              ? new Date(openCase.created_at).toLocaleDateString("en-IN", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : now.toLocaleDateString("en-IN", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
+            title: alertTitle,
+            description: metricStr,
+            time: now.toLocaleDateString("en-IN", {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
             read: readIds.has(alertId),
             type: isHigh ? "high" : "medium",
-            source: openCase ? "case" : "watchlist",
-          });
-        }
-      });
-
-      // Include any open cases that were not matched in scrips loop
-      const processedSymbols = new Set(alertItems.map((a) => a.symbol));
-      cases.forEach((c) => {
-        if (c.status !== "Closed" && !processedSymbols.has(c.target_symbol)) {
-          alertItems.push({
-            id: `case-${c.id}`,
-            symbol: c.target_symbol,
-            title: `${c.target_symbol} — ${c.title || c.case_id}`,
-            description: `Case ${c.case_id} · ${c.status} · Priority: ${c.priority}`,
-            time: c.created_at
-              ? new Date(c.created_at).toLocaleDateString("en-IN", {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })
-              : "Today",
-            read: readIds.has(`case-${c.id}`),
-            type: c.priority === "High" ? "high" : "medium",
-            source: "case",
+            source: "watchlist",
           });
         }
       });
@@ -181,8 +131,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const loadAlerts = useCallback(async () => {
     try {
-      const [cases, scrips] = await Promise.all([fetchCases(), fetchWatchlist()]);
-      setAlerts(buildAlerts(scrips, cases));
+      const scrips = await fetchWatchlist();
+      setAlerts(buildAlerts(scrips));
     } catch (err) {
       console.warn("[PVASF] Notification load failed:", err);
       // Do not clear existing alerts on transient network errors
