@@ -1,9 +1,15 @@
 """
 backend/services/cases_service.py
 ────────────────────────────────────────────────────────────────────────────
-Business logic layer for Forensic Case management.
-Converts ORM objects → Pydantic response shapes and enforces
-status-transition rules.
+Forensic Investigation Cases Business Logic.
+
+How Cases Work:
+  1. Analysts create a case dossier for a suspicious stock or client ring.
+  2. Evidence items (charts, PAN trade logs, loop diagrams) are stored as JSON.
+  3. Status lifecycle is strictly enforced:
+       Draft -> Open Investigation -> Pending Action -> Closed
+       (Closed cases can be re-opened back to Open Investigation).
+  4. Safety rule: An active 'Open Investigation' case cannot be accidentally deleted.
 """
 
 from __future__ import annotations
@@ -24,19 +30,19 @@ from backend.schemas.cases import (
     EvidenceItem,
 )
 
-# Valid status transitions: key = current, value = allowed next states
+# Allowed status transitions: current state -> list of valid next states
 _TRANSITIONS: dict[str, list[str]] = {
     "Draft":              ["Open Investigation", "Pending Action", "Closed"],
     "Open Investigation": ["Pending Action", "Closed"],
     "Pending Action":     ["Open Investigation", "Closed"],
-    "Closed":             ["Open Investigation"],   # Re-open case dossier
+    "Closed":             ["Open Investigation"],   # Allows re-opening an investigation
 }
 
 
 # ── Internal helper ───────────────────────────────────────────────────────────
 
 def _parse_evidence(case: ForensicCase) -> List[EvidenceItem]:
-    """Safely parse the JSON evidence column into a list of EvidenceItem."""
+    """Safely converts the JSON string of evidence items into a Python list."""
     if not case.evidence_json:
         return []
     try:

@@ -38,9 +38,12 @@ class ClientService:
         dep_accounts = self._dep_repo.get_by_clnt_token(primary.Decl_Clnt_Token)
 
         return {
-            "pan":     primary.Decl_Clnt_Pan or pan,
-            "clnt_id": primary.Decl_Clnt_Id,
-            "tm_id":   primary.Decl_TM_Id,
+            "pan":         primary.Decl_Clnt_Pan or pan,
+            "clnt_id":     primary.Decl_Clnt_Id,
+            "tm_id":       primary.Decl_TM_Id,
+            "name":        primary.Decl_Clnt_Name or "Unknown Entity",
+            "category":    primary.Decl_Clnt_Catg_Type_Desc or "Client",
+            "client_code": primary.Decl_Client_Code or primary.Decl_Clnt_Id,
             # terminals are not in the DB schema; return empty list
             "terminals": [],
             "depository_accounts": [

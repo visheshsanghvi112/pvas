@@ -225,6 +225,18 @@ class SurveillanceEngine:
         self.config = config or SurveillanceConfig()
 
     def score_price_rise(self, pct: float) -> int:
+        """
+        Metric 1: 6-Month Price Growth Score (PVASF 2.1)
+        ------------------------------------------------
+        Checks how much the stock's price grew over the past 6 months (T-180 to now).
+        Higher score = bigger pump.
+
+        Scoring tiers:
+          - Under 15% rise  -> Score 0 (Normal market movement)
+          - 15% to 75% rise -> Score 1 (Moderate rally)
+          - 76% to 150% rise-> Score 3 (High price pump)
+          - More than 150%  -> Score 5 (Extreme outlier pump)
+        """
         if pct < 15:
             return 0
         if pct <= 75:
@@ -234,6 +246,18 @@ class SurveillanceEngine:
         return 5
 
     def score_zscore(self, z: float) -> int:
+        """
+        Statistical Z-Score Mapper (PVASF 2.2 & 2.3)
+        -------------------------------------------
+        Converts a statistical Z-score into a 0 to 5 risk score.
+        Tells us if current activity is an extreme statistical outlier.
+
+        Scoring tiers:
+          - Z < 1.645  -> Score 0 (Normal variance, within top 95%)
+          - Z >= 1.645 -> Score 1 (95th percentile outlier)
+          - Z >= 2.33  -> Score 3 (99th percentile outlier)
+          - Z >= 3.09  -> Score 5 (99.9th percentile extreme outlier)
+        """
         if z >= 3.09:
             return 5
         if z >= 2.33:
@@ -243,6 +267,19 @@ class SurveillanceEngine:
         return 0
 
     def score_band_persistence(self, days: int) -> int:
+        """
+        Metric 4: Upper Circuit Locking Score (PVASF 2.4)
+        -------------------------------------------------
+        Counts how many days (in the last 15 days) the stock hit or came close
+        (at least 90%) to its upper price limit (upper circuit).
+        Manipulators repeatedly hit the circuit to lock out sellers and trigger retail FOMO.
+
+        Scoring tiers:
+          - 0 to 2 days     -> Score 0 (Normal trading)
+          - 3 to 5 days     -> Score 1 (Frequent circuit hits)
+          - 6 to 9 days     -> Score 3 (Repeated circuit locking)
+          - 10 or more days -> Score 5 (Severe multi-day circuit manipulation)
+        """
         if days >= 10:
             return 5
         if days >= 6:
@@ -252,7 +289,18 @@ class SurveillanceEngine:
         return 0
 
     def score_new_high(self, days: int) -> int:
-        # 0 days = 0, 1-4 days = 1, 5-9 days = 3, 10+ days = 5
+        """
+        Metric 5: 180-Day New High Breakout Score (PVASF 2.5)
+        ----------------------------------------------------
+        Counts how many days in the last 15 days the stock broke its previous 6-month peak.
+        Manipulators push new highs to trigger automatic buy signals.
+
+        Scoring tiers:
+          - 0 days          -> Score 0 (No new 6-month highs)
+          - 1 to 4 days     -> Score 1 (Occasional breakout)
+          - 5 to 9 days     -> Score 3 (Frequent breakouts)
+          - 10 or more days -> Score 5 (Aggressive multi-day breakout run)
+        """
         if days >= 10:
             return 5
         if days >= 5:
@@ -262,7 +310,18 @@ class SurveillanceEngine:
         return 0
 
     def calculate_core_metrics(self, ticker: str, df: pd.DataFrame, band_percent: Optional[float] = None) -> MarketMetricsResult:
-        """Calculate the 5 core PV metrics according to Section 2."""
+        """
+        Calculates all 5 Core Surveillance Metrics for a single stock:
+        -------------------------------------------------------------
+        1. Price Rise %: (Highest price in last 15 days - Price 180 days ago) / Price 180 days ago
+        2. Price Z-Score: Is the 15-day average daily return abnormal compared to 180 days history?
+        3. Volume Z-Score: Is the 15-day average daily volume abnormal compared to 180 days history?
+        4. Band Persistence: How many days did it hit >= 90% of the upper circuit limit?
+        5. 180-Day New Highs: How many days did it break its previous 180-day high?
+        
+        Final Score: Combines all 5 metrics into a single 0 to 100 risk score.
+        A score of 15.0 or higher flags the stock for the compliance watchlist.
+        """
         lookback = self.config.lookback_days
         recent = self.config.recent_days
         required_len = lookback + recent + 1
@@ -271,14 +330,12 @@ class SurveillanceEngine:
                 f"Only {len(df)} trading days available, need at least {required_len} days for 180d lookback analysis"
             )
 
-        # Impute or estimate band_percent
+        # If price band is not provided, estimate it from historical high moves (2%, 5%, 10%, or 20%)
         if band_percent is None:
-            # Dynamic upper price band inference: 99th percentile of historical upward daily moves
             prev_close_all = df["Close"].shift(1)
             high_pct_all = (df["High"] - prev_close_all) / prev_close_all
             p99 = high_pct_all.dropna().quantile(0.99)
             
-            # Map to standard upper circuit bands: 2%, 5%, 10%, 20%
             if p99 <= 0.03:
                 band_percent = 0.02
             elif p99 <= 0.075:
@@ -296,21 +353,23 @@ class SurveillanceEngine:
         high = df["High"]
         low = df["Low"]
 
-        # --- 2.1 Price Rise ---
-        # highest price (High) in last 15 days vs closing price at T-180
+        # --- 1. Price Rise % ---
+        # Compare highest price in the last 15 days against the price 180 days ago
         last15_high = high.iloc[-recent:].max()
         close_t180 = float(close.iloc[-(lookback + 1)])
         safe_close_t180 = max(close_t180, 1e-4) if close_t180 != 0 else 1e-4
         price_rise_pct = ((last15_high - close_t180) / safe_close_t180) * 100
         price_rise_score = self.score_price_rise(price_rise_pct)
 
-        # Helper rolling calculators
+        # Helper: Calculate rolling 15-day average of daily Close-to-Close returns
         def rolling_mean_pct_change(c: pd.Series) -> pd.Series:
             return (c.pct_change(fill_method=None) * 100).rolling(recent).mean()
 
+        # Helper: Calculate rolling 15-day average of daily volume
         def rolling_mean_volume(v: pd.Series) -> pd.Series:
             return v.rolling(recent).mean()
 
+        # Helper: Standard Z-score = (Current Value - Historical Mean) / Historical Std Dev
         def zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
             if len(series_clean) < lookback + 1:
@@ -323,6 +382,7 @@ class SurveillanceEngine:
                 return 0.0
             return float((latest - mu) / sigma)
 
+        # Helper: Robust Modified Z-score using Median & MAD (less sensitive to single huge spikes)
         def modified_zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
             if len(series_clean) < lookback + 1:
@@ -335,33 +395,36 @@ class SurveillanceEngine:
                 return 0.0
             return float(0.6745 * (latest - median) / mad)
 
-        # --- 2.2 Price Z-Score ---
-        price_roll = close.rolling(recent).mean()
+        # --- 2. Price Z-Score ---
+        # Tests if the 15-day average daily price return is a statistical outlier
+        price_roll = rolling_mean_pct_change(close)
         price_z = zscore_latest(price_roll)
         price_mod_z = modified_zscore_latest(price_roll)
         price_z_score = self.score_zscore(price_z)
 
-        # --- 2.3 Volume Z-Score ---
+        # --- 3. Volume Z-Score ---
+        # Tests if the 15-day average daily volume is a statistical outlier
         vol_roll = rolling_mean_volume(volume)
         volume_z = zscore_latest(vol_roll)
         volume_mod_z = modified_zscore_latest(vol_roll)
         volume_z_score = self.score_zscore(volume_z)
 
-        # --- 2.4 Price Band Persistence (Upper Circuit Only) ---
-        # Checks if the daily High reached >= 90% of the upper circuit limit.
-        # Per PVASF spec (confirmed): only upper circuit hits are counted.
+        # --- 4. Price Band Persistence (Upper Circuit Hits) ---
+        # Counts days where the stock rose by at least 90% of its daily circuit band
         prev_close = close.shift(1).replace(0, np.nan).fillna(1e-4)
         high_pct = (high - prev_close) / prev_close
         band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
         band_score = self.score_band_persistence(band_hit_days)
 
-        # --- 2.5 180-Day New High Breakout ---
+        # --- 5. 180-Day New High Breakout ---
+        # Counts days where today's high exceeded the previous 180-day peak
         rolling_180_high_prev = high.shift(1).rolling(lookback).max()
         is_new_high = high > rolling_180_high_prev
         new_high_days = int(is_new_high.iloc[-recent:].sum())
         new_high_score = self.score_new_high(new_high_days)
 
-        # --- Section 3: Weighted Final Score (0.0 to 100.0) ---
+        # --- Final Weighted Score (0.0 to 100.0) ---
+        # Multiplies each parameter score (0-5) by its calibrated weight (e.g. 25%, 20%)
         w = self.config.weights
         final_score = round(sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
             "price_rise": price_rise_score,
@@ -389,13 +452,26 @@ class SurveillanceEngine:
         )
 
     def analyze_participants(self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float) -> ParticipantAuditResult:
-        """Perform participant trade audits including LTP contribution, volume concentration, and PnL."""
+        """
+        Executes Participant-Level Conduct Audits & Algorithmic Abuse Detection (PVASF Section 4).
+        
+        Analyzes client-level trade logs to identify specific entities (PANs) responsible for
+        price distortion, artificial volume generation, circular trading, and profit extraction.
+        
+        Sub-Analyses Performed:
+          4.1 Net LTP Contribution ("Price Pusher" Metric): Identifies aggressive initiators.
+          4.2 Volume Share ("Dominance / Cornering" Metric): Identifies entities dominating exchange volume.
+          4.3 Counterparty Concentration ("Collusion" Metric): Highlights bilateral trading rings.
+          4.4 Trade Reversal Ratio ("RTR / Wash Trade" Metric): Quantifies synchronized round-tripping.
+          4.5 Circular Trading Loops ("Cycle Detection"): Graph DFS isolating directed rings (A->B->C->A).
+          4.6 Mark-to-Market PnL ("Profit-Makers" Metric): Realized cash gains + unrealized inventory value.
+        """
         if trades_df.empty or ticker not in trades_df["Ticker"].values:
             return ParticipantAuditResult()
 
         df = trades_df[trades_df["Ticker"] == ticker].copy()
         
-        # Ensure all required columns exist
+        # Ensure all required columns exist with safe null boundaries
         for col in ["BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution", "CounterpartyPAN"]:
             if col not in df.columns:
                 if col == "CounterpartyPAN":
@@ -403,20 +479,26 @@ class SurveillanceEngine:
                 else:
                     df[col] = 0.0
 
-        # --- 4.1 LTP Contribution ---
+        # --- 4.1 LTP Contribution (The "Price Pusher" Metric) ---
+        # Sums the net price impact created by each entity when acting as an aggressive market order.
+        # Rationale: Identifies whether price rise was driven by a single coordinated entity.
         ltp_group = df.groupby("PAN")["LTPContribution"].sum().reset_index()
         ltp_group["AbsLTPContribution"] = ltp_group["LTPContribution"].abs()
         top_ltp = ltp_group.sort_values("AbsLTPContribution", ascending=False).head(5).to_dict("records")
         for r in top_ltp:
             r.pop("AbsLTPContribution", None)
 
-        # --- 4.2 Volume Share ---
+        # --- 4.2 Volume Share (The "Dominance" Metric) ---
+        # Formula: (Entity Gross Volume / Total Scrip Volume over 15d) * 100
+        # Rationale: Flags single entities cornering or monopolizing liquidity.
         df["PANVolume"] = df["BuyVolume"] + df["SellVolume"]
         vol_group = df.groupby("PAN")["PANVolume"].sum().reset_index()
         vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / max(1.0, total_exchange_vol)) * 100
         top_vol = vol_group.sort_values("VolumeSharePercent", ascending=False).head(5).to_dict("records")
 
-        # --- 4.3 Counterparty Concentration ---
+        # --- 4.3 Counterparty Concentration (The "Collusive Pair" Metric) ---
+        # Formula: (Volume within Bilateral Pair / Total Scrip Volume over 15d) * 100
+        # Rationale: Flags pairs of accounts repeatedly exchanging shares with each other.
         pair_records = []
         for _, r in df.iterrows():
             p1, p2 = sorted([r["PAN"], r["CounterpartyPAN"]])
@@ -434,6 +516,9 @@ class SurveillanceEngine:
             top_pairs = []
 
         # --- 4.4 Trade Reversal Ratio (RTR) ---
+        # Formula: RTR = [ 2 * min(Vol(A->B), Vol(B->A)) / (Vol(A->B) + Vol(B->A)) ] * 100
+        # Rationale: Detects perfectly synchronized buying and selling between two entities
+        # where shares are passed back and forth without genuine transfer of beneficial ownership.
         df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
         flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
         flows = {(r["PAN"], r["CounterpartyPAN"]): r["BuyVolume"] for _, r in flow_df.iterrows()}
@@ -458,6 +543,8 @@ class SurveillanceEngine:
         top_reversals = sorted(reversal_list, key=lambda x: x["ReversalRatio"], reverse=True)[:5]
 
         # --- 4.5 Circular Trade Loops Detection ---
+        # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)
+        # where volume is rotated across multiple mule/surrogate accounts to evade 2-party filters.
         adj = {}
         for (A, B), vol in flows.items():
             if vol > 0:
@@ -478,6 +565,7 @@ class SurveillanceEngine:
                     for v in adj[u]:
                         if v == start_node:
                             if len(path) >= 3:
+                                # Canonical cycle normalization: rotate list so smallest node is first
                                 min_idx = path.index(min(path))
                                 normalized_cycle = path[min_idx:] + path[:min_idx]
                                 if normalized_cycle not in detected_loops:
@@ -507,7 +595,9 @@ class SurveillanceEngine:
             })
         top_loops = sorted(loop_results, key=lambda x: x["RotatedVolume"], reverse=True)[:5]
 
-        # --- Profit-Makers (PnL Analysis) ---
+        # --- 4.6 Profit-Makers (MTM PnL Analysis) ---
+        # Formula: Net PnL = Total Sell Value - Total Buy Value + (Net Remaining Position * Latest Close Price)
+        # Rationale: Identifies the primary beneficiaries extracting cash profits during the pump.
         pnl_df = df.groupby("PAN").agg({
             "BuyVolume": "sum",
             "SellVolume": "sum",

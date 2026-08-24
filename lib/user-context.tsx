@@ -30,6 +30,9 @@ interface UserContextType {
   authToken: string | null;
   isAdmin: boolean;
   canEditSettings: boolean;
+  isLoginModalOpen: boolean;
+  openLoginModal: () => void;
+  closeLoginModal: () => void;
   login: (username: string, password: string) => Promise<boolean>;
   logout: () => void;
   setUserRole: (role: UserRole) => void;
@@ -44,11 +47,11 @@ interface UserContextType {
 
 const defaultGuestUser: UserProfile = {
   id: 0,
-  username: "guest_viewer",
-  name: "Guest / Unauthenticated User",
+  username: "guest",
+  name: "Guest User",
   role: "Viewer",
   email: "guest@surveillance.gov",
-  department: "Public / Read Only",
+  department: "Read Only",
   is_active: false,
 };
 
@@ -60,6 +63,9 @@ const UserContext = createContext<UserContextType>({
   authToken: null,
   isAdmin: false,
   canEditSettings: false,
+  isLoginModalOpen: false,
+  openLoginModal: () => {},
+  closeLoginModal: () => {},
   login: async () => false,
   logout: () => {},
   setUserRole: () => {},
@@ -262,6 +268,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     return false;
   }
 
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+
+  const openLoginModal = () => setIsLoginModalOpen(true);
+  const closeLoginModal = () => setIsLoginModalOpen(false);
+
   const isAdmin = currentUser.role === "Admin";
   const canEditSettings = currentUser.role === "Admin";
 
@@ -272,6 +283,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         authToken,
         isAdmin,
         canEditSettings,
+        isLoginModalOpen,
+        openLoginModal,
+        closeLoginModal,
         login,
         logout,
         setUserRole,

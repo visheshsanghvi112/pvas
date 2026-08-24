@@ -39,6 +39,10 @@ export interface PricePoint {
 export interface ShareholderStats {
   unique_pans_15d?: number;
   unique_pans_180d?: number;
+  unique_pans_holding_t?: number;
+  unique_pans_holding_180?: number;
+  avg_trading_pans_15d?: number;
+  avg_trading_pans_180d?: number;
   top_1pct_concentration?: number;
   promoter_percent?: number | null;
   public_percent?: number | null;
@@ -59,6 +63,7 @@ export interface ScripDetail {
   isin: string;
   risk: "High" | "Medium" | "Low";
   status: "Open" | "Under review" | "Closed";
+  price_band?: number;
   metrics: {
     price_rise_pct: number;
     price_z: number;
@@ -81,12 +86,12 @@ export interface ScripDetail {
 
 export interface ParticipantAudit {
   ticker: string;
-  ltp_contributors: Array<{ participant: string; contribution: number }>;
-  volume_share: Array<{ participant: string; volume: number; share_pct: number }>;
+  ltp_contributors: Array<{ participant: string; name?: string; contribution: number; net_val?: number }>;
+  volume_share: Array<{ participant: string; name?: string; volume: number; share_pct: number }>;
   counterparty_pairs: Array<{ pair: string; volume: number; share_pct: number }>;
   reversal_pairs: Array<{ pair: string; volume: number; reversal_ratio: number }>;
   circular_loops: Array<{ loop: string; volume: number; gross_volume: number }>;
-  profit_makers: Array<{ participant: string; net_pnl: number; buy_volume: number; sell_volume: number }>;
+  profit_makers: Array<{ participant: string; name?: string; net_pnl: number; buy_volume: number; sell_volume: number }>;
 }
 
 export interface TradeRow {
@@ -104,10 +109,14 @@ export interface ClientDetail {
   pan: string;
   clnt_id: string;
   tm_id: string;
+  name?: string;
+  category?: string;
+  client_code?: string;
   terminals: Array<{ terminal_id: string; location: string }>;
   depository_accounts: Array<{ dp_id: string; client_id: string; status: string }>;
 }
 
+// Base API URLs pointing to FastAPI backend endpoints
 const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
 const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
 const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
@@ -123,6 +132,9 @@ function hashString(str: string): number {
   return Math.abs(hash);
 }
 
+/**
+ * Returns request headers with the user's stored Bearer token attached.
+ */
 export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = typeof window !== "undefined" ? localStorage.getItem("pvasf_auth_token") : null;
   const headers: Record<string, string> = { ...extraHeaders };
@@ -132,6 +144,9 @@ export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Recor
   return headers;
 }
 
+/**
+ * Ensures an active auth token exists. If none is found, logs in as the default analyst.
+ */
 export async function ensureAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   let token = localStorage.getItem("pvasf_auth_token");
@@ -156,6 +171,10 @@ export async function ensureAuthToken(): Promise<string | null> {
   return token;
 }
 
+/**
+ * Wrapper around standard fetch that automatically attaches the Authorization Bearer header
+ * and retries once if the token expires (HTTP 401).
+ */
 export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
   let token = await ensureAuthToken();
   const headers: Record<string, string> = {

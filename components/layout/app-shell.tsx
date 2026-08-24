@@ -14,9 +14,13 @@ import {
   ChevronDown,
   LayoutDashboard,
   CheckCircle2,
-  BookOpen,
   TrendingUp,
-  History
+  History,
+  User,
+  LogIn,
+  LogOut,
+  ShieldCheck,
+  UserCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWatchlist, fetchCases, type ScripSummary, type CaseRecord } from "@/lib/api";
@@ -36,7 +40,7 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, setUserRole, logout } = useUser();
+  const { currentUser, setUserRole, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useUser();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ScripSummary[]>([]);
@@ -364,9 +368,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <div
                 className="flex items-center justify-center rounded-full text-white font-bold text-xs shadow-xs"
-                style={{ width: 30, height: 30, background: "#1e293b", fontSize: 11 }}
+                style={{ width: 30, height: 30, background: currentUser.id === 0 ? "#64748b" : "#1e293b", fontSize: 11 }}
               >
-                {userInitials}
+                {currentUser.id === 0 ? <User className="h-4 w-4" /> : userInitials}
               </div>
               <div className="text-left">
                 <div className="text-xs font-bold text-slate-900 leading-tight">{currentUser.name}</div>
@@ -378,16 +382,55 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             {profileOpen && (
               <div
                 className="absolute right-0 rounded-2xl border border-slate-200 bg-white shadow-2xl overflow-hidden py-1"
-                style={{ top: "calc(100% + 8px)", width: 220, zIndex: 200 }}
+                style={{ top: "calc(100% + 8px)", width: 230, zIndex: 200 }}
               >
                 <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50">
-                  <div className="text-xs font-bold text-slate-900">{currentUser.name}</div>
-                  <div className="text-[11px] text-slate-500">{currentUser.department}</div>
-                  <div className="text-[10px] font-extrabold text-blue-600 mt-1 uppercase tracking-wider">{currentUser.role} privileges</div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-xs font-bold text-slate-900">{currentUser.name}</div>
+                    <span className={cn(
+                      "text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded",
+                      currentUser.role === "Admin" ? "bg-blue-100 text-blue-700 border border-blue-200" :
+                      currentUser.role === "Analyst" ? "bg-emerald-100 text-emerald-700 border border-emerald-200" :
+                      "bg-slate-100 text-slate-600 border border-slate-200"
+                    )}>
+                      {currentUser.role}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5">{currentUser.department}</div>
+                </div>
+
+                {/* Account Action Buttons */}
+                <div className="p-2 border-b border-slate-100 space-y-1">
+                  {currentUser.id === 0 ? (
+                    <button
+                      onClick={() => { setProfileOpen(false); openLoginModal(); }}
+                      className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl transition-colors cursor-pointer shadow-xs"
+                    >
+                      <LogIn className="h-3.5 w-3.5" />
+                      Sign In / Switch Account
+                    </button>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => { setProfileOpen(false); openLoginModal(); }}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <UserCheck className="h-3.5 w-3.5 text-blue-600" />
+                        Switch Account
+                      </button>
+                      <button
+                        onClick={() => { logout(); setProfileOpen(false); }}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
+                      >
+                        <LogOut className="h-3.5 w-3.5" />
+                        Sign Out
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 {/* Navigation Options inside User Menu */}
-                <div className="p-1.5 space-y-0.5 border-b border-slate-100">
+                <div className="p-1.5 space-y-0.5">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1">Workspace Modules</div>
                   {nav.map(({ key, href, label, icon: Icon }) => {
                     const active = pathname === href || (href !== "/" && pathname.startsWith(href));
@@ -409,15 +452,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     );
                   })}
                 </div>
-
-                <div className="p-1.5">
-                  <button
-                    onClick={() => { logout(); setProfileOpen(false); }}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-xl transition-colors cursor-pointer"
-                  >
-                    Logout Session
-                  </button>
-                </div>
               </div>
             )}
           </div>
@@ -429,6 +463,170 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-auto bg-slate-50">
         {children}
       </main>
+
+      {/* ── Global Login & Account Switcher Modal ── */}
+      <LoginModal isOpen={isLoginModalOpen} onClose={closeLoginModal} />
+    </div>
+  );
+}
+
+function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  const { login, logout } = useUser();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleManualLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
+    const ok = await login(username, password);
+    setLoading(false);
+    if (ok) {
+      onClose();
+    } else {
+      setError("Invalid username or password credentials.");
+    }
+  };
+
+  const handleQuickSwitch = async (u: string, p: string) => {
+    setError("");
+    setLoading(true);
+    const ok = await login(u, p);
+    setLoading(false);
+    if (ok) {
+      onClose();
+    } else {
+      setError("Quick sign-in failed.");
+    }
+  };
+
+  const handleSwitchToGuest = () => {
+    logout();
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
+      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden relative">
+        {/* Modal Header */}
+        <div className="px-6 pt-6 pb-4 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <UserCheck className="w-5 h-5 text-blue-600" />
+              Sign In / Switch User
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">Select an officer identity or enter credentials</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors shadow-2xs cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Quick Demo Switcher */}
+          <div className="space-y-2">
+            <div className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">1-Click Identity Switcher</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => handleQuickSwitch("vishesh_admin", "vishesh123")}
+                className="p-3 rounded-2xl border border-blue-200 bg-blue-50/60 hover:bg-blue-100/70 text-left transition-all group cursor-pointer shadow-2xs"
+              >
+                <div className="text-xs font-extrabold text-blue-900 flex items-center justify-between">
+                  <span>Vishesh</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-blue-600 text-white">Admin</span>
+                </div>
+                <div className="text-[11px] text-blue-700/80 font-medium mt-0.5">Full System Access</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickSwitch("arao_analyst", "arao123")}
+                className="p-3 rounded-2xl border border-emerald-200 bg-emerald-50/60 hover:bg-emerald-100/70 text-left transition-all group cursor-pointer shadow-2xs"
+              >
+                <div className="text-xs font-extrabold text-emerald-900 flex items-center justify-between">
+                  <span>A. Rao</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-600 text-white">Analyst</span>
+                </div>
+                <div className="text-[11px] text-emerald-700/80 font-medium mt-0.5">Surveillance Officer</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleQuickSwitch("audit_viewer", "audit123")}
+                className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-all group cursor-pointer shadow-2xs"
+              >
+                <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between">
+                  <span>Audit User</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">Viewer</span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium mt-0.5">Internal Audit</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSwitchToGuest}
+                className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-all group cursor-pointer shadow-2xs"
+              >
+                <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between">
+                  <span>Guest User</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-600">Guest</span>
+                </div>
+                <div className="text-[11px] text-slate-500 font-medium mt-0.5">Read Only</div>
+              </button>
+            </div>
+          </div>
+
+          <div className="relative flex items-center justify-center my-2">
+            <div className="border-t border-slate-200 w-full" />
+            <span className="bg-white px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider absolute">or sign in with password</span>
+          </div>
+
+          {/* Manual Login Form */}
+          <form onSubmit={handleManualLogin} className="space-y-3 pt-2">
+            {error && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
+                {error}
+              </div>
+            )}
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Username</label>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter username (e.g. vishesh_admin)"
+                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-xs font-medium outline-none focus:border-blue-600 transition-all shadow-2xs"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-slate-700 block mb-1">Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter password"
+                className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-white text-xs font-medium outline-none focus:border-blue-600 transition-all shadow-2xs"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-10 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-blue-600 transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <LogIn className="w-4 h-4" />
+              {loading ? "Authenticating..." : "Sign In to Account"}
+            </button>
+          </form>
+        </div>
+      </div>
     </div>
   );
 }

@@ -51,14 +51,28 @@ class AggTradeRecord:
 
 
 class TradeMatchesRepository:
+    """
+    Data-access repository querying trade executions and participant pairings.
+    
+    Constructs normalized trade surveillance records by joining AGG_PAN_PAIR_DAY
+    (daily bilateral client-pair volume summaries) with AGG_SEC_DAY (security master).
+    """
 
     def __init__(self, db: Session) -> None:
         self._db = db
 
     def _to_record(self, row: AggPanPairDay, symbol: str = "") -> AggTradeRecord:
+        """
+        Transforms an AGG_PAN_PAIR_DAY warehouse row into an AggTradeRecord domain model.
+        
+        Wash Trade Detection Rule:
+          Flags same-broker wash trades (Ftrd_Same_Broker_Wash_Flag = 1) when the buying
+          Trading Member token equals the selling Trading Member token (internal broker cross).
+        """
         qty = float(row.Appd_Buy_Tot_Qty or row.Appd_Sell_Tot_Qty or row.Appd_Lot_Qty or 1.0)
         val = float(row.Appd_Buy_Tot_Val or row.Appd_Sell_Tot_Val or 0.0)
         price = round(val / qty, 2) if qty > 0 else 0.0
+        # Wash trade detection: Same broker executing both buy and sell legs
         is_wash = 1 if (row.Appd_Exch_TM_Token == row.Appd_Cpty_Exch_TM_Token and row.Appd_Exch_TM_Token > 0) else 0
         tmst = datetime.combine(row.Appd_Date, datetime.min.time())
 

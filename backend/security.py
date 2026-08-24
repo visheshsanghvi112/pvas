@@ -1,7 +1,15 @@
 """
 backend/security.py
 ────────────────────────────────────────────────────────────────────────────
-Enterprise security, password hashing, token validation, and RBAC middleware.
+User Authentication, Password Hashing & Role-Based Access Control (RBAC).
+
+How Security Works:
+  1. Passwords: Encrypted using PBKDF2 with 100,000 rounds and random salt.
+  2. Tokens: Signed with HMAC-SHA256 (expires in 24 hours).
+  3. Roles:
+     - Admin: Full access (change weights, upload EOD, manage users, delete cases).
+     - Analyst: Surveillance officer (view scrips, create/edit cases, log notes).
+     - Viewer: Read-only guest (can view scrips and charts, cannot edit).
 """
 
 import hashlib
@@ -27,8 +35,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=F
 
 def hash_password(password: str, salt: Optional[str] = None) -> str:
     """
-    Hashes password using PBKDF2-HMAC-SHA256 with 100,000 iterations and per-password salting.
-    Format stored: pbkdf2_sha256$iterations$salt_hex$hash_hex
+    Encrypts a plain password using PBKDF2-HMAC-SHA256 with 100,000 iterations.
+    Each password gets a unique random 16-byte salt so identical passwords produce different hashes.
     """
     iterations = 100_000
     if not salt:
@@ -41,7 +49,10 @@ def hash_password(password: str, salt: Optional[str] = None) -> str:
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies plain password against stored hash with PBKDF2 or legacy format fallback."""
+    """
+    Checks if a user's typed password matches the stored encrypted hash.
+    Uses constant-time comparison (hmac.compare_digest) to protect against timing attacks.
+    """
     try:
         if hashed_password.startswith("pbkdf2_sha256$"):
             parts = hashed_password.split("$")
@@ -53,7 +64,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
             key = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt_bytes, iterations)
             return hmac.compare_digest(key.hex(), expected_hash_hex)
         else:
-            # Fallback verification for legacy SHA256-HMAC hashes during migration
+            # Fallback for legacy hashes during migration
             salt = SECRET_KEY.encode("utf-8")
             legacy_hash = hmac.new(salt, plain_password.encode("utf-8"), hashlib.sha256).hexdigest()
             return hmac.compare_digest(legacy_hash, hashed_password)
@@ -62,7 +73,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_access_token(data: dict) -> str:
-    """Generates a secure signed session token with HMAC-SHA256 signature and expiration."""
+    """
+    Creates a signed 24-hour session token containing the username and role.
+    The client sends this token in the 'Authorization: Bearer <token>' header.
+    """
     payload = data.copy()
     now = datetime.utcnow()
     payload["iat"] = now.timestamp()
@@ -74,7 +88,10 @@ def create_access_token(data: dict) -> str:
 
 
 def decode_access_token(token: str) -> Optional[dict]:
-    """Validates signature and expiry of token."""
+    """
+    Verifies that a token has a valid signature and has not expired.
+    Returns the token payload (username, role) or None if invalid.
+    """
     try:
         if "." not in token:
             return None
@@ -96,7 +113,10 @@ def get_current_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db)
 ) -> SysUser:
-    """Dependency to extract and validate the active authenticated user."""
+    """
+    FastAPI dependency: Reads the token from the request header, validates it,
+    and returns the active SysUser object from the database.
+    """
     auth_token = token
     if not auth_token and authorization and authorization.startswith("Bearer "):
         auth_token = authorization.split(" ", 1)[1]
@@ -125,7 +145,10 @@ def get_current_user(
 
 
 def require_role(allowed_roles: list[str]):
-    """Role-Based Access Control (RBAC) dependency factory."""
+    """
+    RBAC Role Guard factory: Restricts endpoint access to specific user roles.
+    Raises HTTP 403 Forbidden if the user's role is not in allowed_roles.
+    """
     def role_checker(current_user: SysUser = Depends(get_current_user)):
         if current_user.role not in allowed_roles:
             raise HTTPException(
@@ -136,11 +159,9 @@ def require_role(allowed_roles: list[str]):
     return role_checker
 
 
-# Role Hierarchy:
-# Admin   -> Full superuser (Weights, EOD upload, User Management, Case Deletion, Audit Logs)
-# Analyst -> Surveillance Investigator (Read all, Create/Update Cases, Pin Evidence)
-# Viewer  -> Read-Only Observer (Read all scrips, charts, trade logs, clients, cases)
-require_admin = require_role(["Admin"])
-require_analyst = require_role(["Admin", "Analyst"])
-require_viewer = require_role(["Admin", "Analyst", "Viewer"])
+# Role Guard shortcuts for FastAPI routes:
+require_admin = require_role(["Admin"])                        # Only Admin
+require_analyst = require_role(["Admin", "Analyst"])            # Admin or Analyst
+require_viewer = require_role(["Admin", "Analyst", "Viewer"])   # Any logged-in user
+
 

@@ -64,6 +64,7 @@ export default function SettingsPage() {
     isAdmin,
     login,
     logout,
+    openLoginModal,
     usersList,
     refreshUsers,
     auditLogs,
@@ -90,7 +91,6 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [userUpdateMsg, setUserUpdateMsg] = useState("");
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
 
   // Login form state
@@ -115,6 +115,15 @@ export default function SettingsPage() {
     refreshAuditLogs();
   }, []);
 
+  const handleResetDefaults = () => {
+    setWPriceRise(25);
+    setWPriceZ(20);
+    setWVolumeZ(25);
+    setWBand(15);
+    setWHigh(15);
+    setWatchlistScore(15);
+  };
+
   const handleSaveWeights = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEditSettings) return;
@@ -134,17 +143,6 @@ export default function SettingsPage() {
     setSaveSuccess(true);
     refreshAuditLogs();
     setTimeout(() => setSaveSuccess(false), 3000);
-  };
-
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoginError("");
-    const ok = await login(loginUsername, loginPassword);
-    if (ok) {
-      setShowLoginModal(false);
-    } else {
-      setLoginError("Invalid username or password credentials.");
-    }
   };
 
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
@@ -183,33 +181,39 @@ export default function SettingsPage() {
   return (
     <div className="flex flex-col h-full bg-slate-50 text-slate-900 font-sans">
       {/* ── Page Header Bar ── */}
-      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4 shadow-xs">
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-6 py-3.5 flex items-center justify-between gap-4 shadow-xs">
         <div>
           <h1 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <SlidersHorizontal className="h-4.5 w-4.5 text-blue-600" />
-            Administration, User Access & Security Audit
+            Admin & Model Settings
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Manage model parameters, user accounts in SYS_USERS, and immutable audit logs in SYS_AUDIT_LOGS.
-          </p>
         </div>
 
         {/* User Account Controls */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 bg-slate-100/80 border border-slate-200 rounded-lg px-3 py-1.5">
-            <div className={cn("h-2 w-2 rounded-full", isAdmin ? "bg-emerald-500" : "bg-amber-500")} />
-            <span className="text-xs text-slate-500">Authenticated:</span>
+          <div className="flex items-center gap-2 bg-slate-100/80 border border-slate-200 rounded-xl px-3 py-1.5">
+            <div className={cn("h-2 w-2 rounded-full", isAdmin ? "bg-emerald-500" : "bg-blue-500")} />
             <span className="text-xs font-bold text-slate-900">{currentUser.name}</span>
             <RolePill role={currentUser.role} />
           </div>
 
-          <button
-            onClick={() => setShowLoginModal(true)}
-            className="flex items-center gap-1.5 h-8.5 px-3 rounded-lg bg-slate-900 text-white text-xs font-semibold hover:bg-blue-600 transition-colors shadow-xs cursor-pointer"
-          >
-            <LogIn className="h-3.5 w-3.5" />
-            Switch User / Login
-          </button>
+          {isAdmin ? (
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 h-8.5 px-3 rounded-xl bg-slate-100 text-rose-600 hover:bg-rose-50 border border-slate-200 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign Out
+            </button>
+          ) : (
+            <button
+              onClick={openLoginModal}
+              className="flex items-center gap-1.5 h-8.5 px-3.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 transition-colors shadow-xs cursor-pointer"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              Sign In as Admin
+            </button>
+          )}
         </div>
       </div>
 
@@ -272,183 +276,172 @@ export default function SettingsPage() {
               {saveSuccess && (
                 <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-800 shadow-xs">
                   <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  Model weights and parameters updated successfully and recorded in SYS_AUDIT_LOGS!
+                  Model weights and parameters updated successfully and recorded in audit log!
                 </div>
               )}
 
-              {/* Alert Cutoffs Card & Weight Sliders */}
-              <div className="grid gap-5 xl:grid-cols-2">
-                <Card className="bg-white border-slate-200 shadow-xs">
-                  <CardHeader className="flex-row items-center gap-2.5 space-y-0 border-b border-slate-100 pb-3">
-                    <Gauge className="h-4 w-4 text-blue-600" />
-                    <CardTitle className="text-sm font-bold text-slate-900">
-                      Alert Eligibility & Risk Cutoffs
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-4 grid gap-4 sm:grid-cols-2">
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-semibold text-slate-600">
-                        Watchlist Cutoff Score (0 – 100)
+              <Card className="bg-white border-slate-200 shadow-xs overflow-hidden">
+                <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 py-3.5 px-5 bg-slate-50/50">
+                  <div className="flex items-center gap-2">
+                    <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <CardTitle className="text-sm font-bold text-slate-900">
+                        Model Scoring & Weight Calibration
+                      </CardTitle>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-1.5 text-xs">
+                      <span className="text-slate-500 font-medium">Total Weight:</span>
+                      <span className={cn(
+                        "font-bold px-2 py-0.5 rounded border text-xs",
+                        (wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh) === 100
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-rose-50 text-rose-700 border-rose-200"
+                      )}>
+                        {wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh}%
                       </span>
+                    </div>
+                  </div>
+                </CardHeader>
+
+                <CardContent className="p-5 space-y-6">
+                  {/* Watchlist Threshold Input Row */}
+                  <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex-wrap">
+                    <div>
+                      <div className="text-xs font-bold text-slate-900">Watchlist Triage Cutoff Score</div>
+                      <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                        Threshold score for shortlisting scrips onto the Watchlist
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-600">Cutoff Score:</span>
                       <Input
                         type="number"
                         min={0}
                         max={100}
                         value={watchlistScore}
-                        disabled={!canEditSettings}
+                        disabled={!canEditSettings || saving}
                         onChange={(e) => setWatchlistScore(Number(e.target.value))}
-                        className="h-8.5 text-xs font-bold"
+                        className="h-9 w-24 text-xs font-extrabold text-center rounded-xl bg-white border-slate-200"
                       />
-                    </label>
-                    <div className="space-y-1">
-                      <span className="text-xs font-semibold text-slate-500">Active Baseline Engine</span>
-                      <div className="text-xs text-slate-700 bg-slate-100 p-2 rounded-md font-mono">
-                        180D Baseline • 15D Obs
-                      </div>
                     </div>
-                  </CardContent>
-                </Card>
-
-                {/* Score Matrix Breakdown */}
-                <Card className="bg-white border-slate-200 shadow-xs">
-                  <CardHeader className="flex-row items-center gap-2.5 space-y-0 border-b border-slate-100 pb-3">
-                    <Database className="h-4 w-4 text-indigo-600" />
-                    <CardTitle className="text-sm font-bold text-slate-900">
-                      PVASF Parameter Scoring Matrix
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="pt-4 space-y-2 text-xs">
-                    {scoreRows.map(([name, bands]) => (
-                      <div key={name} className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100">
-                        <span className="font-semibold text-slate-700 w-24">{name}</span>
-                        <div className="flex gap-1">
-                          {bands.map((b, i) => {
-                            const pts = [0, 1, 3, 5][i];
-                            return (
-                              <span key={b} className="bg-white border border-slate-200 px-1.5 py-0.5 rounded text-[10px] text-slate-600">
-                                {b} ({pts}pt)
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* 5 Core Metric Weights Control Card */}
-              <Card className="bg-white border-slate-200 shadow-xs">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="h-4 w-4 text-emerald-600" />
-                    <CardTitle className="text-sm font-bold text-slate-900">
-                      5 Core Metric Weight Parameters (%)
-                    </CardTitle>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold text-slate-500">Total Weight:</span>
-                    <span className={cn(
-                      "text-xs font-bold px-2 py-0.5 rounded border",
-                      (wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh) === 100
-                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        : "bg-rose-50 text-rose-700 border-rose-200"
-                    )}>
-                      {wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh}%
-                    </span>
+
+                  {/* 5 Core Metric Weight Sliders Grid */}
+                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                        <span>Price Rise ($w_1$)</span>
+                        <span className="text-blue-600 font-mono text-sm">{wPriceRise}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        value={wPriceRise}
+                        disabled={!canEditSettings || saving}
+                        onChange={(e) => setWPriceRise(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 25%</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                        <span>Price Z-Score ($w_2$)</span>
+                        <span className="text-blue-600 font-mono text-sm">{wPriceZ}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        value={wPriceZ}
+                        disabled={!canEditSettings || saving}
+                        onChange={(e) => setWPriceZ(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                        <span>Volume Z-Score ($w_3$)</span>
+                        <span className="text-blue-600 font-mono text-sm">{wVolumeZ}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        value={wVolumeZ}
+                        disabled={!canEditSettings || saving}
+                        onChange={(e) => setWVolumeZ(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 25%</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                        <span>Band Persistence ($w_4$)</span>
+                        <span className="text-blue-600 font-mono text-sm">{wBand}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        value={wBand}
+                        disabled={!canEditSettings || saving}
+                        onChange={(e) => setWBand(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 15%</div>
+                    </div>
+
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                        <span>180D New High ($w_5$)</span>
+                        <span className="text-blue-600 font-mono text-sm">{wHigh}%</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={50}
+                        value={wHigh}
+                        disabled={!canEditSettings || saving}
+                        onChange={(e) => setWHigh(Number(e.target.value))}
+                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                      />
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 15%</div>
+                    </div>
                   </div>
-                </CardHeader>
-                <CardContent className="pt-4 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-                  <label className="space-y-2">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>Price Rise (w1)</span>
-                      <span className="font-bold text-blue-600">{wPriceRise}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={50}
-                      value={wPriceRise}
-                      disabled={!canEditSettings || saving}
-                      onChange={(e) => setWPriceRise(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>Price Z-Score (w2)</span>
-                      <span className="font-bold text-blue-600">{wPriceZ}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={50}
-                      value={wPriceZ}
-                      disabled={!canEditSettings || saving}
-                      onChange={(e) => setWPriceZ(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>Volume Z-Score (w3)</span>
-                      <span className="font-bold text-blue-600">{wVolumeZ}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={50}
-                      value={wVolumeZ}
-                      disabled={!canEditSettings || saving}
-                      onChange={(e) => setWVolumeZ(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>Band Persistence (w4)</span>
-                      <span className="font-bold text-blue-600">{wBand}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={50}
-                      value={wBand}
-                      disabled={!canEditSettings || saving}
-                      onChange={(e) => setWBand(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </label>
-
-                  <label className="space-y-2">
-                    <div className="flex justify-between text-xs font-semibold text-slate-700">
-                      <span>180D New High (w5)</span>
-                      <span className="font-bold text-blue-600">{wHigh}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={50}
-                      value={wHigh}
-                      disabled={!canEditSettings || saving}
-                      onChange={(e) => setWHigh(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                    />
-                  </label>
                 </CardContent>
-              </Card>
 
-              {canEditSettings && (
-                <div className="flex items-center justify-end gap-3 pt-2">
-                  <Button type="submit" disabled={saving} className="bg-slate-900 text-white hover:bg-blue-600 text-xs font-semibold h-9 px-4 cursor-pointer">
-                    <Save className="h-3.5 w-3.5 mr-1.5" />
-                    {saving ? "Saving..." : "Save Model Parameters"}
-                  </Button>
-                </div>
-              )}
+                {/* Footer Action Buttons Bar */}
+                {canEditSettings && (
+                  <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleResetDefaults}
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                      title="Reset model parameters to default framework weights"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                      Reset to Framework Defaults
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={saving}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-blue-600 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                    >
+                      <Save className="h-3.5 w-3.5" />
+                      {saving ? "Saving..." : "Save Model Parameters"}
+                    </button>
+                  </div>
+                )}
+              </Card>
             </form>
           )}
 
@@ -599,80 +592,6 @@ export default function SettingsPage() {
 
         </div>
       </div>
-
-      {/* ── Login Modal ── */}
-      {showLoginModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                <KeyRound className="h-5 w-5 text-blue-600" /> Authenticate Surveillance Account
-              </h2>
-              <button onClick={() => setShowLoginModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleLoginSubmit} className="space-y-4">
-              {loginError && (
-                <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-lg text-xs font-semibold flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4 shrink-0" /> {loginError}
-                </div>
-              )}
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Username</label>
-                <Input
-                  value={loginUsername}
-                  onChange={(e) => setLoginUsername(e.target.value)}
-                  placeholder="e.g. vishesh_admin"
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-700">Password</label>
-                <Input
-                  type="password"
-                  value={loginPassword}
-                  onChange={(e) => setLoginPassword(e.target.value)}
-                  placeholder="Password"
-                  className="h-9 text-xs"
-                />
-              </div>
-
-              <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-xs text-slate-500 space-y-2">
-                <div className="font-semibold text-slate-700">Select Login Account:</div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => { setLoginUsername("vishesh_admin"); setLoginPassword("vishesh123"); }}
-                    className="px-2.5 py-1 bg-white border border-slate-300 hover:border-blue-500 rounded text-xs font-semibold text-slate-800 shadow-2xs cursor-pointer transition-colors"
-                  >
-                    Admin (Vishesh)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setLoginUsername("arao_analyst"); setLoginPassword("arao123"); }}
-                    className="px-2.5 py-1 bg-white border border-slate-300 hover:border-blue-500 rounded text-xs font-semibold text-slate-800 shadow-2xs cursor-pointer transition-colors"
-                  >
-                    Analyst (A. Rao)
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button type="button" variant="outline" onClick={() => setShowLoginModal(false)} className="h-8.5 text-xs">
-                  Cancel
-                </Button>
-                <Button type="submit" className="bg-slate-900 text-white hover:bg-blue-600 h-8.5 text-xs font-semibold cursor-pointer">
-                  Log In & Authenticate
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
 
       {/* ── Create User Modal ── */}
       {showCreateUserModal && (

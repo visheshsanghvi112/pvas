@@ -27,19 +27,20 @@ def get_watchlist(
     search: str = Query("", description="Search ticker symbol"),
     current_user: SysUser = Depends(get_current_user)
 ):
-    scrips = service.get_watchlist()
-    if search:
-        scrips = [s for s in scrips if search.lower() in s["ticker"].lower()]
-    return scrips
+    return get_scrips(search=search, watchlist=True, current_user=current_user)
 
 
 @router.get("/scrips")
 @legacy_router.get("/scrips")
 def get_scrips(
     search: str = Query("", description="Search ticker symbol"),
+    watchlist: Optional[bool] = Query(None, description="Filter for watchlist-shortlisted scrips"),
     current_user: SysUser = Depends(get_current_user)
 ):
-    scrips = service.get_scrips_summary()
+    if watchlist:
+        scrips = service.get_watchlist()
+    else:
+        scrips = service.get_scrips_summary()
     if search:
         scrips = [s for s in scrips if search.lower() in s["ticker"].lower()]
     return scrips

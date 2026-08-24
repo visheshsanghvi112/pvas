@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowUpDown,
   ArrowUp,
@@ -17,10 +18,17 @@ import {
   TrendingUp,
   BarChart2,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  FolderLock,
+  Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { ScripSummary } from "@/lib/api";
+import { getAuthHeaders, type ScripSummary } from "@/lib/api";
+import { useUser } from "@/lib/user-context";
 
 type SortField =
   | "score"
@@ -79,10 +87,84 @@ export function AlertsTable({
   const [filterCircuitHits, setFilterCircuitHits] = useState(false);
   const [filterNewHighs, setFilterNewHighs] = useState(false);
 
+  // Pagination State
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
+
+  const router = useRouter();
+  const { currentUser } = useUser();
+
+  // Quick Case Modal State
+  const [quickCaseScrip, setQuickCaseScrip] = useState<ScripSummary | null>(null);
+  const [caseTitle, setCaseTitle] = useState("");
+  const [casePriority, setCasePriority] = useState<"High" | "Medium" | "Low">("High");
+  const [caseDesc, setCaseDesc] = useState("");
+  const [creatingCase, setCreatingCase] = useState(false);
+
+  const handleOpenQuickCaseModal = (scrip: ScripSummary) => {
+    setQuickCaseScrip(scrip);
+    setCaseTitle(`${scrip.symbol} — Anomaly Surveillance Review (Score: ${scrip.score})`);
+    setCasePriority(scrip.risk as "High" | "Medium" | "Low");
+    setCaseDesc(`Surveillance case opened from Watchlist Table for ${scrip.company || scrip.symbol}. Price Rise: +${scrip.price_rise_pct.toFixed(1)}%, Volume Z: ${scrip.volume_z.toFixed(2)}σ.`);
+  };
+
+  const handleCreateQuickCaseSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickCaseScrip) return;
+    setCreatingCase(true);
+    const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+    const caseId = `CASE-${new Date().getFullYear()}-${quickCaseScrip.symbol.toUpperCase()}-${Math.floor(100 + Math.random() * 900)}`;
+
+    try {
+      const res = await fetch(`${BASE_HOST}/api/v1/cases/`, {
+        method: "POST",
+        headers: getAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          case_id: caseId,
+          target_symbol: quickCaseScrip.symbol,
+          title: caseTitle,
+          lead_officer: currentUser.name || "Surveillance Officer",
+          priority: casePriority,
+          status: "Open Investigation",
+          description: caseDesc,
+        }),
+      });
+
+      if (res.ok) {
+        if (onStatusChange) {
+          onStatusChange(quickCaseScrip.symbol, "Under review");
+        }
+        setQuickCaseScrip(null);
+        router.push("/cases");
+      }
+    } catch (err) {
+      console.error("Failed to create case from watchlist", err);
+    } finally {
+      setCreatingCase(false);
+    }
+  };
+
   // Sync riskTab with parent prop when parent changes
   useEffect(() => {
     setRiskTab(selectedRiskFilter);
   }, [selectedRiskFilter]);
+
+  // Reset page to 1 whenever filters or search terms change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchTerm,
+    riskTab,
+    statusFilter,
+    filterPriceSpike,
+    filterPriceZ,
+    filterVolZ,
+    filterCircuitHits,
+    filterNewHighs,
+    sortField,
+    sortOrder,
+    pageSize,
+  ]);
 
   const handleRiskTabChange = (level: string) => {
     setRiskTab(level);
@@ -134,6 +216,28 @@ export function AlertsTable({
     if (valA > valB) return sortOrder === "asc" ? 1 : -1;
     return 0;
   });
+
+  // Pagination calculations
+  const totalItems = sorted.length;
+  const effectivePageSize = pageSize === 0 ? totalItems : pageSize;
+  const totalPages = Math.max(1, Math.ceil(totalItems / (effectivePageSize || 1)));
+
+  const startIndex = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+  const endIndex = pageSize === 0 ? totalItems : Math.min(startIndex + pageSize, totalItems);
+  const paginatedScrips = sorted.slice(startIndex, endIndex);
+
+  const getPageNumbers = (current: number, total: number) => {
+    if (total <= 7) {
+      return Array.from({ length: total }, (_, i) => i + 1);
+    }
+    if (current <= 4) {
+      return [1, 2, 3, 4, 5, "...", total];
+    }
+    if (current >= total - 3) {
+      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
+    }
+    return [1, "...", current - 1, current, current + 1, "...", total];
+  };
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -443,7 +547,7 @@ export function AlertsTable({
                 </td>
               </tr>
             ) : (
-              sorted.map((alert, idx) => (
+              paginatedScrips.map((alert, idx) => (
                 <tr
                   key={alert.symbol}
                   className={cn(
@@ -591,6 +695,13 @@ export function AlertsTable({
                         Analyze Scrip
                       </Link>
                       <Link
+                        href={`/cases?search=${alert.symbol}`}
+                        className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
+                        title="View Forensic Cases"
+                      >
+                        <FolderLock className="h-3.5 w-3.5" />
+                      </Link>
+                      <Link
                         href="/compare"
                         className="flex items-center justify-center w-8 h-8 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors border border-transparent hover:border-slate-200"
                         title="Compare Scrip"
@@ -606,22 +717,108 @@ export function AlertsTable({
         </table>
       </div>
 
-      {/* ── Table Footer Fixed Bar ── */}
-      <div className="flex-shrink-0 px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
-        <div>
-          Showing <span className="font-bold text-slate-800">{sorted.length}</span> of <span className="font-bold text-slate-800">{scrips.length}</span> security alerts
+      {/* ── Table Footer Fixed Bar with Pagination ── */}
+      <div className="flex-shrink-0 px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+        {/* Left: Summary Readout & Page Size Selector */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div>
+            Showing <span className="font-bold text-slate-800">{totalItems > 0 ? startIndex + 1 : 0}</span>–<span className="font-bold text-slate-800">{endIndex}</span> of <span className="font-bold text-slate-800">{totalItems}</span> security alerts
+          </div>
+
+          <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
+            <span className="text-slate-400 font-medium">Rows:</span>
+            <select
+              value={pageSize}
+              onChange={(e) => setPageSize(Number(e.target.value))}
+              className="bg-white border border-slate-200 text-slate-700 font-bold rounded-lg px-2 py-0.5 text-xs outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+            >
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={0}>All</option>
+            </select>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
+
+        {/* Center: Risk breakdown badges */}
+        <div className="hidden lg:flex items-center gap-3">
           <span className="flex items-center gap-1 text-rose-600 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-rose-500"></span> High Risk: {sorted.filter(s => s.risk === "High").length}
+            <span className="w-2 h-2 rounded-full bg-rose-500"></span> High: {sorted.filter(s => s.risk === "High").length}
           </span>
           <span className="flex items-center gap-1 text-amber-600 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span> Medium Risk: {sorted.filter(s => s.risk === "Medium").length}
+            <span className="w-2 h-2 rounded-full bg-amber-500"></span> Medium: {sorted.filter(s => s.risk === "Medium").length}
           </span>
           <span className="flex items-center gap-1 text-emerald-600 font-semibold">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal: {sorted.filter(s => s.risk === "Low").length}
           </span>
         </div>
+
+        {/* Right: Pagination Controls */}
+        {pageSize > 0 && totalPages > 1 ? (
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setCurrentPage(1)}
+              disabled={currentPage === 1}
+              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="First Page"
+            >
+              <ChevronsLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+              disabled={currentPage === 1}
+              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Previous Page"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+
+            <div className="flex items-center gap-1 mx-1">
+              {getPageNumbers(currentPage, totalPages).map((p, i) =>
+                typeof p === "number" ? (
+                  <button
+                    key={i}
+                    onClick={() => setCurrentPage(p)}
+                    className={cn(
+                      "h-7 min-w-7 px-2 rounded-lg text-xs font-bold transition-all border",
+                      currentPage === p
+                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                    )}
+                  >
+                    {p}
+                  </button>
+                ) : (
+                  <span key={i} className="px-1 text-slate-400 font-bold">
+                    ...
+                  </span>
+                )
+              )}
+            </div>
+
+            <button
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+              disabled={currentPage === totalPages}
+              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Next Page"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => setCurrentPage(totalPages)}
+              disabled={currentPage === totalPages}
+              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Last Page"
+            >
+              <ChevronsRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        ) : (
+          <div className="text-slate-400 text-[11px] font-medium">
+            Showing all {totalItems} entries
+          </div>
+        )}
       </div>
     </div>
   );

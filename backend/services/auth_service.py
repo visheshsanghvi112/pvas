@@ -1,7 +1,14 @@
 """
 backend/services/auth_service.py
 ────────────────────────────────────────────────────────────────────────────
-Business logic layer for User Management, Auth, and Security Audit Logs.
+User Management, Authentication & Security Audit Trail Service.
+
+How This Service Works:
+  1. User Authentication: Checks credentials against PBKDF2 hashes and issues access tokens.
+  2. Security Audit Trail: Automatically logs all sensitive operations (logins, role updates,
+     status changes) into the immutable SysAuditLog database table.
+  3. Lockout Protection: Prevents the system from deactivating or demoting the last remaining
+     Admin user, ensuring the system can never be permanently locked out.
 """
 
 from datetime import datetime
@@ -27,7 +34,10 @@ class AuthService:
         details: Optional[str] = None,
         ip_address: str = "127.0.0.1"
     ) -> SysAuditLog:
-        """Records an immutable security audit event."""
+        """
+        Records a permanent audit trail entry in the database.
+        Used to track who did what (logins, user creation, role changes, settings updates).
+        """
         log = SysAuditLog(
             timestamp=datetime.utcnow(),
             username=username,
@@ -43,7 +53,11 @@ class AuthService:
         return log
 
     def authenticate(self, username: str, password: str, ip_address: str = "127.0.0.1") -> Optional[Dict[str, Any]]:
-        """Authenticates user and returns user info + access token."""
+        """
+        Validates login credentials.
+        If valid: records LOGIN_SUCCESS and returns user profile + 24hr access token.
+        If invalid: records LOGIN_FAILED and returns None.
+        """
         user = self._db.query(SysUser).filter(SysUser.username == username, SysUser.is_active == True).first()
         if not user or not verify_password(password, user.hashed_password):
             self.log_audit(
