@@ -2351,3 +2351,283 @@ export function CombinedMarketChart({
     </div>
   );
 }
+
+/**
+ * High-Efficiency Surveillance Statistical Deck (Pillars 1, 2, & 3).
+ * Preserves 100% of the metric cards from 180D Price, Return Z-Score, and Volume Z-Score
+ * in a direct, high-density 3-pillar layout without redundant duplicate chart lines.
+ */
+export function SurveillanceStatisticalDeck({
+  history = [],
+  metrics,
+}: {
+  history?: PricePoint[];
+  metrics?: any;
+}) {
+  if (!history || history.length === 0) return null;
+
+  // 1. Price Growth Metrics (PVASF 2.1)
+  const startPrice = history[0]?.close || 1;
+  const currentPrice = history[history.length - 1]?.close || startPrice;
+  const netGainPct = Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10;
+  const max180High = Math.max(...history.map((h) => h.high ?? h.close));
+  const isHighRiskGain = netGainPct >= 75.0;
+  const priceRiseScore = metrics?.price_rise_score ?? (netGainPct > 150 ? 5 : netGainPct >= 76 ? 3 : netGainPct >= 15 ? 1 : 0);
+
+  // 2. Price Return & Momentum Z-Score Metrics (PVASF 2.2)
+  const returns = history.map((h, i) => {
+    if (i === 0) return 0;
+    const prev = history[i - 1]?.close || 1;
+    return ((h.close - prev) / prev) * 100;
+  });
+  const mean180Return = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
+  const varianceReturn = returns.length > 0
+    ? returns.reduce((a, b) => a + Math.pow(b - mean180Return, 2), 0) / returns.length
+    : 1;
+  const stdDevReturn = Math.sqrt(varianceReturn) || 1;
+  const zAlertReturn = Math.round((mean180Return + 1.645 * stdDevReturn) * 100) / 100;
+  const zCriticalReturn = Math.round((mean180Return + 2.33 * stdDevReturn) * 100) / 100;
+
+  const rolling15Returns = computeMA(returns, 15);
+  const enrichedReturns = history.map((h, i) => {
+    const dailyRet = returns[i];
+    const ma15 = rolling15Returns[i] != null ? rolling15Returns[i]! : dailyRet;
+    const zScore = stdDevReturn > 0 ? Math.round(((ma15 - mean180Return) / stdDevReturn) * 100) / 100 : 0;
+    return { ...h, dailyReturn: dailyRet, rolling15dReturn: ma15, zScore };
+  });
+  const last15Returns = enrichedReturns.slice(-15);
+  const latest15MeanReturn = last15Returns.length > 0 ? last15Returns.reduce((a, b) => a + b.dailyReturn, 0) / last15Returns.length : 0;
+  const returnSurgeMultiple = mean180Return > 0 ? Math.round((latest15MeanReturn / mean180Return) * 10) / 10 : (latest15MeanReturn > 0 ? 5.0 : 1.0);
+  const abnormalMoveDays = last15Returns.filter((d) => d.zScore >= 1.645).length;
+  const criticalMoveDays = last15Returns.filter((d) => d.zScore >= 2.33).length;
+
+  // 3. Volume & Liquidity Burst Metrics (PVASF 2.3)
+  const volumes = history.map((h) => h.volume);
+  const meanVol180 = volumes.length > 0 ? volumes.reduce((a, b) => a + b, 0) / volumes.length : 0;
+  const varianceVol = volumes.length > 0
+    ? volumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / volumes.length
+    : 1;
+  const stdDevVol = Math.sqrt(varianceVol) || 1;
+  const zVolAlert = Math.round(meanVol180 + 1.645 * stdDevVol);
+
+  const rolling15Vol = computeMA(volumes, 15);
+  const enrichedVol = history.map((h, i) => {
+    const ma15 = rolling15Vol[i] || h.volume;
+    const surgeRatio = ma15 > 0 ? Math.round((h.volume / ma15) * 10) / 10 : 1;
+    return { ...h, rolling15d: ma15, surgeRatio };
+  });
+  const last15Vol = enrichedVol.slice(-15);
+  const latest15Vol = last15Vol.length > 0 ? last15Vol.reduce((a, b) => a + b.volume, 0) / last15Vol.length : 0;
+  const volSurgeMultiple = meanVol180 > 0 ? Math.round((latest15Vol / meanVol180) * 10) / 10 : 1.0;
+  const volSpikeDays = last15Vol.filter((d) => d.surgeRatio >= 1.5).length;
+
+  return (
+    <div className="space-y-4">
+      {/* Pillar 1: Price Growth & Severity (PVASF 2.1) */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
+            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
+              180-Day Price Movement & Baseline Growth
+            </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+              PVASF §2.1
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            Observation: Day t vs Day T-180
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              180-Day Starting Price (T-180)
+              <InfoTooltip text="Historical baseline: Closing price 180 trading days ago (~6 months), used to measure 6-month price rise." />
+            </span>
+            <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
+              ₹{startPrice.toFixed(2)}
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Current Closing Price (Day t)
+              <InfoTooltip text="Latest closing price on observation day t, showing total percentage growth from T-180." />
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="font-extrabold font-mono text-blue-700 text-base">
+                ₹{currentPrice.toFixed(2)}
+              </span>
+              <span className={cn(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
+                netGainPct >= 75 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+              )}>
+                {netGainPct >= 0 ? "+" : ""}{netGainPct}% Rise
+              </span>
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              180-Day Peak High
+              <InfoTooltip text="The highest intraday price reached over the entire 180-day baseline period." />
+            </span>
+            <span className="font-extrabold font-mono text-rose-700 text-base mt-1 block">
+              ₹{max180High.toFixed(2)}
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Price Rise Severity
+              <InfoTooltip text="SEBI PVASF Section 2.1 scoring band: Under 15% (0), 15–75% (1), 76–150% (3), >150% (5)." />
+            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={cn("font-extrabold font-mono text-base", isHighRiskGain ? "text-rose-700" : "text-slate-900")}>
+                +{netGainPct}%
+              </span>
+              <span className={cn(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded border font-sans",
+                priceRiseScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-blue-50 text-blue-700 border-blue-200"
+              )}>
+                Score {priceRiseScore}/5
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pillar 2: Price Return & Momentum Z-Score (PVASF 2.2) */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
+            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
+              Rolling 15D Price Return & Momentum Z-Score
+            </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
+              PVASF §2.2
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            Statistical Outlier Speed Limits
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              180-Day Normal Return
+              <InfoTooltip text="Historical average: The typical daily close-to-close percentage price move over the past 180 trading days." />
+            </span>
+            <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
+              {mean180Return.toFixed(2)}% / day
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              15-Day Average Return
+              <InfoTooltip text="Surveillance window: Average daily return during the last 15 trading days. Highlights abnormal price acceleration." />
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="font-extrabold font-mono text-indigo-700 text-base">
+                {latest15MeanReturn >= 0 ? "+" : ""}{latest15MeanReturn.toFixed(2)}%/d
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-sans">
+                {returnSurgeMultiple}x Normal
+              </span>
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Alert Limits (Percentiles)
+              <InfoTooltip text="Statistical speed limits: 95th percentile (Alert) and 99th percentile (Critical Outlier) indicating abnormal momentum (SEBI Z-Score §2.2)." />
+            </span>
+            <div className="flex items-center gap-2 mt-1 font-mono text-xs font-bold">
+              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                ≥{zAlertReturn}% (95th)
+              </span>
+              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                ≥{zCriticalReturn}% (99th)
+              </span>
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Abnormal Move Days
+              <InfoTooltip text="Count of days in the 15-day surveillance window where the stock moved faster than its 95th percentile historical speed limit." />
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="font-extrabold font-mono text-slate-900 text-base">
+                {abnormalMoveDays} / 15 days
+              </span>
+              {criticalMoveDays > 0 && (
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-sans">
+                  {criticalMoveDays} Critical
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Pillar 3: Volume & Liquidity Burst (PVASF 2.3) */}
+      <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
+          <div className="flex items-center gap-2">
+            <div className="w-2.5 h-2.5 rounded-full bg-cyan-600" />
+            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
+              Rolling 15D Volume Surge & Liquidity Anomaly
+            </span>
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
+              PVASF §2.3
+            </span>
+          </div>
+          <span className="text-xs font-semibold text-slate-500">
+            Traded Liquidity Dynamics
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              180-Day Normal Volume
+              <InfoTooltip text="Historical baseline: The typical daily traded volume across the past 180 trading days (~6 months)." />
+            </span>
+            <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
+              {formatVolumeNum(meanVol180)} / day
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              15-Day Average Volume
+              <InfoTooltip text="Surveillance window: Average daily traded volume over the last 15 days compared to historical normal." />
+            </span>
+            <div className="flex items-baseline gap-2 mt-1">
+              <span className="font-extrabold font-mono text-blue-700 text-base">
+                {formatVolumeNum(latest15Vol)} / day
+              </span>
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-sans">
+                {volSurgeMultiple}x Normal
+              </span>
+            </div>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Surge Alert Limit (95th %ile)
+              <InfoTooltip text="Volume speed limit: 95% of past 180 days traded below this volume. Trading above this level triggers the SEBI Volume Z-Score alert." />
+            </span>
+            <span className="font-extrabold font-mono text-amber-700 text-base mt-1 block">
+              ≥ {formatVolumeNum(zVolAlert)} / day
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Volume Spike Days
+              <InfoTooltip text="Number of days in the 15-day surveillance window where daily volume spiked ≥1.5x above its 15-day moving average." />
+            </span>
+            <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
+              {volSpikeDays} / 15 days <span className="text-xs text-slate-500 font-normal">(≥1.5x surge)</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

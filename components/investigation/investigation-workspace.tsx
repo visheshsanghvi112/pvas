@@ -28,10 +28,8 @@ import {
   AlertDriversChart,
   LtpChart,
   ParameterRadarChart,
-  PriceChart,
-  RollingPriceReturnChart,
+  SurveillanceStatisticalDeck,
   AnomalyEventMatrixChart,
-  RollingVolumeChart,
   VolumeChart,
   UnifiedPriceVolumeChart,
   CombinedMarketChart,
@@ -469,58 +467,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               </div>
             </Card>
 
+            {/* 3-Pillar Core Surveillance Statistical Deck (Preserves all 180D Price, Return Z-Score, and Volume Z-Score metrics) */}
+            <SurveillanceStatisticalDeck history={history} metrics={metrics} />
+
             <div className="space-y-4">
-              {/* Price Movement in the Scrip in Past 180 Days */}
-              <Card>
-                <SectionHeader
-                  icon={<TrendingUp className="w-4 h-4 text-blue-600" />}
-                  title="Price movement in the scrip in past 180 days"
-                  subtitle="Closing price movement over 180 days with 20D & 50D moving averages · Yellow area = 15-day observation window"
-                  onExpand={() => setExpandedChart({
-                    title: "Price movement in the scrip in past 180 days",
-                    subtitle: "Closing price movement over 180 days with 20D & 50D moving averages · Yellow area = 15-day observation window",
-                    chart: <PriceChart history={history} isExpanded={true} />
-                  })}
-                />
-                <div className="p-4 md:p-5">
-                  <PriceChart history={history} />
-                </div>
-              </Card>
-
-              {/* Rolling 15 Days' Average Close-to-Close (C-C) Price Movement in 15D & 180D */}
-              <Card>
-                <SectionHeader
-                  icon={<TrendingUp className="w-4 h-4 text-indigo-600" />}
-                  title="Rolling 15 days' average close-to-close (C-C) price movement in 15 days & 180 days"
-                  subtitle="Daily close-to-close price return % bars with 15-day rolling average trend line"
-                  onExpand={() => setExpandedChart({
-                    title: "Rolling 15 days' average close-to-close (C-C) price movement in 15 days & 180 days",
-                    subtitle: "Daily close-to-close price return % bars with 15-day rolling average trend line",
-                    chart: <RollingPriceReturnChart history={history} isExpanded={true} />
-                  })}
-                />
-                <div className="p-4 md:p-5">
-                  <RollingPriceReturnChart history={history} />
-                </div>
-              </Card>
-
-              {/* Rolling 15 Days' Average Volume in 15 Days & 180 Days */}
-              <Card>
-                <SectionHeader
-                  icon={<BarChart2 className="w-4 h-4 text-blue-600" />}
-                  title="Rolling 15 days' average volume in 15 days & 180 days"
-                  subtitle="Daily traded volume bars · 15-day moving average baseline · 180-day average volume reference"
-                  onExpand={() => setExpandedChart({
-                    title: "Rolling 15 days' average volume in 15 days & 180 days",
-                    subtitle: "Daily traded volume bars · 15-day moving average baseline · 180-day average volume reference",
-                    chart: <RollingVolumeChart history={history} isExpanded={true} />
-                  })}
-                />
-                <div className="p-4 md:p-5">
-                  <RollingVolumeChart history={history} />
-                </div>
-              </Card>
-
               {/* Days in past 15 the scrip hit 180-day high & 90% of price band */}
               <Card>
                 <SectionHeader
