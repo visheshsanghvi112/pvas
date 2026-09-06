@@ -1,6 +1,6 @@
 # PVASF Complete Table Schema Reference
 
-**Purpose:** Full column-level schema reference for the 19 enterprise database tables underpinning the PVASF system across the 3-Tier SEBI Data Warehouse architecture (Dimension Layer, Fact Execution Layer, and Aggregate Layer).
+**Purpose:** Full column-level schema reference for the 19 enterprise database tables underpinning the PVASF system across the 3-Tier Enterprise Data Warehouse architecture (Dimension Layer, Fact Execution Layer, and Aggregate Layer).
 
 > **Architecture Note:** `FACT_TRADES` is retained in the system for microsecond execution logs, order numbers (`Ftrd_Buy_Ord_Num`), same-broker wash trade flags, and legal evidence in court proceedings. However, `FACT_TRADES` is **omitted from daily baseline OHLC/Close calculations** because official 30-minute VWAP Closing Prices and daily volume aggregates are provided directly by `AGG_SEC_DAY`.
 

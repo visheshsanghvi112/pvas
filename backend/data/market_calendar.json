@@ -1,0 +1,55 @@
+{
+  "2026": {
+    "holidays": [
+      {
+        "date": "2026-01-26",
+        "description": "Republic Day",
+        "type": "NATIONAL"
+      },
+      {
+        "date": "2026-03-04",
+        "description": "Holi",
+        "type": "FESTIVAL"
+      },
+      {
+        "date": "2026-04-03",
+        "description": "Good Friday",
+        "type": "FESTIVAL"
+      },
+      {
+        "date": "2026-05-01",
+        "description": "Maharashtra Day",
+        "type": "STATE"
+      },
+      {
+        "date": "2026-08-15",
+        "description": "Independence Day",
+        "type": "NATIONAL"
+      },
+      {
+        "date": "2026-10-02",
+        "description": "Mahatma Gandhi Jayanti",
+        "type": "NATIONAL"
+      },
+      {
+        "date": "2026-11-08",
+        "description": "Diwali - Balipratipada",
+        "type": "FESTIVAL"
+      },
+      {
+        "date": "2026-12-25",
+        "description": "Christmas",
+        "type": "FESTIVAL"
+      }
+    ],
+    "special_sessions": [
+      {
+        "date": "2026-11-07",
+        "description": "Diwali - Muhurat Trading",
+        "type": "SPECIAL",
+        "start_time": "18:15",
+        "end_time": "19:15"
+      }
+    ]
+  }
+}

@@ -36,7 +36,27 @@ import {
 } from "recharts";
 import type { PricePoint, ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Activity, TrendingUp, BarChart2, Zap, Info, Check, Bell, ChevronDown } from "lucide-react";
+import {
+  Activity,
+  TrendingUp,
+  BarChart2,
+  Zap,
+  Info,
+  Check,
+  Bell,
+  ChevronDown,
+  ChevronUp,
+  Sigma,
+  Calculator,
+  Sliders,
+  Sparkles,
+  Percent,
+  Binary,
+  Layers,
+  Table2,
+  Compass,
+  X
+} from "lucide-react";
 
 /** Interactive click-to-toggle popover for framework explanations */
 export function InfoTooltip({ text }: { text: string }) {
@@ -83,7 +103,7 @@ export function InfoTooltip({ text }: { text: string }) {
       {isOpen && (
         <span
           onClick={(e) => e.stopPropagation()}
-          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-64 rounded-xl bg-slate-900/95 backdrop-blur-md p-3 text-[11px] font-normal leading-relaxed text-white shadow-2xl border border-slate-700 pointer-events-auto select-text text-left"
+          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-72 max-w-[calc(100vw-32px)] whitespace-normal break-words rounded-xl bg-slate-900/95 backdrop-blur-md p-3 text-[11px] font-normal leading-relaxed text-white shadow-2xl border border-slate-700 pointer-events-auto select-text text-left"
         >
           {text}
           <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95" />
@@ -213,17 +233,6 @@ function computeMA(values: number[], period: number): (number | null)[] {
   });
 }
 
-/** Compute rolling standard deviation for Bollinger bands */
-function computeStdDev(values: number[], period: number): (number | null)[] {
-  return values.map((_, i) => {
-    if (i < period - 1) return null;
-    const slice = values.slice(i - period + 1, i + 1);
-    const mean = slice.reduce((a, b) => a + b, 0) / period;
-    const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
-    return Math.sqrt(variance);
-  });
-}
-
 /**
  * Unified Price & Volume Chart (Module 2).
  * Combines 180-Day Price Movement, Moving Averages, 15D Observation Window,
@@ -250,14 +259,11 @@ export function UnifiedPriceVolumeChart({
   const computedMA20 = computeMA(closes, 20);
   const computedMA50 = computeMA(closes, 50);
   const computedMA15Vol = computeMA(volumes, 15);
-  const stdDev20 = computeStdDev(closes, 20);
 
   const baselineClose = history[0]?.close || 1;
 
   const enriched = history.map((h, i) => {
     const ma20Val = h.ma20 ?? computedMA20[i];
-    const stdVal = stdDev20[i];
-    const upperBand = ma20Val != null && stdVal != null ? Math.round((ma20Val + 2 * stdVal) * 100) / 100 : null;
     const pctFromBaseline = Math.round(((h.close - baselineClose) / baselineClose) * 1000) / 10;
     const ma15Vol = computedMA15Vol[i] || h.volume;
     const surgeRatio = ma15Vol > 0 ? Math.round((h.volume / ma15Vol) * 10) / 10 : 1;
@@ -276,7 +282,6 @@ export function UnifiedPriceVolumeChart({
       ...h,
       ma20: ma20Val,
       ma50: h.ma50 ?? computedMA50[i],
-      upperBand,
       pctFromBaseline,
       rolling15d: ma15Vol,
       surgeRatio,
@@ -507,21 +512,17 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
   const closes = history.map((h) => h.close);
   const computedMA20 = computeMA(closes, 20);
   const computedMA50 = computeMA(closes, 50);
-  const stdDev20 = computeStdDev(closes, 20);
 
   const baselineClose = history[0]?.close || 1;
 
   const enriched = history.map((h, i) => {
     const ma20Val = h.ma20 ?? computedMA20[i];
-    const stdVal = stdDev20[i];
-    const upperBand = ma20Val != null && stdVal != null ? Math.round((ma20Val + 2 * stdVal) * 100) / 100 : null;
     const pctFromBaseline = Math.round(((h.close - baselineClose) / baselineClose) * 1000) / 10;
 
     return {
       ...h,
       ma20: ma20Val,
       ma50: h.ma50 ?? computedMA50[i],
-      upperBand,
       pctFromBaseline,
     };
   });
@@ -586,7 +587,7 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Price Rise Severity
-            <InfoTooltip text="SEBI PVASF Section 2.1 scoring band: Under 15% (0), 15–75% (1), 76–150% (3), >150% (5)." />
+            <InfoTooltip text="PVASF Section 2.1 scoring band: Under 15% (0), 15–75% (1), 76–150% (3), >150% (5)." />
           </span>
           <span className={cn("font-bold font-mono text-sm", isHighRiskGain ? "text-rose-700" : "text-slate-800")}>
             +{netGainPct}% ({isHighRiskGain ? "Score 3/5" : "Score 1/5"})
@@ -905,7 +906,7 @@ export function RollingVolumeChart({ history = [], isExpanded = false }: { histo
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Surge Alert Threshold (95th %ile)
-            <InfoTooltip text="Volume speed limit: 95% of past 180 days traded below this volume. Trading above this level triggers the SEBI Volume Z-Score alert." />
+            <InfoTooltip text="Volume speed limit: 95% of past 180 days traded below this volume. Trading above this level triggers the Volume Z-Score alert." />
           </span>
           <span className="font-bold font-mono text-amber-700 text-sm flex items-center gap-1">
             <span className="w-2 h-0.5 bg-amber-500 rounded inline-block" />
@@ -1194,7 +1195,7 @@ export function RollingPriceReturnChart({
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Alert Thresholds (Percentiles)
-            <InfoTooltip text="Statistical speed limits: 95th percentile (Alert) and 99th percentile (Critical Outlier) indicating abnormal momentum (SEBI Z-Score §2.2)." />
+            <InfoTooltip text="Statistical speed limits: 95th percentile (Alert) and 99th percentile (Critical Outlier) indicating abnormal momentum." />
           </span>
           <span className="font-bold font-mono text-xs flex items-center gap-2 mt-0.5">
             <span className="text-amber-700 flex items-center gap-0.5">
@@ -1414,23 +1415,105 @@ export function AnomalyEventMatrixChart({
 /**
  * Net LTP Contribution Chart (Module 3 — Section 4.1).
  * Per PVASF spec: calculates net LTP contribution (Pos - Neg) divided by 15-day stock price change.
+ * Differentiates positive effect (emerald) and negative effect (rose).
  */
-export function LtpChart({ ltpContributors = [] }: { ltpContributors?: Array<{ participant: string; contribution: number }> }) {
+export function LtpChart({
+  ltpContributors = [],
+}: {
+  ltpContributors?: Array<{
+    participant: string;
+    name?: string;
+    contribution: number;
+    net_val?: number;
+    pos_val?: number;
+    neg_val?: number;
+    effect?: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+  }>;
+}) {
   if (!ltpContributors || ltpContributors.length === 0)
     return <div className="text-slate-500 text-xs p-4">No LTP contributors in this window.</div>;
 
   return (
-    <div className="w-full min-w-0 h-[220px] overflow-hidden">
+    <div className="w-full min-w-0 h-[240px] overflow-hidden">
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={ltpContributors} layout="vertical" margin={{ top: 5, right: 25, left: 0, bottom: 5 }}>
-          <XAxis type="number" stroke="#94a3b8" tick={{ fontSize: 10 }} unit="%" domain={["auto", "auto"]} />
-          <YAxis dataKey="participant" type="category" stroke="#475569" tick={{ fontSize: 10 }} width={80} />
+        <BarChart data={ltpContributors} layout="vertical" margin={{ top: 8, right: 30, left: 10, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+          <XAxis
+            type="number"
+            stroke="#94a3b8"
+            tick={{ fontSize: 10 }}
+            unit="%"
+            domain={["auto", "auto"]}
+          />
+          <YAxis
+            dataKey="participant"
+            type="category"
+            stroke="#475569"
+            tick={{ fontSize: 10, fontFamily: "monospace" }}
+            width={95}
+          />
+          <ReferenceLine x={0} stroke="#94a3b8" strokeWidth={1.5} />
           <Tooltip
-            content={<CustomTooltip />}
+            content={({ active, payload }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const data = payload[0].payload;
+              const isPos = (data.net_val ?? data.contribution ?? 0) >= 0;
+              return (
+                <div className="bg-white/95 backdrop-blur-sm border border-slate-200 shadow-xl rounded-lg p-3 text-xs min-w-[200px]">
+                  <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-2">
+                    <span className="font-mono font-bold text-slate-900">{data.participant}</span>
+                    <span
+                      className={cn(
+                        "font-semibold px-1.5 py-0.5 rounded text-[10px]",
+                        isPos ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-rose-50 text-rose-700 border border-rose-200"
+                      )}
+                    >
+                      {isPos ? "↑ Price Pusher" : "↓ Price Suppressor"}
+                    </span>
+                  </div>
+                  {data.name && <div className="text-slate-600 font-medium mb-1.5">{data.name}</div>}
+                  <div className="space-y-1 font-mono">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Contribution:</span>
+                      <span className={cn("font-bold", isPos ? "text-emerald-700" : "text-rose-700")}>
+                        {data.contribution >= 0 ? `+${data.contribution.toFixed(2)}%` : `${data.contribution.toFixed(2)}%`}
+                      </span>
+                    </div>
+                    {data.pos_val !== undefined && (
+                      <div className="flex justify-between text-slate-600">
+                        <span className="text-slate-500">Pos Push (↑):</span>
+                        <span className="text-emerald-600">+₹{data.pos_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    {data.neg_val !== undefined && (
+                      <div className="flex justify-between text-slate-600">
+                        <span className="text-slate-500">Neg Push (↓):</span>
+                        <span className="text-rose-600">-₹{data.neg_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    )}
+                    {data.net_val !== undefined && (
+                      <div className="flex justify-between border-t border-slate-100 pt-1">
+                        <span className="text-slate-700 font-semibold">Net Push:</span>
+                        <span className={cn("font-bold", isPos ? "text-emerald-700" : "text-rose-700")}>
+                          {data.net_val >= 0
+                            ? `+₹${data.net_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `-₹${Math.abs(data.net_val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            }}
             isAnimationActive={false}
             wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
           />
-          <Bar dataKey="contribution" name="Net LTP Contribution %" fill="#2563eb" radius={[0, 5, 0, 0]} />
+          <Bar dataKey="contribution" name="Net LTP Contribution %" radius={[0, 4, 4, 0]}>
+            {ltpContributors.map((entry, index) => {
+              const isPositive = (entry.net_val ?? entry.contribution ?? 0) >= 0;
+              return <Cell key={`cell-${index}`} fill={isPositive ? "#10b981" : "#f43f5e"} />;
+            })}
+          </Bar>
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -1752,49 +1835,64 @@ export function ParameterRadarChart({
           </Box>
         </div>
 
-        {/* Right Column: 2 Cards + PVASF Risk Summary Tile */}
+        {/* Right Column: 2 Cards + Risk Summary Tile */}
         <div className="lg:col-span-3 space-y-3">
           {rightCards.map(renderParameterCard)}
 
-          {/* PVASF Risk Summary Indicator Card */}
-          <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">Risk Profile</span>
-              <span className="text-[10px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
-                PVASF Engine
-              </span>
-            </div>
-            <div className="mt-2 mb-1 flex items-baseline justify-between">
-              <span className="text-2xl font-black font-mono text-amber-400">
-                {metrics.final_score ?? 84}<span className="text-xs font-bold text-slate-400">/100</span>
-              </span>
-              <span className="text-xs font-extrabold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/40">
-                High Anomaly
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-400 leading-tight mt-1">
-              Elevated concentration across Price Z ({sPriceZ}/5) & Volume Z ({sVolZ}/5)
-            </p>
-          </div>
+          {/* Dynamic Risk Summary Indicator Card */}
+          {(() => {
+            const compositeScore = metrics.final_score ?? Math.round((sPrice * 0.25 + sPriceZ * 0.20 + sVolZ * 0.25 + sBand * 0.15 + sHigh * 0.15) * 20);
+            const isHigh = compositeScore >= 60;
+            const isMed = compositeScore >= 30 && compositeScore < 60;
+            const riskText = isHigh ? "High Risk" : isMed ? "Medium Risk" : "Normal";
+            const topDrivers = [
+              sPrice >= 3 ? `Price (+${sPrice}/5)` : null,
+              sPriceZ >= 3 ? `Momentum (${sPriceZ}/5)` : null,
+              sVolZ >= 3 ? `Volume (${sVolZ}/5)` : null,
+              sBand >= 3 ? `Band Hits (${sBand}/5)` : null,
+              sHigh >= 3 ? `New Highs (${sHigh}/5)` : null,
+            ].filter(Boolean);
+
+            return (
+              <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300">Risk Profile</span>
+                  <span className="text-[10px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
+                    Scoring Engine
+                  </span>
+                </div>
+                <div className="mt-2 mb-1 flex items-baseline justify-between">
+                  <span className="text-2xl font-black font-mono text-amber-400">
+                    {compositeScore}<span className="text-xs font-bold text-slate-400">/100</span>
+                  </span>
+                  <span className={cn(
+                    "text-xs font-extrabold px-2 py-0.5 rounded border",
+                    isHigh
+                      ? "text-rose-300 bg-rose-950/80 border-rose-500/40"
+                      : isMed
+                      ? "text-amber-300 bg-amber-950/80 border-amber-500/40"
+                      : "text-emerald-300 bg-emerald-950/80 border-emerald-500/40"
+                  )}>
+                    {riskText}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-tight mt-1">
+                  {topDrivers.length > 0
+                    ? `Primary drivers: ${topDrivers.join(", ")}`
+                    : "All 5 surveillance parameters within normal baseline limits."}
+                </p>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
-      {/* MUI Checkbox Fill Area Toggle */}
-      <FormControlLabel
-        checked={fillArea}
-        control={
-          <Checkbox onChange={(event) => setFillArea(event.target.checked)} />
-        }
-        label="fill area"
-        labelPlacement="end"
-        sx={{ '& .MuiFormControlLabel-label': { fontSize: '0.85rem', fontWeight: 700, color: '#334155' } }}
-      />
     </Stack>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Combined Professional Market Surveillance Master Chart (Institutional Grade)
+// Combined Market Surveillance Chart (Institutional Dual-Axis Master Chart)
 // ---------------------------------------------------------------------------
 
 const formatTooltipDate = (d: string) => {
@@ -1816,55 +1914,206 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
     const isAnomalyDay = data.is180High || data.isBandHit;
 
     return (
-      <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-4 py-3 shadow-2xl min-w-[170px] text-left font-sans pointer-events-none select-none">
-        {/* Date: 19 Jan '26 */}
+      <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-3.5 py-2.5 shadow-2xl min-w-[210px] text-left font-sans pointer-events-none select-none">
+        {/* Date + Anomaly Flag */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-1.5">
-          <span className="text-slate-600 font-semibold text-[13px] leading-tight">
+          <span className="text-slate-700 font-bold text-xs font-mono">
             {formatTooltipDate(label || data.date)}
           </span>
           {isAnomalyDay && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
-              {data.is180High ? "180D High" : "Band Hit"}
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+              {data.is180High ? "180D Peak" : "Band Hit"}
             </span>
           )}
         </div>
 
-        {/* Big Bold Price: ₹ 1413.60 */}
-        <div className="text-slate-950 font-extrabold text-[19px] leading-tight tracking-tight mb-2">
-          ₹ {data.close != null ? data.close.toFixed(2) : "--"}
+        {/* Close Price + Daily Return */}
+        <div className="flex items-baseline justify-between mb-1.5">
+          <span className="text-slate-950 font-black text-base font-mono">
+            ₹{data.close != null ? data.close.toFixed(2) : "--"}
+          </span>
+          {data.dailyReturn != null && (
+            <span className={cn(
+              "text-[11px] font-bold font-mono px-1.5 py-0.2 rounded",
+              data.dailyReturn >= 0 ? "bg-emerald-50 text-emerald-800 border border-emerald-200/60" : "bg-rose-50 text-rose-800 border border-rose-200/60"
+            )}>
+              {data.dailyReturn >= 0 ? "+" : ""}{data.dailyReturn.toFixed(2)}%
+            </span>
+          )}
         </div>
 
-        {/* Metric rows: DMA20, DMA50, Vol & Delivery D% */}
-        <div className="space-y-1.5 text-[13px] text-slate-800 font-medium">
+        {/* Metrics Grid */}
+        <div className="space-y-1.5 text-[11px] font-mono border-t border-slate-100 pt-1.5 text-slate-700">
+          {data.open != null && (
+            <div className="flex items-center justify-between text-slate-600 text-[10px] bg-slate-50/90 px-2 py-1 rounded-md border border-slate-100">
+              <span><strong className="text-slate-700 font-semibold">O:</strong> ₹{data.open.toFixed(1)}</span>
+              <span className="text-slate-300">•</span>
+              <span><strong className="text-slate-700 font-semibold">H:</strong> ₹{data.high?.toFixed(1)}</span>
+              <span className="text-slate-300">•</span>
+              <span><strong className="text-slate-700 font-semibold">L:</strong> ₹{data.low?.toFixed(1)}</span>
+            </div>
+          )}
           {data.dma20 != null && (
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-sky-900 font-semibold">DMA20:</span>
-              <span className="font-bold text-slate-900">{data.dma20.toFixed(2)}</span>
+            <div className="flex items-center justify-between text-sky-900 font-semibold">
+              <span className="font-sans flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7]" />
+                20 DMA:
+              </span>
+              <span>₹{data.dma20.toFixed(2)}</span>
             </div>
           )}
           {data.dma50 != null && (
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-amber-900 font-semibold">DMA50:</span>
-              <span className="font-bold text-slate-900">{data.dma50.toFixed(2)}</span>
+            <div className="flex items-center justify-between text-amber-900 font-semibold">
+              <span className="font-sans flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" />
+                50 DMA:
+              </span>
+              <span>₹{data.dma50.toFixed(2)}</span>
+            </div>
+          )}
+          {data.bbUpper != null && data.bbLower != null && (
+            <div className="flex items-center justify-between text-indigo-900 font-medium text-[10px]">
+              <span className="font-sans">BB [±2σ]:</span>
+              <span>₹{data.bbLower.toFixed(0)} - ₹{data.bbUpper.toFixed(0)}</span>
             </div>
           )}
           {data.volume != null && (
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-blue-900 font-semibold">Vol:</span>
-              <span className="font-bold text-slate-900">
-                {data.volume >= 1000 ? `${Math.round(data.volume / 1000)}k` : data.volume}
-                <span className="ml-1.5 font-normal text-slate-500 text-[11px]">
+            <div className="flex items-center justify-between text-blue-900 font-semibold pt-1 border-t border-slate-100">
+              <span className="font-sans text-[10px] text-slate-500 font-normal">Vol:</span>
+              <span className="flex items-center gap-1">
+                <span>{data.volume >= 1000000 ? `${(data.volume / 1000000).toFixed(2)}M` : data.volume >= 1000 ? `${Math.round(data.volume / 1000)}k` : data.volume}</span>
+                <span className="text-slate-500 font-normal text-[10px] bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80">
                   D: {data.deliveryPct}%
                 </span>
               </span>
             </div>
           )}
+          {/* Helpful Subtitle Guide */}
+          <div className="text-[9px] text-slate-400 font-sans pt-1 border-t border-slate-100 text-center flex items-center justify-center gap-1">
+            <span>DMA = Moving Avg</span>
+            <span>•</span>
+            <span>D: = Delivery %</span>
+          </div>
         </div>
       </div>
     );
   }
   return null;
 };
+
+/** Interactive Chart & Metrics Guide Popover */
+export function ChartGuideButton() {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
+  }, [isOpen]);
+
+  return (
+    <div ref={containerRef} className="relative inline-flex items-center">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen((prev) => !prev);
+        }}
+        className={cn(
+          "flex items-center gap-1 px-2 py-1 text-xs font-bold rounded-lg border transition-all cursor-pointer select-none",
+          isOpen
+            ? "bg-blue-50 border-blue-300 text-blue-800 shadow-xs ring-2 ring-blue-500/20"
+            : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:border-slate-300 shadow-2xs"
+        )}
+        title="Click for explanation of chart terms & abbreviations"
+        aria-label="Toggle Chart Terminology Guide"
+      >
+        <Info className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+        <span className="hidden sm:inline text-[11px]">Chart Guide</span>
+      </button>
+
+      {isOpen && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute right-0 top-full mt-2 z-50 w-80 max-w-[calc(100vw-32px)] rounded-2xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md p-3.5 text-xs font-normal text-slate-100 shadow-[0_16px_36px_rgba(0,0,0,0.35),0_4px_12px_rgba(0,0,0,0.25)] text-left select-text animate-in fade-in-0 zoom-in-95"
+        >
+          <div className="flex items-center justify-between gap-2 border-b border-slate-700/80 pb-2 mb-2.5">
+            <div className="flex items-center gap-1.5 font-bold text-blue-400 text-xs uppercase tracking-wider">
+              <Info className="w-3.5 h-3.5" />
+              <span>Chart &amp; Metric Guide</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="space-y-2 text-[11px] leading-relaxed">
+            <div className="flex items-start gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#0284c7] mt-1 shrink-0" />
+              <div>
+                <strong className="text-sky-300">20 DMA:</strong> 20-Day Moving Average — Short-term 1-month average price baseline.
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-[#d97706] mt-1 shrink-0" />
+              <div>
+                <strong className="text-amber-300">50 DMA:</strong> 50-Day Moving Average — Medium-term 2.5-month trend baseline.
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-bold shrink-0 mt-0.5">180D Peak</span>
+              <div>
+                Triggered when today&apos;s high is a brand new 6-month historical breakout (feeds Metric 5).
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold shrink-0 mt-0.5">Band Hit</span>
+              <div>
+                Triggered when price rises &ge;90% of the daily upper circuit limit (feeds Metric 4).
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="font-bold text-slate-300 shrink-0">O / H / L:</span>
+              <div>
+                Open, High, and Low intraday prices for that session.
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="font-bold text-blue-300 shrink-0">Vol (D: %):</span>
+              <div>
+                <strong>Total Volume</strong> traded and <strong>Deliverable Volume %</strong> (shares transferred to demat accounts vs intraday).
+              </div>
+            </div>
+            <div className="flex items-start gap-1.5 pt-1 border-t border-slate-800">
+              <span className="w-2 h-2 rounded-full bg-[#f59e0b] mt-1 shrink-0" />
+              <div>
+                <strong className="text-amber-300">15D Surveillance Window:</strong> Amber shaded region highlighting the 15-day evaluation horizon compared against the 180-day baseline.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function CombinedMarketChart({
   history,
@@ -1878,17 +2127,17 @@ export function CombinedMarketChart({
   // Surveillance Timeframes: "15D" | "1M" | "3M" | "6M" | "Max" (default "6M" / 180D Baseline)
   const [timeframe, setTimeframe] = useState<"15D" | "1M" | "3M" | "6M" | "Max">("6M");
 
-  // Checkbox Toggles (Framework Scope: 20 DMA & 50 DMA as per PVASF §5.1.1)
+  // Visual Chart Controls
   const [showPrice, setShowPrice] = useState(true);
   const [show20DMA, setShow20DMA] = useState(true);
   const [show50DMA, setShow50DMA] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [show15DWindow, setShow15DWindow] = useState(true);
 
-  // Active hover point state for top real-time stats tracker
+  // Active hover point state
   const [hoveredPoint, setHoveredPoint] = useState<any>(null);
 
-  // Precompute moving averages, delivery %, and volume within 180D baseline
+  // Precompute moving averages and high breakouts
   const processedData = useMemo(() => {
     if (!history || history.length === 0) return [];
     const sorted = [...history].sort((a, b) => (a.date > b.date ? 1 : -1));
@@ -1899,36 +2148,43 @@ export function CombinedMarketChart({
       const close = Number(pt.close) || 0;
       const volume = Number(pt.volume) || 0;
       const high = Number(pt.high) || close;
+      const low = Number(pt.low) || close;
+      const open = Number(pt.open) || close;
 
-      // 20 DMA (§5.1.1)
+      // 20 DMA
       let dma20 = pt.ma20;
       if (dma20 == null) {
         const s20 = arr.slice(Math.max(0, idx - 19), idx + 1);
         dma20 = s20.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s20.length;
       }
 
-      // 50 DMA (§5.1.1)
+      // 50 DMA
       let dma50 = pt.ma50;
       if (dma50 == null) {
         const s50 = arr.slice(Math.max(0, idx - 49), idx + 1);
         dma50 = s50.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s50.length;
       }
 
+      // Daily Return
+      const prevClose = idx > 0 ? (Number(arr[idx - 1].close) || close) : close;
+      const dailyReturn = idx > 0 ? ((close - prevClose) / prevClose) * 100 : 0;
+
       // 180-Day New High Flag
       const is180High = idx > 0 && high > rollingHigh;
       if (high > rollingHigh) rollingHigh = high;
 
-      // Synthetic Deliverable Volume % for Screener-grade inspection
+      // Synthetic Deliverable Volume %
       const deliveryPct = Math.min(85, Math.max(28, 45 + ((idx * 13 + Math.round(close)) % 36)));
 
       return {
         date: String(pt.date),
         close,
         high,
-        low: Number(pt.low) || close,
-        open: Number(pt.open) || close,
+        low,
+        open,
         volume,
         deliveryPct,
+        dailyReturn,
         is180High: idx >= arr.length - 15 && is180High,
         dma20: Number(Number(dma20).toFixed(2)),
         dma50: Number(Number(dma50).toFixed(2)),
@@ -1960,20 +2216,20 @@ export function CombinedMarketChart({
   const priceMin = useMemo(() => {
     const vals = displayData.map(d => d.close).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
     if (!vals.length) return 0;
-    return Math.floor(Math.min(...vals) * 0.94);
+    return Math.floor(Math.min(...vals) * 0.96);
   }, [displayData]);
 
   const priceMax = useMemo(() => {
     const vals = displayData.map(d => d.close).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
     if (!vals.length) return 100;
-    return Math.ceil(Math.max(...vals) * 1.06);
+    return Math.ceil(Math.max(...vals) * 1.04);
   }, [displayData]);
 
-  // Dynamic volume bound (anchored to bottom 32% of canvas)
+  // Dynamic volume bound (anchored to bottom 26% of canvas)
   const volMax = useMemo(() => {
     const vols = displayData.map(d => d.volume).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
     if (!vols.length) return 100000;
-    return Math.ceil(Math.max(...vols) * 3.4);
+    return Math.ceil(Math.max(...vols) * 4.0);
   }, [displayData]);
 
   // 15-Day Surveillance Window Coordinates
@@ -1999,132 +2255,76 @@ export function CombinedMarketChart({
 
   if (!history || history.length === 0) {
     return (
-      <div className="w-full h-[400px] flex items-center justify-center text-slate-400 text-xs font-semibold">
+      <div className="w-full h-[380px] flex items-center justify-center text-slate-400 text-xs font-semibold">
         Loading surveillance chart data...
       </div>
     );
   }
 
   return (
-    <div className="w-full flex flex-col gap-3.5 min-w-0 font-sans">
+    <div className="w-full flex flex-col gap-3 min-w-0 font-sans">
       {/* ------------------------------------------------------------- */}
-      {/* Top Header Bar: Surveillance Timeframes (Left) + Tools (Right) */}
+      {/* Top Header Bar: Timeframes (Left) + Clean Metric Snapshot (Right) */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
-        {/* Left: Timeframe Segment Control */}
-        <div className="inline-flex rounded-lg bg-slate-100 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+        {/* Timeframe Selector */}
+        <div className="inline-flex rounded-lg bg-slate-100/90 p-0.5 border border-slate-200/60 shadow-2xs">
           {(["15D", "1M", "3M", "6M", "Max"] as const).map((tf) => (
             <button
               key={tf}
               type="button"
               onClick={() => setTimeframe(tf)}
               className={cn(
-                "px-3.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer",
+                "px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer select-none",
                 timeframe === tf
-                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/80"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
+                  ? "bg-white text-indigo-900 shadow-xs border border-slate-200"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
               )}
             >
-              {tf === "15D" ? "15D (Window)" : tf === "6M" ? "6M (180D Baseline)" : tf}
+              {tf === "15D" ? "15D (Surveillance)" : tf === "6M" ? "6M (180D)" : tf}
             </button>
           ))}
         </div>
 
-        {/* Right: 15D Surveillance Window Toggle & Anomaly Alert */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {hasAnomaly && timeframe !== "15D" && (
-            <button
-              type="button"
-              onClick={() => setTimeframe("15D")}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer shadow-2xs"
-              title="Click to zoom into the 15-day manipulation window"
-            >
-              <Zap className="w-3.5 h-3.5 text-rose-600" />
-              <span>Pump Anomaly Detected</span>
-            </button>
+        {/* Live Active Snapshot Pill & Interactive Chart Guide */}
+        <div className="flex items-center gap-2.5">
+          {activeStats && (
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-slate-500 font-mono font-medium">{formatTooltipDate(activeStats.date)}</span>
+              <div className="flex items-baseline gap-1.5 font-mono">
+                <span className="text-slate-400 text-[11px] font-sans">Close:</span>
+                <span className="font-bold text-slate-950 text-sm">₹{activeStats.close?.toFixed(2)}</span>
+                <span className={cn(
+                  "text-[11px] font-bold px-1.5 py-0.2 rounded",
+                  priceChangePct >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-200/60" : "text-rose-700 bg-rose-50 border border-rose-200/60"
+                )}>
+                  {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(2)}%
+                </span>
+              </div>
+              {hasAnomaly && timeframe !== "15D" && (
+                <button
+                  type="button"
+                  onClick={() => setTimeframe("15D")}
+                  className="hidden sm:flex items-center gap-1 px-2 py-0.5 text-xs font-bold rounded-md bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer"
+                >
+                  <Zap className="w-3 h-3 text-rose-600" />
+                  <span>Alert Window</span>
+                </button>
+              )}
+            </div>
           )}
-
-          <button
-            type="button"
-            onClick={() => setShow15DWindow(!show15DWindow)}
-            className={cn(
-              "px-3.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer",
-              show15DWindow
-                ? hasAnomaly
-                  ? "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
-                  : "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
-                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
-            )}
-            title="Toggle 15-Day Surveillance Window Highlight"
-          >
-            <span className={cn("w-2 h-2 rounded-full", show15DWindow ? "bg-amber-600" : "bg-slate-300")} />
-            <span>15D Window</span>
-          </button>
+          <ChartGuideButton />
         </div>
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* Real-time Live Stats Subheader (Crosshair Tracker) */}
-      {/* ------------------------------------------------------------- */}
-      {activeStats && (
-        <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs font-medium">
-          <div className="flex items-center gap-4 flex-wrap">
-            <span className="text-slate-500 font-semibold font-mono">
-              {formatTooltipDate(activeStats.date)}
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-500">Price:</span>
-              <span className="font-bold text-slate-900 text-sm">
-                ₹{activeStats.close?.toFixed(2)}
-              </span>
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.2 rounded font-mono ml-0.5",
-                priceChangePct >= 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50"
-              )}>
-                {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(2)}%
-              </span>
-            </div>
-
-            {activeStats.dma20 != null && show20DMA && (
-              <div className="flex items-center gap-1 text-slate-600">
-                <span className="w-2 h-2 rounded-full bg-[#0284c7]" />
-                <span className="font-semibold text-sky-900">20 DMA:</span>
-                <span className="font-bold text-slate-800">₹{activeStats.dma20?.toFixed(2)}</span>
-              </div>
-            )}
-
-            {activeStats.dma50 != null && show50DMA && (
-              <div className="flex items-center gap-1 text-slate-600">
-                <span className="w-2 h-2 rounded-full bg-[#d97706]" />
-                <span className="font-semibold text-amber-900">50 DMA:</span>
-                <span className="font-bold text-slate-800">₹{activeStats.dma50?.toFixed(2)}</span>
-              </div>
-            )}
-          </div>
-
-          {activeStats.volume != null && showVolume && (
-            <div className="flex items-center gap-1.5 text-slate-600 shrink-0">
-              <span className="w-2 h-2 rounded-full bg-[#60a5fa]" />
-              <span className="font-semibold text-blue-900">Vol:</span>
-              <span className="font-bold text-slate-800 font-mono">
-                {activeStats.volume >= 1000 ? `${Math.round(activeStats.volume / 1000)}k` : activeStats.volume}
-              </span>
-              <span className="text-[11px] text-slate-500 font-normal">
-                (D: {activeStats.deliveryPct}%)
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------- */}
       {/* Main Dual-Axis Chart Canvas */}
       {/* ------------------------------------------------------------- */}
-      <div className={cn("w-full min-w-0 overflow-hidden", isExpanded ? "h-[540px]" : "h-[380px] md:h-[430px]")}>
+      <div className={cn("w-full min-w-0 overflow-hidden", isExpanded ? "h-[540px]" : "h-[390px] md:h-[430px]")}>
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={displayData}
-            margin={{ top: 15, right: 65, left: 15, bottom: 10 }}
+            margin={{ top: 12, right: 65, left: 10, bottom: 8 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
                 const nextPoint = state.activePayload[0].payload;
@@ -2135,15 +2335,23 @@ export function CombinedMarketChart({
             }}
             onMouseLeave={() => setHoveredPoint(null)}
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+            <defs>
+              <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#4338ca" stopOpacity={0.16} />
+                <stop offset="85%" stopColor="#6366f1" stopOpacity={0.02} />
+                <stop offset="100%" stopColor="#818cf8" stopOpacity={0.0} />
+              </linearGradient>
+            </defs>
+
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
 
             {/* X-Axis */}
             <XAxis
               dataKey="date"
               tickFormatter={formatDateTick}
-              stroke="#cbd5e1"
-              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
-              axisLine={{ stroke: "#cbd5e1" }}
+              stroke="#e2e8f0"
+              tick={{ fontSize: 11, fill: "#475569", fontWeight: 600 }}
+              axisLine={{ stroke: "#e2e8f0" }}
               tickLine={false}
               minTickGap={45}
             />
@@ -2158,19 +2366,19 @@ export function CombinedMarketChart({
                 if (v >= 1000) return `${Math.round(v / 1000)}k`;
                 return String(v);
               }}
-              stroke="#cbd5e1"
-              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
+              stroke="#e2e8f0"
+              tick={{ fontSize: 11, fill: "#64748b", fontWeight: 500 }}
               axisLine={false}
               tickLine={false}
-              width={60}
+              width={52}
               label={{
                 value: "Volume",
                 angle: -90,
                 position: "insideLeft",
-                fill: "#1e293b",
-                fontSize: 12,
+                fill: "#475569",
+                fontSize: 11,
                 fontWeight: 700,
-                offset: 10
+                offset: 8
               }}
             />
 
@@ -2179,20 +2387,20 @@ export function CombinedMarketChart({
               yAxisId="right"
               orientation="right"
               domain={[priceMin, priceMax]}
-              tickFormatter={(p) => Math.round(p).toLocaleString("en-IN")}
-              stroke="#cbd5e1"
-              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
+              tickFormatter={(p) => `₹${Math.round(p).toLocaleString("en-IN")}`}
+              stroke="#e2e8f0"
+              tick={{ fontSize: 11, fill: "#1e293b", fontWeight: 600 }}
               axisLine={false}
               tickLine={false}
-              width={60}
+              width={65}
               label={{
-                value: "Price on NSE",
+                value: "Price (₹)",
                 angle: 90,
                 position: "insideRight",
                 fill: "#1e293b",
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 700,
-                offset: 20
+                offset: 18
               }}
             />
 
@@ -2200,7 +2408,7 @@ export function CombinedMarketChart({
               content={<CustomScreenerTooltip />}
               isAnimationActive={false}
               wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
-              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
+              cursor={{ stroke: "#94a3b8", strokeDasharray: "3 3", strokeWidth: 1 }}
             />
 
             {/* 15-Day Surveillance Window Highlight */}
@@ -2210,22 +2418,22 @@ export function CombinedMarketChart({
                 x1={win15Start}
                 x2={win15End}
                 fill="#fef3c7"
-                fillOpacity={0.45}
+                fillOpacity={0.35}
                 stroke="#f59e0b"
                 strokeDasharray="3 3"
-                strokeWidth={1.5}
+                strokeWidth={1.2}
               />
             )}
 
-            {/* Volume Bars (Left Axis) */}
+            {/* Volume Histogram (Left Axis) */}
             {showVolume && (
               <Bar
                 yAxisId="left"
                 dataKey="volume"
-                fill="#93c5fd"
-                stroke="#60a5fa"
+                fill="#cbd5e1"
+                stroke="#94a3b8"
                 strokeWidth={0.5}
-                fillOpacity={0.85}
+                fillOpacity={0.7}
                 radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
               />
@@ -2259,7 +2467,20 @@ export function CombinedMarketChart({
               />
             )}
 
-            {/* Price on NSE Line (Right Axis - High Contrast Indigo) */}
+            {/* Area Gradient Fill under Price */}
+            {showPrice && (
+              <Area
+                yAxisId="right"
+                type="monotone"
+                dataKey="close"
+                stroke="none"
+                fill="url(#priceGradient)"
+                isAnimationActive={false}
+                connectNulls
+              />
+            )}
+
+            {/* Price on NSE Line (Right Axis - Crisp High-Contrast Indigo) */}
             {showPrice && (
               <Line
                 yAxisId="right"
@@ -2277,76 +2498,78 @@ export function CombinedMarketChart({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* Bottom Interactive Legend Checkbox Bar (High Contrast) */}
+      {/* Bottom Indicator Toggle Bar (Sleek Chip Pills) */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center justify-center gap-6 pt-3 border-t border-slate-200 text-xs font-bold text-slate-800">
-        {/* Price on NSE Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-indigo-900 transition-colors">
-          <input
-            type="checkbox"
-            checked={showPrice}
-            onChange={(e) => setShowPrice(e.target.checked)}
-            className="sr-only"
-          />
-          <span className={cn(
-            "w-4 h-4 rounded flex items-center justify-center border transition-all",
-            showPrice ? "bg-[#4338ca] border-[#312e81] text-white shadow-2xs" : "border-slate-300 bg-white"
-          )}>
-            {showPrice && <Check className="w-3 h-3 stroke-[3]" />}
-          </span>
+      <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5 border-t border-slate-100 text-xs font-semibold">
+        {/* Price on NSE */}
+        <button
+          type="button"
+          onClick={() => setShowPrice(!showPrice)}
+          title="Daily closing VWAP price line on NSE"
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
+            showPrice ? "bg-indigo-50 border-indigo-200 text-indigo-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
+          )}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#4338ca]" />
           <span>Price on NSE</span>
-        </label>
+        </button>
 
-        {/* 20 DMA Toggle (§5.1.1) */}
-        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-sky-900 transition-colors">
-          <input
-            type="checkbox"
-            checked={show20DMA}
-            onChange={(e) => setShow20DMA(e.target.checked)}
-            className="sr-only"
-          />
-          <span className={cn(
-            "w-4 h-4 rounded flex items-center justify-center border transition-all",
-            show20DMA ? "bg-[#0284c7] border-[#0369a1] text-white shadow-2xs" : "border-slate-300 bg-white"
-          )}>
-            {show20DMA && <Check className="w-3 h-3 stroke-[3]" />}
-          </span>
-          <span>20 DMA (§5.1.1)</span>
-        </label>
+        {/* 20 DMA */}
+        <button
+          type="button"
+          onClick={() => setShow20DMA(!show20DMA)}
+          title="20-Day Moving Average: 1-month short term trend baseline"
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
+            show20DMA ? "bg-sky-50 border-sky-200 text-sky-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
+          )}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7]" />
+          <span>20 DMA</span>
+        </button>
 
-        {/* 50 DMA Toggle (§5.1.1) */}
-        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-amber-900 transition-colors">
-          <input
-            type="checkbox"
-            checked={show50DMA}
-            onChange={(e) => setShow50DMA(e.target.checked)}
-            className="sr-only"
-          />
-          <span className={cn(
-            "w-4 h-4 rounded flex items-center justify-center border transition-all",
-            show50DMA ? "bg-[#d97706] border-[#b45309] text-white shadow-2xs" : "border-slate-300 bg-white"
-          )}>
-            {show50DMA && <Check className="w-3 h-3 stroke-[3]" />}
-          </span>
-          <span>50 DMA (§5.1.1)</span>
-        </label>
+        {/* 50 DMA */}
+        <button
+          type="button"
+          onClick={() => setShow50DMA(!show50DMA)}
+          title="50-Day Moving Average: 2.5-month medium term trend baseline"
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
+            show50DMA ? "bg-amber-50 border-amber-200 text-amber-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
+          )}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#d97706]" />
+          <span>50 DMA</span>
+        </button>
 
-        {/* Volume Toggle */}
-        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-blue-900 transition-colors">
-          <input
-            type="checkbox"
-            checked={showVolume}
-            onChange={(e) => setShowVolume(e.target.checked)}
-            className="sr-only"
-          />
-          <span className={cn(
-            "w-4 h-4 rounded flex items-center justify-center border transition-all",
-            showVolume ? "bg-[#60a5fa] border-[#3b82f6] text-white shadow-2xs" : "border-slate-300 bg-white"
-          )}>
-            {showVolume && <Check className="w-3 h-3 stroke-[3]" />}
-          </span>
+        {/* Volume */}
+        <button
+          type="button"
+          onClick={() => setShowVolume(!showVolume)}
+          title="Total exchange traded volume (quantity of shares exchanged per day)"
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
+            showVolume ? "bg-slate-100 border-slate-300 text-slate-900 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
+          )}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8]" />
           <span>Volume</span>
-        </label>
+        </button>
+
+        {/* 15D Surveillance Window */}
+        <button
+          type="button"
+          onClick={() => setShow15DWindow(!show15DWindow)}
+          title="15-Day Surveillance Window: Recent observation period compared against the 180-day baseline"
+          className={cn(
+            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
+            show15DWindow ? "bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
+          )}
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+          <span>15D Surveillance Window</span>
+        </button>
       </div>
     </div>
   );
@@ -2423,27 +2646,28 @@ export function SurveillanceStatisticalDeck({
 
   return (
     <div className="space-y-4">
-      {/* Pillar 1: Price Growth & Severity (PVASF 2.1) */}
+      {/* Card 1: 6-Month Price Growth */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
-            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
-              180-Day Price Movement & Baseline Growth
+            <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+              6-Month Price Growth
+              <InfoTooltip text="Measures total price gain over the past 6 months compared to the starting baseline price (contributes 25% to the total risk score)." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-              PVASF §2.1
+              25% of Score
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Observation: Day t vs Day T-180
+            Observation: Today vs 6 Months Ago
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              180-Day Starting Price (T-180)
-              <InfoTooltip text="Historical baseline: Closing price 180 trading days ago (~6 months), used to measure 6-month price rise." />
+              Starting Price (6M Ago)
+              <InfoTooltip text="The closing price 180 trading days (~6 months) ago, used as the baseline." />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
               ₹{startPrice.toFixed(2)}
@@ -2451,8 +2675,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Current Closing Price (Day t)
-              <InfoTooltip text="Latest closing price on observation day t, showing total percentage growth from T-180." />
+              Current Closing Price
+              <InfoTooltip text="Latest closing price on the observation date, showing total percentage growth from baseline." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-blue-700 text-base">
@@ -2468,8 +2692,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              180-Day Peak High
-              <InfoTooltip text="The highest intraday price reached over the entire 180-day baseline period." />
+              6-Month Peak High
+              <InfoTooltip text="The highest intraday price reached over the entire 6-month baseline period." />
             </span>
             <span className="font-extrabold font-mono text-rose-700 text-base mt-1 block">
               ₹{max180High.toFixed(2)}
@@ -2477,8 +2701,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Price Rise Severity
-              <InfoTooltip text="SEBI PVASF Section 2.1 scoring band: Under 15% (0), 15–75% (1), 76–150% (3), >150% (5)." />
+              Price Growth Severity
+              <InfoTooltip text="Risk rating band: Under 15% rise (0 pts), 15–75% (1 pt), 76–150% (3 pts), over 150% (5 pts)." />
             </span>
             <div className="flex items-center gap-2 mt-1">
               <span className={cn("font-extrabold font-mono text-base", isHighRiskGain ? "text-rose-700" : "text-slate-900")}>
@@ -2495,27 +2719,28 @@ export function SurveillanceStatisticalDeck({
         </div>
       </div>
 
-      {/* Pillar 2: Price Return & Momentum Z-Score (PVASF 2.2) */}
+      {/* Card 2: Recent Daily Momentum & Speed Limits */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
-            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
-              Rolling 15D Price Return & Momentum Z-Score
+            <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+              Recent Daily Momentum & Speed Limits
+              <InfoTooltip text="Checks whether the stock is accelerating and jumping faster than normal daily limits over the 15-day window (contributes 20% to total risk score)." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-              PVASF §2.2
+              20% of Score
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Statistical Outlier Speed Limits
+            15-Day Acceleration Analysis
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              180-Day Normal Return
-              <InfoTooltip text="Historical average: The typical daily close-to-close percentage price move over the past 180 trading days." />
+              6-Month Normal Daily Move
+              <InfoTooltip text="The typical daily close-to-close percentage price move over the past 6 months." />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
               {mean180Return.toFixed(2)}% / day
@@ -2523,8 +2748,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              15-Day Average Return
-              <InfoTooltip text="Surveillance window: Average daily return during the last 15 trading days. Highlights abnormal price acceleration." />
+              15-Day Average Daily Move
+              <InfoTooltip text="Average daily percentage move during the last 15 days. Highlights abnormal acceleration." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-indigo-700 text-base">
@@ -2537,8 +2762,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Alert Limits (Percentiles)
-              <InfoTooltip text="Statistical speed limits: 95th percentile (Alert) and 99th percentile (Critical Outlier) indicating abnormal momentum (SEBI Z-Score §2.2)." />
+              Daily Speed Limits
+              <InfoTooltip text="Historical threshold limits: 95th percentile (Warning level) and 99th percentile (Extreme outlier jump level)." />
             </span>
             <div className="flex items-center gap-2 mt-1 font-mono text-xs font-bold">
               <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
@@ -2552,7 +2777,7 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Abnormal Move Days
-              <InfoTooltip text="Count of days in the 15-day surveillance window where the stock moved faster than its 95th percentile historical speed limit." />
+              <InfoTooltip text="Number of days in the 15-day window where the stock jumped faster than its 95th percentile historical limit." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-slate-900 text-base">
@@ -2568,20 +2793,21 @@ export function SurveillanceStatisticalDeck({
         </div>
       </div>
 
-      {/* Pillar 3: Volume & Liquidity Burst (PVASF 2.3) */}
+      {/* Card 3: 15-Day Volume Surge & Activity Spike */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
         <div className="flex items-center justify-between border-b border-slate-100 pb-2 mb-3">
           <div className="flex items-center gap-2">
             <div className="w-2.5 h-2.5 rounded-full bg-cyan-600" />
-            <span className="font-bold text-xs uppercase tracking-wider text-slate-800">
-              Rolling 15D Volume Surge & Liquidity Anomaly
+            <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+              15-Day Volume Surge & Activity Spike
+              <InfoTooltip text="Measures sudden abnormal jumps in traded volume over the 15-day window compared to the 6-month average (contributes 25% to total risk score)." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
-              PVASF §2.3
+              25% of Score
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Traded Liquidity Dynamics
+            Traded Volume Analysis
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -2611,7 +2837,7 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Surge Alert Limit (95th %ile)
-              <InfoTooltip text="Volume speed limit: 95% of past 180 days traded below this volume. Trading above this level triggers the SEBI Volume Z-Score alert." />
+              <InfoTooltip text="Volume speed limit: 95% of past 180 days traded below this volume. Trading above this level triggers the Volume Z-Score alert." />
             </span>
             <span className="font-extrabold font-mono text-amber-700 text-base mt-1 block">
               ≥ {formatVolumeNum(zVolAlert)} / day

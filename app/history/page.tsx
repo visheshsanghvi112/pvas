@@ -69,16 +69,17 @@ function HistoryPageContent() {
 
   // Export CSV
   const handleExportCSV = () => {
-    const csvContent = "data:text/csv;charset=utf-8," +
-      "Timestamp,Username,Role,Action,Target,Details,IP Address\n" +
+    const csvContent = "Timestamp,Username,Role,Action,Target,Details,IP Address\n" +
       filteredLogs.map(l => `"${l.timestamp}","${l.username}","${l.role}","${l.action}","${l.target}","${l.details.replace(/"/g, '""')}","${l.ip_address}"`).join("\n");
-    const encodedUri = encodeURI(csvContent);
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `PVASF_System_Audit_Log_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.href = url;
+    link.download = `PVASF_System_Audit_Log_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const uniqueActions = Array.from(new Set(auditLogs.map((l) => l.action))).filter(Boolean);

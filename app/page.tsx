@@ -1,224 +1,241 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
-  AlertTriangle,
-  RefreshCw,
-  BarChart2,
-  TrendingUp,
-  Activity,
   Clock,
-  Zap,
-  Database,
-  ChevronRight
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
-import { AlertsTable } from "@/components/dashboard/alerts-table";
-import { fetchWatchlist, type ScripSummary } from "@/lib/api";
+import { AlertsTable, InfoTooltip } from "@/components/dashboard/alerts-table";
+import { TradingDatePicker } from "@/components/ui/trading-date-picker";
+import { ExchangeScopeSelector, type ExchangeScope } from "@/components/ui/exchange-scope-selector";
+import { Toast } from "@/components/ui/toast";
+import { fetchWatchlist, fetchAvailableTradingDates, type ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import Link from "next/link";
 
-export default function DashboardPage() {
+function DashboardContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  
+  const urlAsOfDate = searchParams?.get("asOfDate") || "";
+  const urlWindowDays = searchParams?.get("windowDays") ? Number(searchParams.get("windowDays")) : 15;
+  const urlExchange = (searchParams?.get("exchange") as ExchangeScope) || "ALL";
+
   const [scrips, setScrips] = useState<ScripSummary[]>([]);
   const [loading, setLoading] = useState(true);
-  const [riskFilter, setRiskFilter] = useState<string>("All");
-  const [lastRefresh, setLastRefresh] = useState<string>("");
+  const [riskFilter, setRiskFilter] = useState<string>("High");
+  const [toastAlert, setToastAlert] = useState<{ show: boolean; msg: string }>({ show: false, msg: "" });
 
+  // Market Date & Surveillance Window State
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(urlAsOfDate);
+  const [windowDays, setWindowDays] = useState<number>(urlWindowDays);
+  const [exchange, setExchange] = useState<ExchangeScope>(urlExchange);
+  const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
+
+  // Initialize available dates from AGG_SEC_DAY warehouse
+  useEffect(() => {
+    async function loadDates() {
+      const dates = await fetchAvailableTradingDates();
+      if (dates && dates.length > 0) {
+        setAvailableDates(dates);
+        
+        const targetDate = urlAsOfDate || dates[0];
+        if (urlAsOfDate && !dates.includes(urlAsOfDate)) {
+          // Auto-correct to nearest previous valid trading date
+          const nearest = dates.find((d) => d <= urlAsOfDate) || dates[0];
+          setToastAlert({ 
+            show: true, 
+            msg: `${urlAsOfDate} is a non-trading day. Automatically loaded the last active session (${nearest}).`
+          });
+          setSelectedDate(nearest);
+          
+          // Update URL without reload to reflect corrected date
+          const newParams = new URLSearchParams(searchParams?.toString() || "");
+          newParams.set("asOfDate", nearest);
+          router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+        } else {
+          setSelectedDate(targetDate);
+        }
+      }
+    }
+    loadDates();
+  }, [urlAsOfDate, router, pathname, searchParams]);
+
+  // Fetch watchlist data whenever selectedDate, windowDays, or exchange changes
   const loadData = async () => {
     setLoading(true);
     try {
-      const data = await fetchWatchlist();
+      const data = await fetchWatchlist(undefined, selectedDate || undefined, windowDays, exchange);
       setScrips(data);
     } catch (err) {
       console.error("[Dashboard] Failed to load watchlist:", err);
-      // Retain existing scrips on transient error; don't wipe the table
     } finally {
       setLoading(false);
-      setLastRefresh(
-        new Date().toLocaleTimeString("en-IN", {
-          hour: "2-digit",
-          minute: "2-digit",
-          second: "2-digit",
-        })
-      );
     }
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (selectedDate || availableDates.length === 0) {
+      loadData();
+    }
+  }, [selectedDate, windowDays, exchange]);
 
-  const highRiskCount = scrips.filter((s) => s.risk === "High").length;
-  const medRiskCount = scrips.filter((s) => s.risk === "Medium").length;
-  const lowRiskCount = scrips.filter((s) => s.risk === "Low").length;
 
-  const handleStatusChange = (
-    symbol: string,
-    newStatus: "Open" | "Under review" | "Closed"
-  ) => {
-    setScrips((prev) =>
-      prev.map((s) => (s.symbol === symbol ? { ...s, status: newStatus } : s))
-    );
+  // ── Date Navigation Helpers ──
+  const dateIndex = useMemo(() => {
+    if (!selectedDate || availableDates.length === 0) return 0;
+    const idx = availableDates.indexOf(selectedDate);
+    return idx >= 0 ? idx : 0;
+  }, [selectedDate, availableDates]);
+
+  const windowStartDate = useMemo(() => {
+    if (availableDates.length === 0) return selectedDate;
+    const startIdx = Math.min(availableDates.length - 1, dateIndex + windowDays - 1);
+    return availableDates[startIdx] || selectedDate;
+  }, [availableDates, dateIndex, windowDays, selectedDate]);
+
+  const canGoNext = dateIndex > 0;
+  const canGoPrev = dateIndex < availableDates.length - 1;
+  const isLatest = dateIndex === 0;
+
+  const handlePrevDay = () => {
+    if (canGoPrev) setSelectedDate(availableDates[dateIndex + 1]);
+  };
+  const handleNextDay = () => {
+    if (canGoNext) setSelectedDate(availableDates[dateIndex - 1]);
+  };
+  const handleLatestEOD = () => {
+    if (availableDates.length > 0) setSelectedDate(availableDates[0]);
   };
 
-  const topMover =
-    scrips.length > 0
-      ? [...scrips].sort((a, b) => b.price_rise_pct - a.price_rise_pct)[0]
-      : null;
+  /** Snap a date string to the nearest available trading date and update URL */
+  const snapToTradingDate = (raw: string) => {
+    if (!raw) return;
+    let finalDate = raw;
+    
+    if (!availableDateSet.has(raw)) {
+      finalDate = availableDates.find((d) => d <= raw) || availableDates[0];
+    }
+    
+    setSelectedDate(finalDate);
+    
+    const newParams = new URLSearchParams(searchParams?.toString() || "");
+    newParams.set("asOfDate", finalDate);
+    router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+  };
 
-  const topVolume =
-    scrips.length > 0
-      ? [...scrips].sort((a, b) => b.volume_z - a.volume_z)[0]
-      : null;
+  const fmtShort = (d: string) => {
+    if (!d) return "—";
+    const [y, m, day] = d.split("-");
+    const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+    return `${parseInt(day, 10)} ${months[parseInt(m, 10) - 1]} ${y}`;
+  };
 
   return (
     <div className="flex flex-col h-full bg-slate-50 text-slate-900 font-sans overflow-hidden">
-      {/* ── KPI Executive Summary Cards (Clickable Filter Controls) ── */}
-      <div className="flex-shrink-0 bg-white/90 border-b border-slate-200/90 px-6 py-3.5 shadow-2xs">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Card 1: Monitored Universe */}
-          <button
-            onClick={() => setRiskFilter("All")}
-            className={cn(
-              "text-left border rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs relative overflow-hidden",
-              riskFilter === "All"
-                ? "bg-white border-blue-600 ring-1 ring-blue-600/30 shadow-xs"
-                : "bg-white border-slate-200/90 hover:border-slate-300"
-            )}
-          >
-            {riskFilter === "All" && <div className="absolute top-0 left-0 right-0 h-1 bg-blue-600" />}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-                Monitored Scrips
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-slate-100 border border-slate-200/80 flex items-center justify-center">
-                <BarChart2 className="h-3.5 w-3.5 text-slate-700" />
-              </div>
-            </div>
-            <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="text-2xl font-black text-slate-900 leading-none font-mono tracking-tight">
-                {loading ? "—" : scrips.length}
-              </span>
-              <span className="text-xs font-semibold text-slate-500">Securities Active</span>
-            </div>
-            <div className="mt-2 text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-              <Database className="h-3 w-3 text-slate-400" /> 31,200 Teradata Trade Matches
-            </div>
-          </button>
 
-          {/* Card 2: High Risk Critical Alerts */}
-          <button
-            onClick={() => setRiskFilter("High")}
-            className={cn(
-              "text-left border rounded-2xl p-4 flex flex-col justify-between transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs relative overflow-hidden",
-              riskFilter === "High"
-                ? "bg-white border-rose-600 ring-1 ring-rose-600/30 shadow-xs"
-                : "bg-white border-slate-200/90 hover:border-slate-300"
-            )}
-          >
-            {riskFilter === "High" && <div className="absolute top-0 left-0 right-0 h-1 bg-rose-600" />}
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-                High Risk Alerts
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center">
-                <AlertTriangle className="h-3.5 w-3.5 text-rose-600" />
-              </div>
-            </div>
-            <div className="mt-2.5 flex items-baseline gap-2">
-              <span className="text-2xl font-black text-rose-600 leading-none font-mono tracking-tight">
-                {loading ? "—" : highRiskCount}
-              </span>
-              <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 font-mono">
-                Score ≥ 15
-              </span>
-            </div>
-            <div className="mt-2 text-[11px] font-semibold text-slate-500 flex items-center gap-1.5">
-              <span>{medRiskCount} Medium</span>
-              <span className="text-slate-300">•</span>
-              <span>{lowRiskCount} Normal</span>
-            </div>
-          </button>
+      {/* ── Observation Date Command Bar ── */}
+      <div className="flex-shrink-0 bg-white border-b border-slate-200 px-5 py-2.5">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
 
-          {/* Card 3: Top Price Mover */}
-          <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-                Top Price Surge
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
-                <TrendingUp className="h-3.5 w-3.5 text-blue-600" />
-              </div>
-            </div>
-            {topMover && !loading ? (
-              <>
-                <div className="mt-2.5 flex items-baseline justify-between">
-                  <Link
-                    href={`/analysis/${topMover.symbol}`}
-                    className="text-base font-black text-slate-900 hover:text-blue-600 hover:underline flex items-center gap-1 leading-none font-mono tracking-tight"
-                  >
-                    {topMover.symbol} <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-                  </Link>
-                  <span className="text-xs font-extrabold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 font-mono">
-                    +{topMover.price_rise_pct.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="mt-2 text-[11px] font-semibold text-slate-500 flex items-center justify-between">
-                  <span>Price Z: <strong className="text-slate-800 font-mono">{topMover.price_z.toFixed(2)}σ</strong></span>
-                  <span className="text-slate-400 font-medium">vs T-180 Baseline</span>
-                </div>
-              </>
-            ) : (
-              <div className="mt-2 text-xs text-slate-400">Loading metrics...</div>
+          {/* Custom Trading Date Picker */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider select-none inline-flex items-center gap-1">
+              Observation Date:
+              <InfoTooltip text="The trading day being analyzed. Recent activity leading up to this date is compared against 6 months of historical data." />
+            </span>
+            <TradingDatePicker
+              availableDates={availableDates}
+              selectedDate={selectedDate}
+              onDateChange={(d) => snapToTradingDate(d)}
+            />
+          </div>
+
+          {/* Day shift navigation buttons */}
+          <div className="flex items-center rounded-xl border border-slate-300/80 bg-white overflow-hidden text-xs font-semibold text-slate-700 divide-x divide-slate-200 shadow-2xs">
+            <button
+              onClick={handlePrevDay}
+              disabled={!canGoPrev}
+              className="flex items-center gap-1 px-3 py-1.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              title="Previous Trading Day (T-1)"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Prev Day</span>
+            </button>
+            <button
+              onClick={handleNextDay}
+              disabled={!canGoNext}
+              className="flex items-center gap-1 px-3 py-1.5 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+              title="Next Trading Day (T+1)"
+            >
+              <span>Next Day</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+            {!isLatest && (
+              <button
+                onClick={handleLatestEOD}
+                className="px-3 py-1.5 text-blue-700 bg-blue-50/80 hover:bg-blue-100 font-bold transition-colors cursor-pointer"
+                title="Jump to Latest Available EOD Data"
+              >
+                Latest EOD
+              </button>
             )}
           </div>
 
-          {/* Card 4: Top Volume Anomaly */}
-          <div className="bg-white border border-slate-200/90 hover:border-slate-300 rounded-2xl p-4 flex flex-col justify-between shadow-2xs hover:shadow-xs transition-all duration-200">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider">
-                Top Volume Surge
-              </span>
-              <div className="w-7 h-7 rounded-lg bg-amber-50 border border-amber-200 flex items-center justify-center">
-                <Zap className="h-3.5 w-3.5 text-amber-600" />
-              </div>
-            </div>
-            {topVolume && !loading ? (
-              <>
-                <div className="mt-2.5 flex items-baseline justify-between">
-                  <Link
-                    href={`/analysis/${topVolume.symbol}`}
-                    className="text-base font-black text-slate-900 hover:text-blue-600 hover:underline flex items-center gap-1 leading-none font-mono tracking-tight"
-                  >
-                    {topVolume.symbol} <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-                  </Link>
-                  <span className="text-xs font-extrabold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200 font-mono">
-                    {topVolume.volume_z.toFixed(2)}σ Surge
-                  </span>
-                </div>
-                <div className="mt-2 text-[11px] font-semibold text-slate-500 flex items-center justify-between">
-                  <span>Circuit Hits: <strong className="text-slate-800 font-mono">{topVolume.band_hit_days} Days</strong></span>
-                  <span className="text-slate-400 font-medium">≥90% Upper Band</span>
-                </div>
-              </>
-            ) : (
-              <div className="mt-2 text-xs text-slate-400">Loading metrics...</div>
-            )}
-          </div>
+          {/* Exchange Scope Selector (Consolidated / NSE / BSE) */}
+          <ExchangeScopeSelector selected={exchange} onChange={setExchange} />
 
+          {/* Spacer pushes window badge right */}
+          <div className="flex-1" />
+
+          {/* 15D surveillance window readout */}
+          <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] text-amber-900 font-semibold select-none">
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="font-mono">
+              {fmtShort(windowStartDate)}&nbsp;→&nbsp;{fmtShort(selectedDate)}
+            </span>
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-300/70 rounded px-1.5 py-px inline-flex items-center gap-1">
+              15D Window
+              <InfoTooltip
+                text="Recent 15 trading days being examined and compared against the 6-month historical baseline."
+                align="right"
+              />
+            </span>
+          </div>
         </div>
       </div>
 
-      {/* ── Main Content: Watchlist Table Workspace (Clean Single Overflow Layout) ── */}
+      {/* ── Main Watchlist Table ── */}
       <main className="flex-1 overflow-hidden flex flex-col bg-white">
         <AlertsTable
           scrips={scrips}
-          onStatusChange={handleStatusChange}
           selectedRiskFilter={riskFilter}
-          onRiskFilterChange={(newFilter) => setRiskFilter(newFilter)}
+          onRiskFilterChange={(f) => setRiskFilter(f)}
           loading={loading}
+          asOfDate={selectedDate}
+          windowDays={windowDays}
+          exchange={exchange}
         />
       </main>
+      {/* Non-Trading Day Toast Notification */}
+      <Toast 
+        show={toastAlert.show} 
+        message={toastAlert.msg} 
+        onClose={() => setToastAlert({ ...toastAlert, show: false })} 
+        type="warning" 
+      />
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500 font-medium">Loading Dashboard...</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   UserCircle,
   Users,
   X,
   AlertTriangle,
   TrendingUp,
+  TrendingDown,
   Activity,
   BarChart2,
   Zap,
@@ -18,15 +20,22 @@ import {
   FileText,
   Building,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Calendar,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  Megaphone
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TradingDatePicker } from "@/components/ui/trading-date-picker";
+import { ExchangeScopeSelector, type ExchangeScope } from "@/components/ui/exchange-scope-selector";
+import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
   AlertDriversChart,
-  LtpChart,
   ParameterRadarChart,
   SurveillanceStatisticalDeck,
   AnomalyEventMatrixChart,
@@ -35,25 +44,23 @@ import {
   CombinedMarketChart,
   InfoTooltip
 } from "@/components/investigation/charts";
-import { Timeline, type TimelineItem } from "@/components/investigation/timeline";
 import {
   fetchScripDetail,
   fetchScripParticipants,
-  fetchTradeLog,
   fetchClient360,
   fetchShareholdingBreakdown,
   fetchCorporateActions,
+  fetchAvailableTradingDates,
   getAuthHeaders,
   type ScripDetail,
   type ParticipantAudit,
-  type TradeRow,
   type ClientDetail
 } from "@/lib/api";
 
 import { useUser } from "@/lib/user-context";
 
-const TABS = ["Overview", "Shareholders", "Participants"] as const;
-type Tab = typeof TABS[number];
+const TABS = ["Overview", "Shareholders", "Corporate Announcements", "Participants"] as const;
+type TabType = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
 function scoreZone(score: number): "High" | "Medium" | "Low" {
@@ -67,25 +74,25 @@ function scoreColor(score: number) {
 }
 
 // Individual PVASF parameter raw scores (0/1/3/5)
-function rawScoreForPriceRise(pct: number) {
-  if (pct < 15) return 0;
-  if (pct <= 75) return 1;
-  if (pct <= 150) return 3;
-  return 5;
+function rawScoreForPriceRise(pct: number): number {
+  if (pct > 150) return 5;
+  if (pct >= 76) return 3;
+  if (pct >= 15) return 1;
+  return 0;
 }
-function rawScoreForZ(z: number) {
+function rawScoreForZ(z: number): number {
   if (z >= 3.09) return 5;
   if (z >= 2.33) return 3;
   if (z >= 1.645) return 1;
   return 0;
 }
-function rawScoreForBandDays(d: number) {
+function rawScoreForBandDays(d: number): number {
   if (d >= 10) return 5;
   if (d >= 6) return 3;
   if (d >= 3) return 1;
   return 0;
 }
-function rawScoreForNewHighDays(d: number) {
+function rawScoreForNewHighDays(d: number): number {
   if (d >= 10) return 5;
   if (d >= 5) return 3;
   if (d >= 1) return 1;
@@ -105,28 +112,60 @@ function ScoreChip({ label, value, rawScore, weight }: { label: string; value: s
   );
 }
 
-function DataTable({ headers, rows }: { headers: (string | React.ReactNode)[]; rows: (string | React.ReactNode)[][] }) {
+function DataTable({
+  headers,
+  rows,
+  alignments
+}: {
+  headers: (string | React.ReactNode)[];
+  rows: (string | React.ReactNode)[][];
+  alignments?: ("left" | "right" | "center")[];
+}) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-xs text-left border-collapse">
-        <thead className="bg-slate-100/80 border-b border-slate-200 text-slate-700 font-semibold">
+    <div className="w-full">
+      <table className="w-full text-xs border-collapse">
+        <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-semibold">
           <tr>
-            {headers.map((h, i) => (
-              <th key={i} className="px-3.5 py-2.5">{h}</th>
-            ))}
+            {headers.map((h, i) => {
+              const align = alignments?.[i] || "left";
+              return (
+                <th
+                  key={i}
+                  className={cn(
+                    "px-3 py-2.5 text-xs font-semibold text-slate-700",
+                    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
+                  )}
+                >
+                  {h}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {rows.length === 0 ? (
             <tr>
-              <td colSpan={headers.length} className="px-3.5 py-4 text-center text-slate-400 italic font-medium">No records found</td>
+              <td colSpan={headers.length} className="px-3 py-6 text-center text-slate-400 italic font-medium">
+                No records found
+              </td>
             </tr>
           ) : (
             rows.map((r, ri) => (
-              <tr key={ri} className="hover:bg-blue-50/30 transition-colors">
-                {r.map((cell, ci) => (
-                  <td key={ci} className="px-3.5 py-2.5 text-slate-700 font-medium">{cell}</td>
-                ))}
+              <tr key={ri} className="hover:bg-slate-50/70 transition-colors">
+                {r.map((cell, ci) => {
+                  const align = alignments?.[ci] || "left";
+                  return (
+                    <td
+                      key={ci}
+                      className={cn(
+                        "px-3 py-2.5 text-slate-700 font-medium align-middle",
+                        align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
+                      )}
+                    >
+                      {cell}
+                    </td>
+                  );
+                })}
               </tr>
             ))
           )}
@@ -179,15 +218,29 @@ function SectionHeader({
 
 function Card({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className={cn("group border border-slate-200/90 bg-white rounded-2xl shadow-[0_2px_10px_-2px_rgba(15,23,42,0.06),0_1px_3px_-1px_rgba(15,23,42,0.04)] hover:shadow-[0_8px_24px_-4px_rgba(15,23,42,0.08)] transition-all duration-200 flex flex-col overflow-hidden relative", className)}>
+    <div className={cn("bg-white border border-slate-200/90 rounded-2xl shadow-2xs flex flex-col group relative overflow-hidden transition-all duration-200 hover:border-slate-300", className)}>
       {children}
     </div>
   );
 }
 
 export function InvestigationWorkspace({ symbol }: { symbol: string }) {
-  const { currentUser } = useUser();
-  const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const urlAsOfDate = searchParams?.get("asOfDate") || "";
+  const urlWindowDays = searchParams?.get("windowDays") ? Number(searchParams.get("windowDays")) : 15;
+  const urlExchange = (searchParams?.get("exchange") as ExchangeScope) || "ALL";
+
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(urlAsOfDate);
+  const [windowDays, setWindowDays] = useState<number>(urlWindowDays);
+  const [exchange, setExchange] = useState<ExchangeScope>(urlExchange);
+  const [toastAlert, setToastAlert] = useState<{ show: boolean; msg: string }>({ show: false, msg: "" });
+  
+  const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
+
+  const [activeTab, setActiveTab] = useState<TabType>("Overview");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [expandedChart, setExpandedChart] = useState<{
     title: string;
@@ -195,6 +248,36 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     chart: React.ReactNode;
   } | null>(null);
 
+  // Initialize available dates
+  useEffect(() => {
+    async function loadDates() {
+      const dates = await fetchAvailableTradingDates();
+      if (dates && dates.length > 0) {
+        setAvailableDates(dates);
+        
+        const targetDate = urlAsOfDate || dates[0];
+        if (urlAsOfDate && !dates.includes(urlAsOfDate)) {
+          // Auto-correct to nearest previous valid trading date
+          const nearest = dates.find((d) => d <= urlAsOfDate) || dates[0];
+          setToastAlert({ 
+            show: true, 
+            msg: `${urlAsOfDate} is a non-trading day. Automatically loaded the last active session (${nearest}).`
+          });
+          setSelectedDate(nearest);
+          
+          // Update URL without reload to reflect corrected date
+          const newParams = new URLSearchParams(searchParams?.toString() || "");
+          newParams.set("asOfDate", nearest);
+          router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+        } else {
+          setSelectedDate(targetDate);
+        }
+      }
+    }
+    loadDates();
+  }, [urlAsOfDate, router, pathname, searchParams]);
+
+  // Keyboard shortcut: ESC exits Fullscreen mode or closes expanded chart modal
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -211,7 +294,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
   const [detail, setDetail] = useState<ScripDetail | null>(null);
   const [participants, setParticipants] = useState<ParticipantAudit | null>(null);
-  const [trades, setTrades] = useState<TradeRow[]>([]);
   const [client360, setClient360] = useState<ClientDetail | null>(null);
   const [shBreakdown, setShBreakdown] = useState<any>(null);
   const [corpActions, setCorpActions] = useState<any[]>([]);
@@ -220,23 +302,20 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
   const [analysisStatus, setAnalysisStatus] = useState<"Active" | "Completed">("Active");
   const [selectedPan, setSelectedPan] = useState<string | null>(null);
-  const [selectedTrade, setSelectedTrade] = useState<TradeRow | null>(null);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const [d, p, t, sh, ca] = await Promise.all([
-          fetchScripDetail(symbol),
-          fetchScripParticipants(symbol).catch(() => null),
-          fetchTradeLog(symbol).catch(() => []),
+        const [d, p, sh, ca] = await Promise.all([
+          fetchScripDetail(symbol, selectedDate || undefined, windowDays, exchange),
+          fetchScripParticipants(symbol, selectedDate || undefined, windowDays).catch(() => null),
           fetchShareholdingBreakdown(symbol).catch(() => null),
           fetchCorporateActions(symbol).catch(() => [])
         ]);
         setDetail(d);
         if (p) setParticipants(p);
-        if (t) setTrades(t);
         if (sh) setShBreakdown(sh);
         if (ca) setCorpActions(ca);
         setAnalysisStatus(d.status === "Closed" ? "Completed" : "Active");
@@ -248,7 +327,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       }
     }
     load();
-  }, [symbol]);
+  }, [symbol, selectedDate, windowDays, exchange]);
 
   useEffect(() => {
     if (selectedPan) {
@@ -260,6 +339,19 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     }
   }, [selectedPan]);
 
+
+  // Date Navigation Helpers
+  const dateIndex = useMemo(() => {
+    if (!selectedDate || availableDates.length === 0) return 0;
+    const idx = availableDates.indexOf(selectedDate);
+    return idx >= 0 ? idx : 0;
+  }, [selectedDate, availableDates]);
+
+  const windowStartDate = useMemo(() => {
+    if (availableDates.length === 0) return selectedDate;
+    const startIdx = Math.min(availableDates.length - 1, dateIndex + windowDays - 1);
+    return availableDates[startIdx] || selectedDate;
+  }, [availableDates, dateIndex, windowDays, selectedDate]);
 
   if (loading) {
     return (
@@ -287,31 +379,49 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   const bandRaw      = rawScoreForBandDays(metrics.band_hit_days);
   const newHighRaw   = rawScoreForNewHighDays(metrics.new_high_days);
 
-  // Build alert event trail from threshold-breaching metrics
-  const alertHistory: TimelineItem[] = [
-    ...(Number(metrics.price_rise_pct || 0) >= 15
-      ? [{ date: "Last 15D", title: `Price rose ${Number(metrics.price_rise_pct || 0).toFixed(1)}% vs T-180 close`, type: "Price Rise Alert" }]
-      : []),
-    ...(Number(metrics.price_z || 0) >= 1.645
-      ? [{ date: "Recent", title: `Price Z-Score: ${Number(metrics.price_z || 0).toFixed(2)}σ (threshold ≥1.645)`, type: "Price Z Alert" }]
-      : []),
-    ...(Number(metrics.volume_z || 0) >= 1.645
-      ? [{ date: "Recent", title: `Volume Z-Score: ${Number(metrics.volume_z || 0).toFixed(2)}σ — abnormal upward volume`, type: "Volume Spike" }]
-      : []),
-    ...(Number(metrics.band_hit_days || 0) >= 3
-      ? [{ date: "Last 15D", title: `${metrics.band_hit_days} days hit ≥90% of upper circuit limit`, type: "Band Escalation" }]
-      : []),
-    ...(Number(metrics.new_high_days || 0) >= 1
-      ? [{ date: "Last 15D", title: `${metrics.new_high_days} new 180-day price highs recorded`, type: "New High Event" }]
-      : []),
-    { date: "T-0", title: "Shortlisted via PVASF automated screening", type: "Queue Addition" },
-  ];
+  const canGoNext = dateIndex > 0;
+  const canGoPrev = dateIndex < availableDates.length - 1;
 
-  // Buy-aggressive only trades (Ftrd_Init_Side_Type === 1)
-  const buyAggressiveTrades = trades.filter((t) => {
-    const side = (t as any).Ftrd_Init_Side_Type;
-    return side === undefined || side === null || side === 1;
-  });
+  const handlePrevDay = () => {
+    if (canGoPrev) {
+      setSelectedDate(availableDates[dateIndex + 1]);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (canGoNext) {
+      setSelectedDate(availableDates[dateIndex - 1]);
+    }
+  };
+
+  /** Snap a date string to the nearest available trading date and update URL */
+  const snapToTradingDate = (raw: string) => {
+    if (!raw) return;
+    let finalDate = raw;
+    
+    if (!availableDateSet.has(raw)) {
+      finalDate = availableDates.find((d) => d <= raw) || availableDates[0];
+    }
+    
+    setSelectedDate(finalDate);
+    
+    const newParams = new URLSearchParams(searchParams?.toString() || "");
+    newParams.set("asOfDate", finalDate);
+    router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+  };
+
+  const formatDateDisplay = (dateStr: string) => {
+    if (!dateStr) return "";
+    const parts = dateStr.split("-");
+    if (parts.length === 3) {
+      const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+      const mIdx = parseInt(parts[1], 10) - 1;
+      return `${parseInt(parts[2], 10)} ${months[mIdx] || parts[1]} ${parts[0]}`;
+    }
+    return dateStr;
+  };
+
+
 
   return (
     <div className={cn(
@@ -323,10 +433,17 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       <div className="sticky top-0 z-40 bg-white border-b border-slate-200/90 shadow-xs">
         {/* Top Header & Metric Strip (Hidden in Fullscreen Mode) */}
         {!isFullscreen && (
-          <div className="px-5 pt-4 pb-3 space-y-3">
+          <div className="px-5 pt-3.5 pb-2.5 space-y-2.5">
             {/* Row 1: Company + Controls */}
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-3 flex-wrap">
+                <Link
+                  href="/"
+                  className="px-2 py-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:text-blue-600 hover:border-blue-300 text-xs font-bold transition-all shadow-2xs"
+                  title="Back to Surveillance Overview"
+                >
+                  ← Watchlist
+                </Link>
                 <h1 className="text-xl font-extrabold text-slate-900 leading-none">{company}</h1>
                 <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200">
                   {detail.symbol}
@@ -365,6 +482,62 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 >
                   {analysisStatus === "Active" ? "Mark Safe" : "Reopen"}
                 </Button>
+              </div>
+            </div>
+
+            {/* Row 2: Observation Date Selection & 15D Surveillance Window Indicator Bar */}
+            <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider select-none">
+                    Observation Date:
+                  </span>
+                  <TradingDatePicker
+                    availableDates={availableDates}
+                    selectedDate={selectedDate}
+                    onDateChange={(d) => snapToTradingDate(d)}
+                    size="sm"
+                  />
+                </div>
+
+                {/* Quick Day Shifters */}
+                <div className="flex items-center rounded-xl border border-slate-300/80 bg-white overflow-hidden text-xs font-semibold text-slate-700 divide-x divide-slate-200 shadow-2xs">
+                  <button
+                    onClick={handlePrevDay}
+                    disabled={!canGoPrev}
+                    className="flex items-center gap-1 px-2.5 py-1 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Shift to Previous Trading Day"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Prev</span>
+                  </button>
+                  <button
+                    onClick={handleNextDay}
+                    disabled={!canGoNext}
+                    className="flex items-center gap-1 px-2.5 py-1 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    title="Shift to Next Trading Day"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* Exchange Scope Selector */}
+                <ExchangeScopeSelector selected={exchange} onChange={setExchange} size="sm" />
+              </div>
+
+              {/* Window Range Badge */}
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-xl px-2.5 py-1 text-xs text-amber-950 font-semibold shadow-2xs">
+                <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                <span>
+                  15D Evaluation Window:{" "}
+                  <strong className="font-mono font-bold text-amber-950">
+                    {formatDateDisplay(windowStartDate)} → {formatDateDisplay(selectedDate)}
+                  </strong>
+                  <span className="ml-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300/80">
+                    {windowDays} Days
+                  </span>
+                </span>
               </div>
             </div>
 
@@ -488,14 +661,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </div>
               </Card>
             </div>
-
-            {/* Alert Event Trail & Audit Log */}
-            <Card>
-              <SectionHeader icon={<AlertTriangle className="w-4 h-4 text-amber-600" />} title="Alert Event Trail & Audit Log" />
-              <div className="p-5 flex-1">
-                <Timeline items={alertHistory} />
-              </div>
-            </Card>
           </div>
         )}
 
@@ -619,7 +784,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       icon={<PieChart className="w-4 h-4 text-blue-600" />}
                       title="Shareholder Structure (Day t vs Day T-180)"
                       subtitle="Holding distribution across Promoters, Top 1% large holders, and Public float"
-                      info="SEBI PVASF Section 5.3.3: Compares shares held by promoters and top 1% shareholders on day t & day T-180."
+                      info="PVASF Section 5.3.3: Compares shares held by promoters and top 1% shareholders on day t & day T-180."
                     />
                     <DataTable
                       headers={[
@@ -692,7 +857,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       icon={<Users className="w-4 h-4 text-indigo-600" />}
                       title="PAN Delivery Demographics & Trading Activity"
                       subtitle="Unique PAN holding counts (Day t vs T-180) & average daily trading counts (15D vs 180D)"
-                      info="SEBI PVASF Section 5.3.1 & 5.3.2: Tracks unique PAN-holders in scrip on day t & T-180 and average unique PANs trading in past 15 days & 180 days."
+                      info="PVASF Section 5.3.1 & 5.3.2: Tracks unique PAN-holders in scrip on day t & T-180 and average unique PANs trading in past 15 days & 180 days."
                     />
                     <DataTable
                       headers={[
@@ -721,42 +886,52 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       ]}
                     />
                   </Card>
-
-                  {/* TABLE 3: Corporate Announcements (Past 15 Days) */}
-                  <Card>
-                    <SectionHeader
-                      icon={<Zap className="w-4 h-4 text-blue-600" />}
-                      title="Details of Corporate Announcements made in Past 15 Days"
-                      subtitle="Dividends, bonus issues, stock splits, rights issues & related dilution factors (FACT_CORP_ACTIONS)"
-                      info="SEBI PVASF Section 5.2: Details of corporate announcements made in past 15 days."
-                    />
-                    {corpActions && corpActions.length > 0 ? (
-                      <DataTable
-                        headers={[
-                          "Record Date",
-                          "Category",
-                          "Announcement Details / Purpose",
-                          "Dilution Factor",
-                          "Ratio / Value"
-                        ]}
-                        rows={corpActions.map((ca, idx) => [
-                          <span key={idx} className="font-mono text-xs font-bold text-slate-800 bg-slate-50 px-2 py-0.5 rounded border border-slate-200">{ca.record_date}</span>,
-                          <span key={`cat-${idx}`} className="font-bold text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-md">{ca.category}</span>,
-                          <span key={`p-${idx}`} className="font-medium text-slate-900 leading-snug">{ca.purpose}</span>,
-                          <span key={`d-${idx}`} className="font-mono font-bold text-slate-700">{ca.dilution_factor}×</span>,
-                          <span key={`r-${idx}`} className="font-mono text-xs font-semibold text-slate-600">{ca.bonus_ratio || "—"}</span>,
-                        ])}
-                      />
-                    ) : (
-                      <div className="p-8 text-center text-slate-500 bg-slate-50/50">
-                        <p className="text-sm font-semibold text-slate-800">No Corporate Actions Recorded in Past 15 Days</p>
-                        <p className="text-xs text-slate-500 mt-1">No dividend, bonus, or stock split actions recorded for {symbol} in FCAC during observation window.</p>
-                      </div>
-                    )}
-                  </Card>
                 </>
               );
             })()}
+          </div>
+        )}
+
+        {/* TAB: CORPORATE ANNOUNCEMENTS */}
+        {activeTab === "Corporate Announcements" && (
+          <div className="space-y-5">
+            <Card className="border-slate-200/90 shadow-xs overflow-hidden">
+              <SectionHeader
+                icon={<FileText className="w-4.5 h-4.5 text-blue-600" />}
+                title="Corporate Announcements & Material Disclosures (Past 15 Days)"
+                subtitle="Dividends, bonus issues, stock splits, rights issues, and material disclosures recorded during the observation window"
+              />
+              {corpActions && corpActions.length > 0 ? (
+                <DataTable
+                  headers={[
+                    "Record Date",
+                    "Ex-Date",
+                    "Category",
+                    "Announcement Details / Purpose",
+                    "Ratio / Value",
+                    "Dilution Factor"
+                  ]}
+                  rows={corpActions.map((ca, idx) => [
+                    <span key={`rec-${idx}`} className="font-mono text-xs font-bold text-slate-800 bg-slate-50 px-2.5 py-1 rounded border border-slate-200">{ca.record_date}</span>,
+                    <span key={`ex-${idx}`} className="font-mono text-xs font-semibold text-slate-600">{ca.ex_date || "—"}</span>,
+                    <span key={`cat-${idx}`} className="font-bold text-xs bg-indigo-50 text-indigo-700 border border-indigo-100 px-2.5 py-1 rounded-md">{ca.category}</span>,
+                    <span key={`p-${idx}`} className="font-medium text-slate-900 leading-snug">{ca.purpose}</span>,
+                    <span key={`r-${idx}`} className="font-mono text-xs font-semibold text-slate-700">{ca.ratio_value || ca.bonus_ratio || "—"}</span>,
+                    <span key={`d-${idx}`} className="font-mono font-bold text-slate-700">{ca.dilution_factor ? `${ca.dilution_factor}×` : "1.00×"}</span>,
+                  ])}
+                />
+              ) : (
+                <div className="p-12 text-center text-slate-500 bg-slate-50/50 flex flex-col items-center justify-center">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-400 mb-3">
+                    <FileText className="w-6 h-6" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-800">No Corporate Actions Recorded in Past 15 Days</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-md">
+                    No dividend, bonus issue, stock split, or board meeting actions recorded for {symbol} during the 15-day surveillance observation window.
+                  </p>
+                </div>
+              )}
+            </Card>
           </div>
         )}
 
@@ -769,205 +944,265 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   Participant audit data not available for this scrip.
                 </div>
               </Card>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <Card>
-                    <SectionHeader
-                      icon={<TrendingUp className="w-4 h-4 text-blue-600" />}
-                      title="Net LTP Contribution %"
-                      subtitle="Price push (Pos - Neg) / 15D stock price movement"
-                      info="SEBI PVASF Section 4.1: Net price push (Positive LTP - Negative LTP contribution) divided by 15-day price change. Identifies aggressive buyer accounts pumping price upward."
-                    />
-                    <DataTable
-                      headers={[
-                        "PAN Holder Name",
-                        <span key="h-pan" className="inline-flex items-center">Client PAN <InfoTooltip text="Unique PAN token from exchange. Click to inspect full KYC, UCC, DP/BO, and Bank Demographics in the 360° Drawer." /></span>,
-                        <span key="h-push" className="inline-flex items-center">Net Price Push <InfoTooltip text="Absolute net rupee LTP contribution value delivered into the order book." /></span>,
-                        <span key="h-cont" className="inline-flex items-center">Contribution % <InfoTooltip text="Percentage share of total upward price momentum driven by this participant." /></span>
-                      ]}
-                      rows={participants.ltp_contributors.map((p) => [
-                        <span key="name" className="font-semibold text-slate-900">{p.name || "Unknown Entity"}</span>,
-                        <button
-                          key={p.participant}
-                          onClick={() => setSelectedPan(p.participant)}
-                          className="text-blue-600 hover:underline flex items-center gap-1 font-mono font-bold"
-                          title="Open Client 360° Profile"
-                        >
-                          <UserCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />{p.participant}
-                        </button>,
-                        <span
-                          key="push"
-                          className={cn(
-                            "font-mono text-xs font-semibold px-2 py-0.5 rounded border",
-                            (p.net_val ?? p.contribution ?? 0) >= 0
-                              ? "text-indigo-700 bg-indigo-50/80 border-indigo-100/80"
-                              : "text-rose-700 bg-rose-50/80 border-rose-100/80"
-                          )}
-                        >
-                          {p.net_val !== undefined
-                            ? p.net_val >= 0
-                              ? `+₹${p.net_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : `-₹${Math.abs(p.net_val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : Number(p.contribution || 0) >= 0
-                              ? `+${Number(p.contribution || 0).toFixed(1)}%`
-                              : `${Number(p.contribution || 0).toFixed(1)}%`}
-                        </span>,
-                        <div key="bar" className="flex items-center gap-2.5">
-                          <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
-                            <div
-                              className="bg-blue-600 h-full rounded-full transition-all duration-300"
-                              style={{ width: `${Math.min(100, Math.max(0, Number(p.contribution || 0)))}%` }}
-                            />
-                          </div>
-                          <span className="font-bold text-slate-900 tabular-nums">{Number(p.contribution || 0).toFixed(2)}%</span>
-                        </div>,
-                      ])}
-                    />
-                  </Card>
-                  <Card>
-                    <SectionHeader
-                      title="Concentrated Volume Share"
-                      subtitle="Top 5 participants by volume"
-                      info="SEBI PVASF Section 4.2: Measures percentage of total scrip volume traded by top client PANs over the 15-day window to detect cornering of floating supply."
-                    />
-                    <DataTable
-                      headers={[
-                        "PAN Holder Name",
-                        <span key="h-volpan" className="inline-flex items-center">Client PAN <InfoTooltip text="Click to open Client 360° Profile." /></span>,
-                        <span key="h-vol" className="inline-flex items-center">Volume <InfoTooltip text="Total gross shares traded by this participant in the 15-day window." /></span>,
-                        <span key="h-volpct" className="inline-flex items-center">Share % <InfoTooltip text="Participant traded volume divided by total exchange scrip volume." /></span>
-                      ]}
-                      rows={participants.volume_share.map((p) => [
-                        <span key="name" className="font-semibold text-slate-900">{p.name || "Unknown Entity"}</span>,
-                        <button
-                          key={p.participant}
-                          onClick={() => setSelectedPan(p.participant)}
-                          className="text-blue-600 hover:underline flex items-center gap-1 font-mono font-bold"
-                          title="Open Client 360° Profile"
-                        >
-                          <UserCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />{p.participant}
-                        </button>,
-                        Number(p.volume || 0).toLocaleString("en-IN"),
-                        <div key="bar" className="flex items-center gap-2.5">
-                          <div className="w-14 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
-                            <div
-                              className="bg-indigo-600 h-full rounded-full transition-all duration-300"
-                              style={{ width: `${Math.min(100, Math.max(0, Number(p.share_pct || 0)))}%` }}
-                            />
-                          </div>
-                          <span className="font-bold text-slate-900 tabular-nums">{Number(p.share_pct || 0).toFixed(2)}%</span>
-                        </div>,
-                      ])}
-                    />
-                  </Card>
-                </div>
+            ) : (() => {
+              const allLtp = participants.ltp_contributors || [];
+              const posList = participants.pos_ltp_contributors && participants.pos_ltp_contributors.length > 0
+                ? participants.pos_ltp_contributors
+                : allLtp.filter(p => (p.pos_val ?? (p.net_val && p.net_val > 0 ? p.net_val : 0)) > 0 || (p.contribution && p.contribution > 0));
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                  <Card>
-                    <SectionHeader
-                      title="Counterparty Concentration"
-                      subtitle="Top 5 counterparty pairs"
-                      info="SEBI PVASF Section 4.3: Evaluates bilateral trade volume between buyer-seller PAN pairs. High concentration suggests synchronized or non-genuine ring trading."
-                    />
-                    <DataTable
-                      headers={[
-                        <span key="h-cppair" className="inline-flex items-center">Counterparty Pair <InfoTooltip text="Buyer PAN and Seller PAN pair identified from AGG_PAN_PAIR_DAY." /></span>,
-                        <span key="h-cpvol" className="inline-flex items-center">Volume <InfoTooltip text="Total shares matched between this specific bilateral pair." /></span>,
-                        <span key="h-cppct" className="inline-flex items-center">Share % <InfoTooltip text="Percentage of total scrip volume accounted for by this pair." /></span>
-                      ]}
-                      rows={participants.counterparty_pairs.map((p) => [
-                        <span key={p.pair} className="font-mono text-xs font-medium text-slate-800">{p.pair}</span>,
-                        Number(p.volume || 0).toLocaleString("en-IN"),
-                        `${Number(p.share_pct || 0).toFixed(2)}%`,
-                      ])}
-                    />
-                  </Card>
+              const negList = participants.neg_ltp_contributors && participants.neg_ltp_contributors.length > 0
+                ? participants.neg_ltp_contributors
+                : allLtp.filter(p => (p.neg_val ?? (p.net_val && p.net_val < 0 ? Math.abs(p.net_val) : 0)) > 0 || (p.contribution && p.contribution < 0));
+
+              return (
+                <>
+                  {/* Row 1: Two Dedicated LTP Contribution Tables (Positive & Negative) */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {/* Positive LTP Contribution Table */}
+                    <Card>
+                      <SectionHeader
+                        icon={<TrendingUp className="w-4 h-4 text-slate-600" />}
+                        title="Positive LTP Contribution"
+                        subtitle="Aggressive buy orders driving upward price momentum (+₹)"
+                        info="PVASF Section 4.1: Positive LTP contribution delivered into the order book. Quantifies accounts aggressively lifting ask prices to drive stock price upwards."
+                      />
+                      {posList.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No significant positive price pushers detected in the observation window.
+                        </div>
+                      ) : (
+                        <DataTable
+                          alignments={["left", "left", "right", "right"]}
+                          headers={[
+                            <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
+                            <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
+                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Price Push <InfoTooltip text="Rupee LTP contribution driving price upwards." /></span>,
+                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of upward price momentum." /></span>
+                          ]}
+                          rows={posList.map((p) => {
+                            const posVal = p.pos_val ?? (p.net_val && p.net_val > 0 ? p.net_val : 0);
+                            const contPct = Math.abs(Number(p.contribution || 0));
+
+                            return [
+                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
+                              <span
+                                key={p.participant}
+                                className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                              >
+                                <UserCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                {p.participant}
+                              </span>,
+                              <span key="pos" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                                +₹{posVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>,
+                              <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                                <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                                  <div
+                                    className="bg-slate-700 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min(100, contPct)}%` }}
+                                  />
+                                </div>
+                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">
+                                  +{contPct.toFixed(2)}%
+                                </span>
+                              </div>,
+                            ];
+                          })}
+                        />
+                      )}
+                    </Card>
+
+                    {/* Negative LTP Contribution Table */}
+                    <Card>
+                      <SectionHeader
+                        icon={<TrendingDown className="w-4 h-4 text-slate-600" />}
+                        title="Negative LTP Contribution"
+                        subtitle="Aggressive sell orders dampening price or hitting bids (-₹)"
+                        info="PVASF Section 4.1: Negative LTP contribution delivered into the order book. Quantifies accounts aggressively hitting bid prices to pull or suppress stock price downwards."
+                      />
+                      {negList.length === 0 ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No significant negative price suppressors detected in the observation window.
+                        </div>
+                      ) : (
+                        <DataTable
+                          alignments={["left", "left", "right", "right"]}
+                          headers={[
+                            <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
+                            <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
+                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Price Pull <InfoTooltip text="Rupee LTP contribution pulling price downwards." /></span>,
+                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of price dampening impact." /></span>
+                          ]}
+                          rows={negList.map((p) => {
+                            const negVal = p.neg_val ?? (p.net_val && p.net_val < 0 ? Math.abs(p.net_val) : 0);
+                            const contPct = Math.abs(Number(p.contribution || 0));
+
+                            return [
+                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
+                              <span
+                                key={p.participant}
+                                className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                              >
+                                <UserCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                {p.participant}
+                              </span>,
+                              <span key="neg" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                                -₹{negVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>,
+                              <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                                <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                                  <div
+                                    className="bg-slate-700 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min(100, contPct)}%` }}
+                                  />
+                                </div>
+                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">
+                                  -{contPct.toFixed(2)}%
+                                </span>
+                              </div>,
+                            ];
+                          })}
+                        />
+                      )}
+                    </Card>
+                  </div>
+
+                  {/* Row 2: Concentrated Volume Share & Counterparty Concentration */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {/* Concentrated Volume Share */}
+                    <Card>
+                      <SectionHeader
+                        title="Concentrated Volume Share"
+                        subtitle="Top 5 participants by volume"
+                        info="PVASF Section 4.2: Measures percentage of total scrip volume traded by top client PANs over the 15-day window to detect cornering of floating supply."
+                      />
+                      <DataTable
+                        alignments={["left", "left", "right", "right"]}
+                        headers={[
+                          <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
+                          <span key="h-volpan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
+                          <span key="h-vol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total gross shares traded by this participant in the 15-day window." /></span>,
+                          <span key="h-volpct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Participant traded volume divided by total exchange scrip volume." /></span>
+                        ]}
+                        rows={participants.volume_share.map((p) => [
+                          <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
+                          <span
+                            key={p.participant}
+                            className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                          >
+                            <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            {p.participant}
+                          </span>,
+                          <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
+                            {Number(p.volume || 0).toLocaleString("en-IN")}
+                          </span>,
+                          <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                            <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                              <div
+                                className="bg-slate-700 h-full rounded-full transition-all duration-300"
+                                style={{ width: `${Math.min(100, Math.max(0, Number(p.share_pct || 0)))}%` }}
+                              />
+                            </div>
+                            <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">{Number(p.share_pct || 0).toFixed(2)}%</span>
+                          </div>,
+                        ])}
+                      />
+                    </Card>
+
+                    {/* Counterparty Concentration */}
+                    <Card>
+                      <SectionHeader
+                        title="Counterparty Concentration"
+                        subtitle="Top 5 counterparty pairs"
+                        info="PVASF Section 4.3: Evaluates bilateral trade volume between buyer-seller PAN pairs. High concentration suggests synchronized or non-genuine ring trading."
+                      />
+                      <DataTable
+                        alignments={["left", "right", "right"]}
+                        headers={[
+                          <span key="h-cppair" className="inline-flex items-center gap-1 whitespace-nowrap">Counterparty Pair <InfoTooltip text="Buyer PAN and Seller PAN pair identified from AGG_PAN_PAIR_DAY." /></span>,
+                          <span key="h-cpvol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total shares matched between this specific bilateral pair." /></span>,
+                          <span key="h-cppct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Percentage of total scrip volume accounted for by this pair." /></span>
+                        ]}
+                        rows={participants.counterparty_pairs.map((p) => {
+                          const pairParts = p.pair.split(" <-> ");
+                          const p1 = pairParts[0] || p.pair;
+                          const p2 = pairParts[1] || "";
+                          return [
+                            <div key={p.pair} className="inline-flex items-center gap-1.5 font-mono text-xs whitespace-nowrap">
+                              <span
+                                className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold border border-slate-200 inline-flex items-center gap-1"
+                              >
+                                <UserCircle className="w-3 h-3 text-slate-500" />
+                                {p1}
+                              </span>
+                              {p2 && (
+                                <>
+                                  <span className="text-slate-400 font-bold px-0.5">⇄</span>
+                                  <span
+                                    className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold border border-slate-200 inline-flex items-center gap-1"
+                                  >
+                                    <UserCircle className="w-3 h-3 text-slate-500" />
+                                    {p2}
+                                  </span>
+                                </>
+                              )}
+                            </div>,
+                            <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
+                              {Number(p.volume || 0).toLocaleString("en-IN")}
+                            </span>,
+                            <span key="pct" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                              {Number(p.share_pct || 0).toFixed(2)}%
+                            </span>,
+                          ];
+                        })}
+                      />
+                    </Card>
+                  </div>
+
+                  {/* Row 3: Net P&L — Top 5 Profit Makers */}
                   <Card>
                     <SectionHeader
                       title="Net P&L — Top 5 Profit Makers"
                       subtitle="highest net gainers in 15D window"
-                      info="SEBI PVASF Section 4.4: Mark-to-Market net trading P&L (Total Sells - Total Buys + Open Position @ Latest Close) during the 15-day window. Pinpoints who extracted cash profits."
+                      info="PVASF Section 4.4: Mark-to-Market net trading P&L (Total Sells - Total Buys + Open Position @ Latest Close) during the 15-day window. Pinpoints who extracted cash profits."
                     />
                     <DataTable
+                      alignments={["left", "left", "right", "right", "right"]}
                       headers={[
-                        "PAN Holder Name",
-                        <span key="h-pnlpan" className="inline-flex items-center">Client PAN <InfoTooltip text="Click to open Client 360° Profile." /></span>,
-                        <span key="h-pnl" className="inline-flex items-center">Net P&L (₹) <InfoTooltip text="Net realized + unrealized profit extracted during the 15-day pump." /></span>,
-                        <span key="h-bvol" className="inline-flex items-center">Buy Vol <InfoTooltip text="Total buy execution quantity." /></span>,
-                        <span key="h-svol" className="inline-flex items-center">Sell Vol <InfoTooltip text="Total sell execution quantity." /></span>
+                        <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
+                        <span key="h-pnlpan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
+                        <span key="h-pnl" className="inline-flex items-center gap-1 whitespace-nowrap">Net P&L (₹) <InfoTooltip text="Net realized + unrealized profit extracted during the 15-day pump." /></span>,
+                        <span key="h-bvol" className="inline-flex items-center gap-1 whitespace-nowrap">Buy Vol <InfoTooltip text="Total buy execution quantity." /></span>,
+                        <span key="h-svol" className="inline-flex items-center gap-1 whitespace-nowrap">Sell Vol <InfoTooltip text="Total sell execution quantity." /></span>
                       ]}
                       rows={participants.profit_makers.map((p) => [
-                        <span key="name" className="font-semibold text-slate-900">{p.name || "Unknown Entity"}</span>,
-                        <button
+                        <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
+                        <span
                           key={p.participant}
-                          onClick={() => setSelectedPan(p.participant)}
-                          className="text-blue-600 hover:underline flex items-center gap-1 font-mono font-bold"
-                          title="Open Client 360° Profile"
+                          className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
                         >
-                          <UserCircle className="w-3.5 h-3.5 text-blue-600 shrink-0" />{p.participant}
-                        </button>,
-                        <span key="pnl" className={Number(p.net_pnl || 0) >= 0 ? "text-emerald-700 font-bold font-mono" : "text-rose-600 font-bold font-mono"}>
+                          <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                          {p.participant}
+                        </span>,
+                        <span key="pnl" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
                           {Number(p.net_pnl || 0) >= 0
                             ? `+₹${Number(p.net_pnl || 0).toLocaleString("en-IN")}`
                             : `-₹${Math.abs(Number(p.net_pnl || 0)).toLocaleString("en-IN")}`}
                         </span>,
-                        Number(p.buy_volume || 0).toLocaleString("en-IN"),
-                        Number(p.sell_volume || 0).toLocaleString("en-IN"),
+                        <span key="bvol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.buy_volume || 0).toLocaleString("en-IN")}</span>,
+                        <span key="svol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.sell_volume || 0).toLocaleString("en-IN")}</span>,
                       ])}
                     />
                   </Card>
-                </div>
-
-                <div className="grid grid-cols-2 gap-5">
-                  <Card>
-                    <SectionHeader
-                      title="Trade Reversal Ratio (RTR)"
-                      subtitle="RTR = 2×min(A→B, B→A)/gross"
-                      info="Trade Reversal Ratio: RTR = [2 × min(A→B, B→A) / (A→B + B→A)] × 100. Measures synchronized buy-and-sell-back trades between two accounts on the same day without change of beneficial ownership."
-                    />
-                    <DataTable
-                      headers={[
-                        <span key="h-rtrpair" className="inline-flex items-center">Pair <InfoTooltip text="Bilateral participant pair." /></span>,
-                        <span key="h-rtrvol" className="inline-flex items-center">Gross Volume <InfoTooltip text="Total volume exchanged between both accounts." /></span>,
-                        <span key="h-rtrpct" className="inline-flex items-center">Reversal % <InfoTooltip text="RTR ≥80% indicates highly synchronized reversal wash trading." /></span>
-                      ]}
-                      rows={(participants.reversal_pairs ?? []).map((p) => [
-                        <span key={p.pair} className="font-mono text-xs font-medium text-slate-800">{p.pair}</span>,
-                        Number(p.volume || 0).toLocaleString("en-IN"),
-                        <span key="rtr" className={Number(p.reversal_ratio || 0) >= 80 ? "text-rose-600 font-bold" : Number(p.reversal_ratio || 0) >= 50 ? "text-amber-600 font-bold" : "text-slate-600"}>
-                          {Number(p.reversal_ratio || 0).toFixed(1)}%
-                        </span>,
-                      ])}
-                    />
-                  </Card>
-                  <Card>
-                    <SectionHeader
-                      title="Circular Trade Loops"
-                      subtitle="Detected cycles ≥3 hops"
-                      info="Directed graph cycle detection algorithm identifying closed rings (e.g. A → B → C → A) of length 3 to 5 with bottleneck rotated volume."
-                    />
-                    <DataTable
-                      headers={[
-                        <span key="h-looppath" className="inline-flex items-center">Cycle Path <InfoTooltip text="Sequence of participant accounts forming the circular trading loop." /></span>,
-                        <span key="h-looprot" className="inline-flex items-center">Rotated Vol <InfoTooltip text="Bottleneck minimum volume rotated across all hops in the cycle." /></span>,
-                        <span key="h-loopgross" className="inline-flex items-center">Gross Vol <InfoTooltip text="Total combined volume traded across all hops in the loop." /></span>
-                      ]}
-                      rows={(participants.circular_loops ?? []).map((p) => [
-                        <span key={p.loop} className="font-mono text-xs text-slate-700 leading-normal break-all">{p.loop}</span>,
-                        p.volume.toLocaleString("en-IN"),
-                        p.gross_volume.toLocaleString("en-IN"),
-                      ])}
-                    />
-                  </Card>
-                </div>
-              </>
-            )}
+                </>
+              );
+            })()}
           </div>
         )}
       </div>
 
-      {/* ── CLIENT 360° DRAWER ── */}
+      {/* ── CLIENT 360° DRAWER (Omitted per user request; preserved in codebase) ── */}
+      {/*
       {selectedPan && (
         <>
           <div
@@ -1051,95 +1286,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           </div>
         </>
       )}
-
-      {/* ── TRADE DETAIL MODAL ── */}
-      {selectedTrade && (
-        <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg border border-slate-200 shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
-            <div className="flex items-center justify-between p-3 border-b border-slate-200 bg-slate-100">
-              <div className="font-bold text-sm text-slate-800 flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-600" />
-                Trade #{selectedTrade.Ftrd_Trd_Num}
-              </div>
-              <button
-                onClick={() => setSelectedTrade(null)}
-                className="p-1 hover:bg-slate-200 rounded text-slate-500"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-3 bg-slate-50">
-              {/* Execution summary */}
-              <div className="grid grid-cols-3 gap-3">
-                <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Exec Price</div>
-                  <div className="font-bold text-slate-900 font-mono">₹{Number(selectedTrade.Ftrd_Trd_Price || 0).toFixed(2)}</div>
-                </div>
-                <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Quantity</div>
-                  <div className="font-bold text-slate-900 font-mono">{Number(selectedTrade.Ftrd_Trd_Qty || 0).toLocaleString("en-IN")}</div>
-                </div>
-                <div className="bg-white border border-slate-200 rounded p-2">
-                  <div className="text-xs text-slate-500 font-semibold mb-0.5">Trade Value</div>
-                  <div className="font-bold text-slate-900 font-mono">₹{Number((selectedTrade as any).Ftrd_Trd_Val ?? (Number(selectedTrade.Ftrd_Trd_Qty || 0) * Number(selectedTrade.Ftrd_Trd_Price || 0))).toLocaleString("en-IN")}</div>
-                </div>
-              </div>
-
-              {/* Buy/Sell sides */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-emerald-50 border border-emerald-200 rounded p-2.5">
-                  <div className="text-xs font-bold text-emerald-800 mb-1">Buy Side</div>
-                  <div className="text-xs font-mono space-y-0.5">
-                    <div>Token: <strong>{selectedTrade.Ftrd_Buy_Exch_Clnt_Token}</strong></div>
-                    {(selectedTrade as any).Ftrd_Buy_Exch_TM_Token && (
-                      <div>TM: {(selectedTrade as any).Ftrd_Buy_Exch_TM_Token}</div>
-                    )}
-                    {(selectedTrade as any).Ftrd_Buy_CTCL_Algo_Flag && (
-                      <div className="text-[10px] bg-violet-100 text-violet-700 px-1 rounded inline-block font-semibold">Algo</div>
-                    )}
-                  </div>
-                </div>
-                <div className="bg-rose-50 border border-rose-200 rounded p-2.5">
-                  <div className="text-xs font-bold text-rose-800 mb-1">Sell Side</div>
-                  <div className="text-xs font-mono space-y-0.5">
-                    <div>Token: <strong>{selectedTrade.Ftrd_Sell_Exch_Clnt_Token}</strong></div>
-                    {(selectedTrade as any).Ftrd_Sell_Exch_TM_Token && (
-                      <div>TM: {(selectedTrade as any).Ftrd_Sell_Exch_TM_Token}</div>
-                    )}
-                    {(selectedTrade as any).Ftrd_Sell_CTCL_Algo_Flag && (
-                      <div className="text-[10px] bg-violet-100 text-violet-700 px-1 rounded inline-block font-semibold">Algo</div>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Compliance flags */}
-              <div className="bg-white border border-slate-200 rounded p-2.5">
-                <div className="text-xs font-bold text-slate-700 mb-1.5">Compliance Flags</div>
-                <div className="flex gap-2 flex-wrap">
-                  <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded",
-                    selectedTrade.Ftrd_Same_Broker_Wash_Flag === 1
-                      ? "bg-rose-100 text-rose-700"
-                      : "bg-slate-100 text-slate-400"
-                  )}>
-                    Same-Broker Wash: {selectedTrade.Ftrd_Same_Broker_Wash_Flag === 1 ? "⚠ YES" : "NO"}
-                  </span>
-                  <span className={cn(
-                    "text-[10px] font-bold px-2 py-0.5 rounded",
-                    (selectedTrade as any).Ftrd_Diff_Broker_Wash_Flag === 1
-                      ? "bg-orange-100 text-orange-700"
-                      : "bg-slate-100 text-slate-400"
-                  )}>
-                    Cross-Broker Wash: {(selectedTrade as any).Ftrd_Diff_Broker_Wash_Flag === 1 ? "⚠ YES" : "NO"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      */}
 
       {/* Fullscreen High-Definition Chart Modal */}
       {/* HIGH-RES FULLSCREEN CHART MODAL */}
@@ -1191,6 +1338,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           </div>
         </div>
       )}
+      
+      {/* Non-Trading Day Toast Notification */}
+      <Toast 
+        show={toastAlert.show} 
+        message={toastAlert.msg} 
+        onClose={() => setToastAlert({ ...toastAlert, show: false })} 
+        type="warning" 
+      />
     </div>
   );
 }

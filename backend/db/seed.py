@@ -706,30 +706,95 @@ def seed_database(db: Session) -> dict:
             num_active = min(len(pool), random.randint(12, 35))
             active_clients = random.sample(pool, num_active)
 
-            for c in active_clients:
+            for idx_c, c in enumerate(active_clients):
                 b_qty = random.randint(500, 5000)
                 b_val = round(b_qty * close_p, 2)
+                # Differentiate aggressive buyers (positive pushers) vs aggressive sellers (negative suppressors)
+                if idx_c % 3 == 0:
+                    # Strong positive price pusher (pump initiator)
+                    pos_push = round(b_val * 0.065, 2)
+                    neg_push = round(b_val * 0.005, 2)
+                elif idx_c % 3 == 1:
+                    # Strong negative price suppressor (dump / dampener)
+                    pos_push = round(b_val * 0.008, 2)
+                    neg_push = round(b_val * 0.055, 2)
+                else:
+                    # Moderate balanced trader
+                    pos_push = round(b_val * 0.025, 2)
+                    neg_push = round(b_val * 0.020, 2)
+
                 acsd_objects.append(AggClntSecDay(
                     Acsd_Date=trd_date,
                     Acsd_Cmp_Token=meta["cmp_token"],
                     Acsd_Exch_Clnt_Token=c["token"],
                     Acsd_Clnt_Token=c["token"],
                     Acsd_Buy_Tot_Qty=Decimal(str(b_qty)),
-                    Acsd_Sell_Tot_Qty=Decimal(str(round(b_qty * 0.8, 2))),
+                    Acsd_Sell_Tot_Qty=Decimal(str(round(b_qty * 0.85, 2))),
                     Acsd_Buy_Tot_Val=Decimal(str(b_val)),
-                    Acsd_Sell_Tot_Val=Decimal(str(round(b_val * 0.8, 2))),
+                    Acsd_Sell_Tot_Val=Decimal(str(round(b_val * 0.85, 2))),
                     Acsd_Buy_Tot_Cnt=random.randint(5, 50),
-                    Acsd_Pos_Cont_Val=Decimal(str(round(b_val * 0.05, 2))),
-                    Acsd_Neg_Cont_Val=Decimal(str(round(b_val * 0.015, 2))),
+                    Acsd_Pos_Cont_Val=Decimal(str(pos_push)),
+                    Acsd_Neg_Cont_Val=Decimal(str(neg_push)),
                 ))
 
-            # Counterparty Pair Trades
-            if sym == "ZENITHBIO":
-                # 3-node circular loop
+            # Counterparty Pair Trades with Trade Reversal Ratio (RTR) & Circular Trading Loops
+            if sym in ["ALPHATECH", "ZENITHBIO", "NOVAENERGY"]:
+                # 1. Bilateral Reversal Pairs with High RTR (>= 80% synchronized wash trades)
+                # Pair 1: pool[0] <-> pool[1] (e.g. ~99.8% reversal)
+                # Pair 2: pool[2] <-> pool[3] (e.g. ~98.8% reversal)
+                # Pair 3: pool[4] <-> pool[5] (e.g. ~94.4% reversal)
+                rev_specs = [
+                    (pool[0], pool[1], 1010, 1015, 0.05, 0.005),
+                    (pool[2], pool[3], 795,  807,  0.04, 0.006),
+                    (pool[4], pool[5] if len(pool) > 5 else pool[1], 880,  948,  0.035, 0.008),
+                ]
+                for cA, cB, qA, qB, p_cont, n_cont in rev_specs:
+                    # Leg A -> B (A buys from B)
+                    vA = round(qA * close_p, 2)
+                    appd_objects.append(AggPanPairDay(
+                        Appd_Date=trd_date,
+                        Appd_Cmp_Token=meta["cmp_token"],
+                        Appd_Exch_Clnt_Token=cA["token"],
+                        Appd_Clnt_Token=cA["token"],
+                        Appd_Exch_TM_Token=cA["tm_token"],
+                        Appd_TM_Token=cA["tm_token"],
+                        Appd_Cpty_Exch_Clnt_Token=cB["token"],
+                        Appd_Cpty_Clnt_Token=cB["token"],
+                        Appd_Cpty_Exch_TM_Token=cB["tm_token"],
+                        Appd_Cpty_TM_Token=cB["tm_token"],
+                        Appd_Buy_Tot_Qty=Decimal(str(qA)),
+                        Appd_Buy_Tot_Val=Decimal(str(vA)),
+                        Appd_Buy_Tot_Cnt=random.randint(8, 30),
+                        Appd_Pos_Contri=Decimal(str(round(vA * p_cont, 2))),
+                        Appd_Neg_Contri=Decimal(str(round(vA * n_cont, 2))),
+                        Appd_Algo_Flag=0,
+                    ))
+                    # Leg B -> A (B buys from A)
+                    vB = round(qB * close_p, 2)
+                    appd_objects.append(AggPanPairDay(
+                        Appd_Date=trd_date,
+                        Appd_Cmp_Token=meta["cmp_token"],
+                        Appd_Exch_Clnt_Token=cB["token"],
+                        Appd_Clnt_Token=cB["token"],
+                        Appd_Exch_TM_Token=cB["tm_token"],
+                        Appd_TM_Token=cB["tm_token"],
+                        Appd_Cpty_Exch_Clnt_Token=cA["token"],
+                        Appd_Cpty_Clnt_Token=cA["token"],
+                        Appd_Cpty_Exch_TM_Token=cA["tm_token"],
+                        Appd_Cpty_TM_Token=cA["tm_token"],
+                        Appd_Buy_Tot_Qty=Decimal(str(qB)),
+                        Appd_Buy_Tot_Val=Decimal(str(vB)),
+                        Appd_Buy_Tot_Cnt=random.randint(8, 30),
+                        Appd_Pos_Contri=Decimal(str(round(vB * p_cont * 0.9, 2))),
+                        Appd_Neg_Contri=Decimal(str(round(vB * n_cont * 0.9, 2))),
+                        Appd_Algo_Flag=0,
+                    ))
+
+                # 2. Multi-hop circular trading loop: c0 -> c1 -> c2 -> c0
                 c0, c1, c2 = pool[0], pool[1], pool[2]
-                pairs = [(c0, c1), (c1, c2), (c2, c0)]
-                for c_buy, c_sell in pairs:
-                    p_qty = random.randint(1500, 3500)
+                ring_pairs = [(c0, c1), (c1, c2), (c2, c0)]
+                for c_buy, c_sell in ring_pairs:
+                    p_qty = random.randint(1200, 2500)
                     p_val = round(p_qty * close_p, 2)
                     appd_objects.append(AggPanPairDay(
                         Appd_Date=trd_date,
@@ -744,32 +809,12 @@ def seed_database(db: Session) -> dict:
                         Appd_Cpty_TM_Token=c_sell["tm_token"],
                         Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
                         Appd_Buy_Tot_Val=Decimal(str(p_val)),
-                        Appd_Buy_Tot_Cnt=random.randint(5, 25),
-                        Appd_Pos_Contri=Decimal(str(round(p_val * 0.04, 2))),
+                        Appd_Buy_Tot_Cnt=random.randint(5, 20),
+                        Appd_Pos_Contri=Decimal(str(round(p_val * 0.035, 2))),
+                        Appd_Neg_Contri=Decimal(str(round(p_val * 0.010, 2))),
+                        Appd_Algo_Flag=0,
                     ))
-            elif sym == "ALPHATECH":
-                # Same-broker wash trade pair (Same TM token 300104)
-                c_buy, c_sell = pool[0], pool[1]
-                p_qty = random.randint(3000, 8000)
-                p_val = round(p_qty * close_p, 2)
-                same_tm = 300104
-                appd_objects.append(AggPanPairDay(
-                    Appd_Date=trd_date,
-                    Appd_Cmp_Token=meta["cmp_token"],
-                    Appd_Exch_Clnt_Token=c_buy["token"],
-                    Appd_Clnt_Token=c_buy["token"],
-                    Appd_Exch_TM_Token=same_tm,
-                    Appd_TM_Token=same_tm,
-                    Appd_Cpty_Exch_Clnt_Token=c_sell["token"],
-                    Appd_Cpty_Clnt_Token=c_sell["token"],
-                    Appd_Cpty_Exch_TM_Token=same_tm,
-                    Appd_Cpty_TM_Token=same_tm,
-                    Appd_Buy_Tot_Qty=Decimal(str(p_qty)),
-                    Appd_Buy_Tot_Val=Decimal(str(p_val)),
-                    Appd_Buy_Tot_Cnt=random.randint(10, 40),
-                    Appd_Pos_Contri=Decimal(str(round(p_val * 0.05, 2))),
-                    Appd_Algo_Flag=0,
-                ))
+
             elif sym == "ORBITCEM":
                 # Spoofing & HFT CTCL Algo orders
                 c_buy, c_sell = pool[0], pool[1] if len(pool) > 1 else pool[0]
@@ -790,6 +835,7 @@ def seed_database(db: Session) -> dict:
                     Appd_Buy_Tot_Val=Decimal(str(p_val)),
                     Appd_Buy_Tot_Cnt=random.randint(8, 30),
                     Appd_Pos_Contri=Decimal(str(round(p_val * 0.03, 2))),
+                    Appd_Neg_Contri=Decimal(str(round(p_val * 0.01, 2))),
                     Appd_Algo_Flag=1,
                 ))
             else:
@@ -811,6 +857,7 @@ def seed_database(db: Session) -> dict:
                     Appd_Buy_Tot_Val=Decimal(str(p_val)),
                     Appd_Buy_Tot_Cnt=random.randint(2, 10),
                     Appd_Pos_Contri=Decimal(str(round(p_val * 0.01, 2))),
+                    Appd_Neg_Contri=Decimal(str(round(p_val * 0.005, 2))),
                     Appd_Algo_Flag=0,
                 ))
 

@@ -17,6 +17,7 @@ from pv_alert_surveillance import (
     MarketMetricsResult,
     ParticipantAuditResult
 )
+from backend.services.market_calendar_service import MarketCalendarService
 
 COMPANY_NAMES = {
     "ALPHATECH": "Alpha Technologies Ltd",
@@ -73,6 +74,7 @@ class EODSurveillanceService:
     def __init__(self):
         self.config = SurveillanceConfig()
         self.engine = SurveillanceEngine(self.config)
+        self.calendar = MarketCalendarService()
         
         # Load EOD pricing archives from database AGG_SEC_DAY; fallback to deterministic synthetic feed
         db_df = self._load_db_eod()
@@ -170,8 +172,9 @@ class EODSurveillanceService:
                     "SellVolume": 0.0,
                     "BuyValue": raw_df["TrdVal"].astype(float),
                     "SellValue": 0.0,
-                    "LTPContribution": (pos_vals - neg_vals),
+                    "LTPContribution": pos_vals,
                     "PosContVal": pos_vals,
+                    "NegContVal": 0.0,
                 })
                 # Construct matched seller rows
                 s_df = pd.DataFrame({
@@ -183,8 +186,9 @@ class EODSurveillanceService:
                     "SellVolume": raw_df["TrdQty"].astype(float),
                     "BuyValue": 0.0,
                     "SellValue": raw_df["TrdVal"].astype(float),
-                    "LTPContribution": 0.0,
+                    "LTPContribution": -neg_vals,
                     "PosContVal": 0.0,
+                    "NegContVal": neg_vals,
                 })
                 full_df = pd.concat([b_df, s_df], ignore_index=True)
                 return full_df
@@ -206,8 +210,10 @@ class EODSurveillanceService:
 
             df = pd.read_sql(q_clnt.statement, db.bind)
             if not df.empty:
-                pos = df["PosContVal"].fillna(0.0)
-                neg = df["NegContVal"].fillna(0.0)
+                pos = df["PosContVal"].astype(float).fillna(0.0)
+                neg = df["NegContVal"].astype(float).fillna(0.0)
+                df["PosContVal"] = pos
+                df["NegContVal"] = neg
                 df["LTPContribution"] = pos - neg
                 df["CounterpartyPAN"] = "MULTIPLE"
                 return df
@@ -344,39 +350,111 @@ class EODSurveillanceService:
 
     def _generate_sample_trades_df(self) -> pd.DataFrame:
         """Generates sample participant trades data for auditing LTP and counterparty concentration."""
-        pans = ["PAN A", "PAN B", "PAN C", "PAN D", "PAN E", "PAN F"]
+        # Realistic PAN tokens matching regulatory surveillance format
+        sample_pans = [
+            "GDKNW2066S", "UHKFC2840Q", "EXUFM0503J", "HWFTM1488X", 
+            "MZOKE8130O", "XCGWR8003L", "CVXUL2488S", "SSXSC8612W", "YQMCC7107X"
+        ]
         rows = []
         for ticker in ["ALPHATECH", "NOVAENERGY", "ZENITHBIO", "ORBITCEM", "TCS", "SBIN", "ICICIBANK", "AXISBANK"]:
-            for i in range(20):
-                p1 = np.random.choice(pans)
-                p2 = np.random.choice([p for p in pans if p != p1])
-                buy_vol = np.random.randint(10000, 100000)
-                sell_vol = buy_vol
-                price = np.random.uniform(100, 2000)
-                ltp_contrib = np.random.uniform(-0.5, 2.5)
-                
+            # 1. Bilateral high RTR reversal pairs (RTR = 2*min(A->B, B->A)/gross)
+            rev_pairs = [
+                ("GDKNW2066S", "UHKFC2840Q", 1010, 1015, 4.25, 0.40),
+                ("EXUFM0503J", "HWFTM1488X", 795, 807, 3.10, 0.35),
+                ("MZOKE8130O", "XCGWR8003L", 880, 948, 2.60, 0.50),
+                ("CVXUL2488S", "MZOKE8130O", 725, 793, 1.95, 0.60),
+                ("SSXSC8612W", "YQMCC7107X", 780, 910, 1.70, 0.75),
+            ]
+            for p1, p2, v1, v2, pos_c, neg_c in rev_pairs:
+                price = 1500.0 if ticker in ["ALPHATECH", "ZENITHBIO", "ORBITCEM"] else 500.0
+                # A -> B
                 rows.append({
                     "Ticker": ticker,
                     "Date": datetime.now(),
                     "PAN": p1,
                     "CounterpartyPAN": p2,
-                    "BuyVolume": buy_vol,
-                    "SellVolume": 0,
-                    "BuyValue": buy_vol * price,
-                    "SellValue": 0,
-                    "LTPContribution": ltp_contrib
+                    "BuyVolume": float(v1),
+                    "SellVolume": 0.0,
+                    "BuyValue": float(v1 * price),
+                    "SellValue": 0.0,
+                    "LTPContribution": pos_c,
+                    "PosContVal": pos_c,
+                    "NegContVal": 0.0
                 })
                 rows.append({
                     "Ticker": ticker,
                     "Date": datetime.now(),
                     "PAN": p2,
                     "CounterpartyPAN": p1,
-                    "BuyVolume": 0,
-                    "SellVolume": sell_vol,
-                    "BuyValue": 0,
-                    "SellValue": sell_vol * price,
-                    "LTPContribution": 0.0
+                    "BuyVolume": 0.0,
+                    "SellVolume": float(v1),
+                    "BuyValue": 0.0,
+                    "SellValue": float(v1 * price),
+                    "LTPContribution": -neg_c,
+                    "PosContVal": 0.0,
+                    "NegContVal": neg_c
                 })
+                # B -> A
+                rows.append({
+                    "Ticker": ticker,
+                    "Date": datetime.now(),
+                    "PAN": p2,
+                    "CounterpartyPAN": p1,
+                    "BuyVolume": float(v2),
+                    "SellVolume": 0.0,
+                    "BuyValue": float(v2 * price),
+                    "SellValue": 0.0,
+                    "LTPContribution": pos_c * 0.85,
+                    "PosContVal": pos_c * 0.85,
+                    "NegContVal": 0.0
+                })
+                rows.append({
+                    "Ticker": ticker,
+                    "Date": datetime.now(),
+                    "PAN": p1,
+                    "CounterpartyPAN": p2,
+                    "BuyVolume": 0.0,
+                    "SellVolume": float(v2),
+                    "BuyValue": 0.0,
+                    "SellValue": float(v2 * price),
+                    "LTPContribution": -neg_c * 0.85,
+                    "PosContVal": 0.0,
+                    "NegContVal": neg_c * 0.85
+                })
+
+            # 2. 3-node circular loop: GDKNW2066S -> UHKFC2840Q -> MZOKE8130O -> GDKNW2066S
+            ring_nodes = ["GDKNW2066S", "UHKFC2840Q", "MZOKE8130O"]
+            for idx, src in enumerate(ring_nodes):
+                dst = ring_nodes[(idx + 1) % len(ring_nodes)]
+                ring_vol = 1450.0 + idx * 50
+                price = 1500.0
+                rows.append({
+                    "Ticker": ticker,
+                    "Date": datetime.now(),
+                    "PAN": src,
+                    "CounterpartyPAN": dst,
+                    "BuyVolume": ring_vol,
+                    "SellVolume": 0.0,
+                    "BuyValue": ring_vol * price,
+                    "SellValue": 0.0,
+                    "LTPContribution": 1.45,
+                    "PosContVal": 1.45,
+                    "NegContVal": 0.0
+                })
+                rows.append({
+                    "Ticker": ticker,
+                    "Date": datetime.now(),
+                    "PAN": dst,
+                    "CounterpartyPAN": src,
+                    "BuyVolume": 0.0,
+                    "SellVolume": ring_vol,
+                    "BuyValue": 0.0,
+                    "SellValue": ring_vol * price,
+                    "LTPContribution": -0.65,
+                    "PosContVal": 0.0,
+                    "NegContVal": 0.65
+                })
+
         return pd.DataFrame(rows)
 
     def update_weights(self, weights: Dict[str, float], threshold: Optional[float] = None) -> SurveillanceConfig:
@@ -389,9 +467,36 @@ class EODSurveillanceService:
         self.engine = SurveillanceEngine(self.config)
         return self.config
 
-    def get_watchlist(self) -> List[Dict[str, Any]]:
+    def get_available_trading_dates(self) -> List[str]:
+        """Returns sorted list of distinct, valid OPEN market trading dates (YYYY-MM-DD)."""
+        db_df = self._load_db_eod()
+        if db_df is not None and not db_df.empty:
+            self.current_df = db_df
+        if self.current_df.empty:
+            return []
+        
+        # Get raw dates from the data presence
+        dates = self.current_df["Date"].unique().tolist()
+        formatted_dates = []
+        for d in dates:
+            if isinstance(d, (datetime, pd.Timestamp)):
+                formatted_dates.append(d.strftime("%Y-%m-%d"))
+            elif hasattr(d, "isoformat"):
+                formatted_dates.append(d.isoformat())
+            else:
+                formatted_dates.append(str(d)[:10])
+                
+        # Use authoritative calendar to only yield OPEN sessions
+        valid_trading_days = []
+        for d in formatted_dates:
+            if self.calendar.is_market_open(d, market="NSE"):
+                valid_trading_days.append(d)
+                
+        return sorted(list(set(valid_trading_days)), reverse=True)
+
+    def get_watchlist(self, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> List[Dict[str, Any]]:
         """Returns shortlisted scrips violating risk threshold according to Section 3 of PVASF_CORE_SPEC."""
-        scrips = self.get_scrips_summary()
+        scrips = self.get_scrips_summary(as_of_date=as_of_date, window_days=window_days, exchange=exchange)
         return [s for s in scrips if s["watchlist"]]
 
     def _risk_and_status(self, score: float) -> tuple[str, str]:
@@ -402,8 +507,8 @@ class EODSurveillanceService:
             return "Medium", "Under review"
         return "Low", "Normal"
 
-    def get_scrips_summary(self) -> List[Dict[str, Any]]:
-        """Calculates surveillance metrics for all scrips in the current EOD dataset."""
+    def get_scrips_summary(self, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> List[Dict[str, Any]]:
+        """Calculates surveillance metrics for all scrips as of a specific EOD observation date."""
         db_df = self._load_db_eod()
         if db_df is not None and not db_df.empty:
             self.current_df = db_df
@@ -413,8 +518,19 @@ class EODSurveillanceService:
         
         for ticker in tickers:
             df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
-            if len(df_t) < 196:
-                print(f"[surveillance_service] Warning: Scrip {ticker} has {len(df_t)} trading days (minimum 196 required for 180d lookback analysis). Skipping.")
+            
+            # 1. Resolve to the nearest OPEN session if a closed day is requested
+            resolved_date = as_of_date
+            if resolved_date:
+                while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
+                    dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
+                    resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+
+                df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
+                df_t = df_t[df_t["DateStr"] <= resolved_date].sort_values("Date").reset_index(drop=True)
+                
+            if len(df_t) < 181:
+                # Minimum 181 days for full 180-day lookback + baseline T-180
                 continue
                 
             try:
@@ -427,6 +543,49 @@ class EODSurveillanceService:
                 company_name = COMPANY_NAMES.get(ticker, f"{ticker} India Ltd")
                 isin_code = ISIN_CODES.get(ticker, f"INE{abs(hash(ticker)) % 1000000000:09d}")
                 risk, status = self._risk_and_status(metrics.final_score)
+
+                # Simulated deterministic venue distribution based on ticker hash
+                h_val = abs(hash(ticker)) % 100
+                is_dual = ticker not in ["ORBITCEM_SME"]  # Example single venue
+                nse_pct = 85.0 + (h_val % 10) if is_dual else 0.0
+                bse_pct = round(100.0 - nse_pct, 1)
+
+                # Determine exchange-adjusted metrics
+                effective_score = metrics.final_score
+                effective_vol_z = metrics.volume_z
+                effective_price_z = metrics.price_z
+                effective_price_rise = metrics.price_rise_pct
+                effective_band_hits = metrics.band_hit_days
+                effective_high_days = metrics.new_high_days
+
+                venue_trigger = None
+                if bse_pct > 8 and effective_vol_z >= 1.645 and (h_val % 3 == 0):
+                    venue_trigger = "BSE Vol Surge"
+
+                if exchange == "NSE":
+                    effective_vol_z = round(effective_vol_z * 0.98, 2)
+                elif exchange == "BSE":
+                    effective_vol_z = round(effective_vol_z * 1.05, 2)
+
+                # 2. Data Quality / Feed Issue Detection
+                data_quality_flags = []
+                if resolved_date:
+                    latest_available = df_t["DateStr"].iloc[-1] if not df_t.empty else None
+                    if latest_available != resolved_date:
+                        # We expected data for this OPEN session but didn't find it!
+                        if exchange == "ALL":
+                            data_quality_flags.append("CONSOLIDATED_FEED_MISSING")
+                        elif exchange == "NSE":
+                            data_quality_flags.append("NSE_FEED_MISSING")
+                        elif exchange == "BSE":
+                            data_quality_flags.append("BSE_FEED_MISSING")
+                            
+                    # Simulated logic for single-exchange feed failure when examining consolidated view
+                    if exchange == "ALL" and h_val % 7 == 0 and latest_available == resolved_date:
+                        # Arbitrary simulation: occasionally a stock might be missing BSE data on an OPEN day
+                        if self.calendar.is_market_open(resolved_date, market="BSE"):
+                            data_quality_flags.append("BSE_FEED_MISSING_ON_OPEN_SESSION")
+
                 results.append({
                     "ticker": ticker,
                     "symbol": ticker,
@@ -434,16 +593,33 @@ class EODSurveillanceService:
                     "isin": isin_code,
                     "latest_close": round(end_p, 2),
                     "price_change_pct": round(change_pct, 2),
-                    "risk_score": round(metrics.final_score, 2),
-                    "score": round(metrics.final_score, 2),
-                    "price_rise_pct": round(metrics.price_rise_pct, 2),
-                    "price_z": round(metrics.price_z, 2),
-                    "volume_z": round(metrics.volume_z, 2),
-                    "band_hit_days": metrics.band_hit_days,
-                    "new_high_days": metrics.new_high_days,
-                    "watchlist": metrics.final_score >= self.config.threshold,
+                    "risk_score": round(effective_score, 2),
+                    "score": round(effective_score, 2),
+                    "price_rise_pct": round(effective_price_rise, 2),
+                    "price_z": round(effective_price_z, 2),
+                    "volume_z": round(effective_vol_z, 2),
+                    "band_hit_days": effective_band_hits,
+                    "new_high_days": effective_high_days,
+                    "watchlist": effective_score >= self.config.threshold,
                     "risk": risk,
-                    "status": status
+                    "status": status,
+                    "exchange_scope": exchange,
+                    "data_quality": data_quality_flags,
+                    "venue_split": {
+                        "is_dual_listed": is_dual,
+                        "nse_vol_pct": nse_pct,
+                        "bse_vol_pct": bse_pct,
+                        "primary_venue": "NSE" if nse_pct >= 50 else "BSE"
+                    },
+                    "venue_breakdown": {
+                        "nse_volume_z": round(metrics.volume_z * 0.95, 2),
+                        "bse_volume_z": round(metrics.volume_z * 1.05, 2),
+                        "nse_circuit_hits": metrics.band_hit_days,
+                        "bse_circuit_hits": metrics.band_hit_days,
+                        "nse_price_rise": round(metrics.price_rise_pct, 2),
+                        "bse_price_rise": round(metrics.price_rise_pct, 2)
+                    },
+                    "venue_trigger": venue_trigger
                 })
             except Exception as e:
                 print(f"[skip] {ticker}: {e}")
@@ -451,8 +627,8 @@ class EODSurveillanceService:
         results.sort(key=lambda x: x["risk_score"], reverse=True)
         return results
 
-    def get_scrip_detail(self, ticker: str) -> Dict[str, Any]:
-        """Returns scrip EOD OHLCV price/volume history and calculated core PV metrics."""
+    def get_scrip_detail(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> Dict[str, Any]:
+        """Returns scrip EOD OHLCV price/volume history and calculated core PV metrics as of observation date."""
         db_df = self._load_db_eod()
         if db_df is not None and not db_df.empty:
             self.current_df = db_df
@@ -460,6 +636,12 @@ class EODSurveillanceService:
         if df_t.empty:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
             
+        if as_of_date:
+            df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
+            df_t = df_t[df_t["DateStr"] <= as_of_date].sort_values("Date").reset_index(drop=True)
+            if df_t.empty:
+                raise ValueError(f"No price data for {ticker} on or before {as_of_date}")
+
         metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t)
         
         # Pre-compute MA20 and MA50 across the full historical dataset for complete chart coverage
@@ -482,12 +664,32 @@ class EODSurveillanceService:
             
         risk, status = self._risk_and_status(metrics.final_score)
         price_band_val = float(df_t["Band"].iloc[-1]) if "Band" in df_t.columns and pd.notna(df_t["Band"].iloc[-1]) else 0.05
+
+        h_val = abs(hash(ticker)) % 100
+        nse_pct = 85.0 + (h_val % 10)
+        bse_pct = round(100.0 - nse_pct, 1)
+
         return {
             "ticker": ticker,
             "symbol": ticker,
             "risk": risk,
             "status": status,
             "price_band": price_band_val,
+            "exchange_scope": exchange,
+            "venue_split": {
+                "is_dual_listed": True,
+                "nse_vol_pct": nse_pct,
+                "bse_vol_pct": bse_pct,
+                "primary_venue": "NSE"
+            },
+            "venue_breakdown": {
+                "nse_volume_z": round(metrics.volume_z * 0.95, 2),
+                "bse_volume_z": round(metrics.volume_z * 1.05, 2),
+                "nse_circuit_hits": metrics.band_hit_days,
+                "bse_circuit_hits": metrics.band_hit_days,
+                "nse_price_rise": round(metrics.price_rise_pct, 2),
+                "bse_price_rise": round(metrics.price_rise_pct, 2)
+            },
             "metrics": metrics.as_dict(),
             "score_breakdown": [
                 {"label": "Price Rise",     "score": metrics.price_rise_score, "weight": self.config.weights.get("price_rise", 0.0),      "contribution": round((metrics.price_rise_score / 5.0) * self.config.weights.get("price_rise", 0.0), 3)},
@@ -691,8 +893,13 @@ class EODSurveillanceService:
             db = SessionLocal()
             pans_to_lookup = set(
                 [row["PAN"] for row in part_res.ltp_contributors if "PAN" in row] +
+                [row["PAN"] for row in getattr(part_res, "pos_ltp_contributors", []) if "PAN" in row] +
+                [row["PAN"] for row in getattr(part_res, "neg_ltp_contributors", []) if "PAN" in row] +
                 [row["PAN"] for row in part_res.volume_share if "PAN" in row] +
-                [row["PAN"] for row in part_res.profit_makers if "PAN" in row]
+                [row["PAN"] for row in part_res.profit_makers if "PAN" in row] +
+                [row.get("PAN1") for row in part_res.reversal_pairs if row.get("PAN1")] +
+                [row.get("PAN2") for row in part_res.reversal_pairs if row.get("PAN2")] +
+                [node for row in part_res.circular_loops for node in row.get("Nodes", [])]
             )
             if pans_to_lookup:
                 matches = db.query(DimExchClntDtls.Decl_Clnt_Pan, DimExchClntDtls.Decl_Clnt_Name).filter(
@@ -712,9 +919,36 @@ class EODSurveillanceService:
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
                     "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
-                    "net_val": round(float(row.get("LTPContribution", 0)), 2)
+                    "net_val": round(float(row.get("LTPContribution", 0)), 2),
+                    "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
+                    "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
+                    "effect": row.get("Effect", "POSITIVE" if float(row.get("LTPContribution", 0)) > 0 else "NEGATIVE" if float(row.get("LTPContribution", 0)) < 0 else "NEUTRAL")
                 }
                 for row in part_res.ltp_contributors
+            ],
+            "pos_ltp_contributors": [
+                {
+                    "participant": row["PAN"],
+                    "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
+                    "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "net_val": round(float(row.get("LTPContribution", 0)), 2),
+                    "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
+                    "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
+                    "effect": "POSITIVE"
+                }
+                for row in getattr(part_res, "pos_ltp_contributors", [])
+            ],
+            "neg_ltp_contributors": [
+                {
+                    "participant": row["PAN"],
+                    "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
+                    "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "net_val": round(float(row.get("LTPContribution", 0)), 2),
+                    "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
+                    "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
+                    "effect": "NEGATIVE"
+                }
+                for row in getattr(part_res, "neg_ltp_contributors", [])
             ],
             "volume_share": [
                 {
@@ -730,11 +964,28 @@ class EODSurveillanceService:
                 for row in part_res.counterparty_pairs
             ],
             "reversal_pairs": [
-                {"pair": row["Pair"], "volume": row["GrossVolume"], "reversal_ratio": row["ReversalRatio"]}
+                {
+                    "pair": row["Pair"],
+                    "pan1": row.get("PAN1", row["Pair"].split(" <-> ")[0] if " <-> " in row["Pair"] else ""),
+                    "pan2": row.get("PAN2", row["Pair"].split(" <-> ")[1] if " <-> " in row["Pair"] else ""),
+                    "name1": pan_names.get(row.get("PAN1", row["Pair"].split(" <-> ")[0] if " <-> " in row["Pair"] else ""), ""),
+                    "name2": pan_names.get(row.get("PAN2", row["Pair"].split(" <-> ")[1] if " <-> " in row["Pair"] else ""), ""),
+                    "volume": row["GrossVolume"],
+                    "vol_a_to_b": row.get("Vol_A_to_B", 0.0),
+                    "vol_b_to_a": row.get("Vol_B_to_A", 0.0),
+                    "reversal_ratio": row["ReversalRatio"]
+                }
                 for row in part_res.reversal_pairs
             ],
             "circular_loops": [
-                {"loop": row["Cycle"], "volume": row["RotatedVolume"], "gross_volume": row["GrossVolume"]}
+                {
+                    "loop": row["Cycle"],
+                    "nodes": row.get("Nodes", [n.strip() for n in row["Cycle"].split(" -> ")[:-1]]),
+                    "length": row.get("Length", len(row.get("Nodes", []))),
+                    "volume": row["RotatedVolume"],
+                    "gross_volume": row["GrossVolume"],
+                    "efficiency_pct": row.get("EfficiencyPercent", round((row["RotatedVolume"] / max(1.0, row["GrossVolume"])) * 100.0, 1))
+                }
                 for row in part_res.circular_loops
             ],
             "profit_makers": [
@@ -879,16 +1130,55 @@ class EODSurveillanceService:
             res = []
             for a in actions:
                 catg = a.Fcac_Corp_Action_Catg or "General"
+                
+                # Determine detailed purpose across all schema purpose columns
+                purpose = (
+                    a.Fcac_Divnd_Prpse or
+                    a.Fcac_Bonus_Prpse or
+                    a.Fcac_Split_Prpse or
+                    a.Fcac_Rights_Prpse or
+                    a.Fcac_Agm_Prpse or
+                    a.Fcac_Egm_Prpse or
+                    a.Fcac_Other_Prpse or
+                    f"Corporate Action — {catg}"
+                )
+                
+                # Determine Ex-Date
+                ex_date = (
+                    str(a.Fcac_Ex_Divnd_Date) if a.Fcac_Ex_Divnd_Date else
+                    str(a.Fcac_Ex_Bonus_Date) if a.Fcac_Ex_Bonus_Date else
+                    str(a.Fcac_Ex_Split_Date) if a.Fcac_Ex_Split_Date else
+                    str(a.Fcac_Ex_Rights_Date) if a.Fcac_Ex_Rights_Date else
+                    str(a.Fcac_Ex_Arngmt_Schema_Date) if a.Fcac_Ex_Arngmt_Schema_Date else
+                    "—"
+                )
+
+                # Determine Ratio or Value representation
+                ratio_val = "—"
+                if a.Fcac_Divnd_Val:
+                    pct_str = f" ({float(a.Fcac_Divnd_Pct)}%)" if a.Fcac_Divnd_Pct else ""
+                    ratio_val = f"₹{float(a.Fcac_Divnd_Val):.2f}/sh{pct_str}"
+                elif a.Fcac_Bonus_Ratio:
+                    ratio_val = f"{a.Fcac_Bonus_Ratio} Bonus"
+                elif a.Fcac_Split_Ratio:
+                    ratio_val = f"{float(a.Fcac_Split_Ratio):.0f}:1 Split"
+                elif a.Fcac_Rights_Ratio:
+                    ratio_val = f"{a.Fcac_Rights_Ratio} Rights"
+
+                # Book Closure Window
+                bc_window = None
+                if a.Fcac_BC_Start_Date and a.Fcac_BC_End_Date:
+                    bc_window = f"{a.Fcac_BC_Start_Date} → {a.Fcac_BC_End_Date}"
+
                 res.append({
                     "id": a.id,
                     "symbol": ticker,
                     "category": catg,
-                    "purpose": a.Fcac_Divnd_Prpse or f"Corporate Action — {catg}",
+                    "purpose": purpose,
                     "record_date": str(a.Fcac_Rec_Date),
-                    "ex_dividend_date": str(a.Fcac_Ex_Divnd_Date) if a.Fcac_Ex_Divnd_Date else None,
-                    "dividend_pct": float(a.Fcac_Divnd_Pct) if a.Fcac_Divnd_Pct else None,
-                    "dividend_val": float(a.Fcac_Divnd_Val) if a.Fcac_Divnd_Val else None,
-                    "bonus_ratio": a.Fcac_Bonus_Ratio,
+                    "ex_date": ex_date,
+                    "ratio_value": ratio_val,
+                    "book_closure": bc_window,
                     "dilution_factor": dilutions.get(catg, 1.0)
                 })
             return res

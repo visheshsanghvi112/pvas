@@ -195,6 +195,8 @@ class MarketMetricsResult:
 class ParticipantAuditResult:
     """Participant trade audit findings including price impact and PnL."""
     ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
+    pos_ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
+    neg_ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
     volume_share: List[Dict[str, Any]] = field(default_factory=list)
     counterparty_pairs: List[Dict[str, Any]] = field(default_factory=list)
     profit_makers: List[Dict[str, Any]] = field(default_factory=list)
@@ -482,11 +484,61 @@ class SurveillanceEngine:
         # --- 4.1 LTP Contribution (The "Price Pusher" Metric) ---
         # Sums the net price impact created by each entity when acting as an aggressive market order.
         # Rationale: Identifies whether price rise was driven by a single coordinated entity.
-        ltp_group = df.groupby("PAN")["LTPContribution"].sum().reset_index()
+        if "PosContVal" not in df.columns:
+            df["PosContVal"] = df["LTPContribution"].apply(lambda x: max(0.0, float(x)))
+        if "NegContVal" not in df.columns:
+            df["NegContVal"] = df["LTPContribution"].apply(lambda x: abs(min(0.0, float(x))))
+
+        ltp_group = df.groupby("PAN").agg({
+            "LTPContribution": "sum",
+            "PosContVal": "sum",
+            "NegContVal": "sum"
+        }).reset_index()
+
         ltp_group["AbsLTPContribution"] = ltp_group["LTPContribution"].abs()
-        top_ltp = ltp_group.sort_values("AbsLTPContribution", ascending=False).head(5).to_dict("records")
-        for r in top_ltp:
-            r.pop("AbsLTPContribution", None)
+        top_ltp_df = ltp_group.sort_values(["AbsLTPContribution", "PosContVal"], ascending=[False, False]).head(20)
+        
+        top_ltp = []
+        for _, r in top_ltp_df.iterrows():
+            net_c = float(r["LTPContribution"])
+            pos_c = float(r["PosContVal"])
+            neg_c = float(r["NegContVal"])
+            effect = "POSITIVE" if net_c > 0.001 else ("NEGATIVE" if net_c < -0.001 else "NEUTRAL")
+            top_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(net_c, 2),
+                "PosContVal": round(pos_c, 2),
+                "NegContVal": round(neg_c, 2),
+                "Effect": effect
+            })
+
+        # Top Positive Contributors (Upward Price Push)
+        pos_df = ltp_group[(ltp_group["PosContVal"] > 0) | (ltp_group["LTPContribution"] > 0)].sort_values(
+            ["PosContVal", "LTPContribution"], ascending=[False, False]
+        ).head(10)
+        pos_ltp = []
+        for _, r in pos_df.iterrows():
+            pos_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(float(r["LTPContribution"]), 2),
+                "PosContVal": round(float(r["PosContVal"]), 2),
+                "NegContVal": round(float(r["NegContVal"]), 2),
+                "Effect": "POSITIVE"
+            })
+
+        # Top Negative Contributors (Downward Price Pull / Suppression)
+        neg_df = ltp_group[(ltp_group["NegContVal"] > 0) | (ltp_group["LTPContribution"] < 0)].sort_values(
+            ["NegContVal", "LTPContribution"], ascending=[False, True]
+        ).head(10)
+        neg_ltp = []
+        for _, r in neg_df.iterrows():
+            neg_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(float(r["LTPContribution"]), 2),
+                "PosContVal": round(float(r["PosContVal"]), 2),
+                "NegContVal": round(float(r["NegContVal"]), 2),
+                "Effect": "NEGATIVE"
+            })
 
         # --- 4.2 Volume Share (The "Dominance" Metric) ---
         # Formula: (Individual PAN Volume over 15d / Total Scrip Volume over 15d) * 100 (PVASF 4.2)
@@ -541,10 +593,14 @@ class SurveillanceEngine:
                 rtr = (2.0 * min(v_a_b, v_b_a) / gross) * 100.0
                 reversal_list.append({
                     "Pair": f"{A} <-> {B}",
+                    "PAN1": A,
+                    "PAN2": B,
+                    "Vol_A_to_B": float(v_a_b),
+                    "Vol_B_to_A": float(v_b_a),
                     "GrossVolume": float(gross),
                     "ReversalRatio": round(rtr, 2)
                 })
-        top_reversals = sorted(reversal_list, key=lambda x: (x["ReversalRatio"], x["GrossVolume"]), reverse=True)[:5]
+        top_reversals = sorted(reversal_list, key=lambda x: (x["ReversalRatio"], x["GrossVolume"]), reverse=True)[:10]
 
         # --- 4.5 Circular Trade Loops Detection ---
         # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)
@@ -591,13 +647,16 @@ class SurveillanceEngine:
             edge_vols = [flows.get(edge, 0.0) for edge in edges]
             bottleneck_vol = min(edge_vols)
             gross_vol = sum(edge_vols)
+            efficiency = round((bottleneck_vol / max(1.0, gross_vol)) * 100.0, 1)
             loop_results.append({
                 "Cycle": " -> ".join(str(node) for node in cycle) + f" -> {cycle[0]}",
+                "Nodes": list(cycle),
                 "Length": len(cycle),
                 "RotatedVolume": float(bottleneck_vol),
-                "GrossVolume": float(gross_vol)
+                "GrossVolume": float(gross_vol),
+                "EfficiencyPercent": efficiency
             })
-        top_loops = sorted(loop_results, key=lambda x: x["RotatedVolume"], reverse=True)[:5]
+        top_loops = sorted(loop_results, key=lambda x: (x["RotatedVolume"], -x["Length"]), reverse=True)[:10]
 
         # --- 4.6 Profit-Makers (MTM PnL Analysis) ---
         # Formula: Net PnL = Total Sell Value - Total Buy Value + (Net Remaining Position * Latest Close Price)
@@ -624,6 +683,8 @@ class SurveillanceEngine:
 
         return ParticipantAuditResult(
             ltp_contributors=top_ltp,
+            pos_ltp_contributors=pos_ltp,
+            neg_ltp_contributors=neg_ltp,
             volume_share=top_vol,
             counterparty_pairs=top_pairs,
             profit_makers=top_profit,

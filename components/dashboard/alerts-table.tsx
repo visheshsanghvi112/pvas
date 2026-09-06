@@ -1,8 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import {
   ArrowUpDown,
   ArrowUp,
@@ -10,23 +9,16 @@ import {
   Eye,
   Search,
   X,
-  Filter,
   Download,
-  ShieldAlert,
-  Zap,
-  TrendingUp,
-  BarChart2,
-  CheckCircle2,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Plus
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getAuthHeaders, type ScripSummary } from "@/lib/api";
-import { useUser } from "@/lib/user-context";
+import { type ScripSummary, type ExchangeScope } from "@/lib/api";
 
 type SortField =
   | "score"
@@ -36,74 +28,59 @@ type SortField =
   | "symbol"
   | "band_hit_days"
   | "new_high_days";
+
 type SortOrder = "asc" | "desc";
 
-interface AlertsTableProps {
+export interface AlertsTableProps {
   scrips: ScripSummary[];
-  onStatusChange?: (symbol: string, newStatus: "Open" | "Under review" | "Closed") => void;
   selectedRiskFilter?: string;
-  onRiskFilterChange?: (newFilter: string) => void;
+  onRiskFilterChange?: (filter: string) => void;
   loading?: boolean;
+  asOfDate?: string;
+  windowDays?: number;
+  exchange?: ExchangeScope;
 }
 
-const riskColors: Record<string, string> = {
-  High: "bg-rose-100 text-rose-800 border-rose-200",
-  Medium: "bg-amber-100 text-amber-800 border-amber-200",
-  Low: "bg-emerald-100 text-emerald-800 border-emerald-200",
+const RISK_DOT: Record<string, string> = {
+  High: "bg-rose-500 ring-2 ring-rose-200",
+  Medium: "bg-amber-500 ring-2 ring-amber-200",
+  Low: "bg-emerald-500 ring-2 ring-emerald-200",
 };
-
-const riskDot: Record<string, string> = {
-  High: "bg-rose-500 risk-high-dot",
-  Medium: "bg-amber-500",
-  Low: "bg-emerald-500",
-};
-
-function SortIcon({ field, current, order }: { field: string; current: string; order: SortOrder }) {
-  if (field !== current) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
-  return order === "asc"
-    ? <ArrowUp className="h-3 w-3 text-blue-500" />
-    : <ArrowDown className="h-3 w-3 text-blue-500" />;
-}
 
 export function AlertsTable({
   scrips,
-  onStatusChange,
-  selectedRiskFilter = "All",
+  selectedRiskFilter = "High",
   onRiskFilterChange,
   loading = false,
+  asOfDate,
+  windowDays = 15,
+  exchange = "ALL",
 }: AlertsTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("score");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
-
-  // Filters State
   const [riskTab, setRiskTab] = useState<string>(selectedRiskFilter);
-  const [statusFilter, setStatusFilter] = useState<string>("All");
+
+  // Trigger filters
   const [filterPriceSpike, setFilterPriceSpike] = useState(false);
   const [filterPriceZ, setFilterPriceZ] = useState(false);
   const [filterVolZ, setFilterVolZ] = useState(false);
   const [filterCircuitHits, setFilterCircuitHits] = useState(false);
   const [filterNewHighs, setFilterNewHighs] = useState(false);
 
-  // Pagination State
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(15);
 
-  const router = useRouter();
-  const { currentUser } = useUser();
-
-  // Sync riskTab with parent prop when parent changes
   useEffect(() => {
     setRiskTab(selectedRiskFilter);
   }, [selectedRiskFilter]);
 
-  // Reset page to 1 whenever filters or search terms change
   useEffect(() => {
     setCurrentPage(1);
   }, [
     searchTerm,
     riskTab,
-    statusFilter,
     filterPriceSpike,
     filterPriceZ,
     filterVolZ,
@@ -116,75 +93,72 @@ export function AlertsTable({
 
   const handleRiskTabChange = (level: string) => {
     setRiskTab(level);
-    if (onRiskFilterChange) {
-      onRiskFilterChange(level);
-    }
+    onRiskFilterChange?.(level);
   };
 
-  const filtered = scrips.filter((s) => {
-    // 1. Full-text search
-    const matchesSearch =
-      s.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (s.company && s.company.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.isin && s.isin.toLowerCase().includes(searchTerm.toLowerCase()));
+  const filtered = useMemo(() => {
+    const q = searchTerm.toLowerCase().trim();
+    return scrips.filter((s) => {
+      const matchQuery =
+        !q ||
+        s.symbol.toLowerCase().includes(q) ||
+        (s.company && s.company.toLowerCase().includes(q)) ||
+        (s.isin && s.isin.toLowerCase().includes(q));
 
-    // 2. Risk filter
-    const matchesRisk = riskTab === "All" || s.risk === riskTab;
+      const matchRisk = riskTab === "All" || s.risk === riskTab;
+      const matchPriceSpike = !filterPriceSpike || s.price_rise_pct >= 15;
+      const matchPriceZ = !filterPriceZ || s.price_z >= 1.645;
+      const matchVolZ = !filterVolZ || s.volume_z >= 1.645;
+      const matchCircuitHits = !filterCircuitHits || s.band_hit_days >= 3;
+      const matchNewHighs = !filterNewHighs || s.new_high_days >= 1;
 
-    // 3. Case status filter
-    const matchesStatus = statusFilter === "All" || s.status === statusFilter;
+      return (
+        matchQuery &&
+        matchRisk &&
+        matchPriceSpike &&
+        matchPriceZ &&
+        matchVolZ &&
+        matchCircuitHits &&
+        matchNewHighs
+      );
+    });
+  }, [
+    scrips,
+    searchTerm,
+    riskTab,
+    filterPriceSpike,
+    filterPriceZ,
+    filterVolZ,
+    filterCircuitHits,
+    filterNewHighs,
+  ]);
 
-    // 4. Anomaly criteria filters
-    const matchesPriceSpike = !filterPriceSpike || s.price_rise_pct >= 15;
-    const matchesPriceZ = !filterPriceZ || s.price_z >= 1.645;
-    const matchesVolZ = !filterVolZ || s.volume_z >= 1.645;
-    const matchesCircuit = !filterCircuitHits || s.band_hit_days >= 3;
-    const matchesHighs = !filterNewHighs || s.new_high_days >= 1;
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) => {
+      let va: string | number = a[sortField] ?? 0;
+      let vb: string | number = b[sortField] ?? 0;
+      if (typeof va === "string") {
+        va = va.toLowerCase();
+        vb = (vb as string).toLowerCase();
+      }
+      if (va < vb) return sortOrder === "asc" ? -1 : 1;
+      if (va > vb) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [filtered, sortField, sortOrder]);
 
-    return (
-      matchesSearch &&
-      matchesRisk &&
-      matchesStatus &&
-      matchesPriceSpike &&
-      matchesPriceZ &&
-      matchesVolZ &&
-      matchesCircuit &&
-      matchesHighs
-    );
-  });
+  const total = sorted.length;
+  const effPageSize = pageSize === 0 ? total : pageSize;
+  const totalPages = Math.max(1, Math.ceil(total / (effPageSize || 1)));
+  const startIdx = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
+  const endIdx = pageSize === 0 ? total : Math.min(startIdx + pageSize, total);
+  const page = sorted.slice(startIdx, endIdx);
 
-  const sorted = [...filtered].sort((a, b) => {
-    let valA: string | number = a[sortField] ?? 0;
-    let valB: string | number = b[sortField] ?? 0;
-    if (typeof valA === "string") {
-      valA = valA.toLowerCase();
-      valB = (valB as string).toLowerCase();
-    }
-    if (valA < valB) return sortOrder === "asc" ? -1 : 1;
-    if (valA > valB) return sortOrder === "asc" ? 1 : -1;
-    return 0;
-  });
-
-  // Pagination calculations
-  const totalItems = sorted.length;
-  const effectivePageSize = pageSize === 0 ? totalItems : pageSize;
-  const totalPages = Math.max(1, Math.ceil(totalItems / (effectivePageSize || 1)));
-
-  const startIndex = pageSize === 0 ? 0 : (currentPage - 1) * pageSize;
-  const endIndex = pageSize === 0 ? totalItems : Math.min(startIndex + pageSize, totalItems);
-  const paginatedScrips = sorted.slice(startIndex, endIndex);
-
-  const getPageNumbers = (current: number, total: number) => {
-    if (total <= 7) {
-      return Array.from({ length: total }, (_, i) => i + 1);
-    }
-    if (current <= 4) {
-      return [1, 2, 3, 4, 5, "...", total];
-    }
-    if (current >= total - 3) {
-      return [1, "...", total - 4, total - 3, total - 2, total - 1, total];
-    }
-    return [1, "...", current - 1, current, current + 1, "...", total];
+  const pageNums = (cur: number, tot: number) => {
+    if (tot <= 7) return Array.from({ length: tot }, (_, i) => i + 1);
+    if (cur <= 4) return [1, 2, 3, 4, 5, "…", tot];
+    if (cur >= tot - 3) return [1, "…", tot - 4, tot - 3, tot - 2, tot - 1, tot];
+    return [1, "…", cur - 1, cur, cur + 1, "…", tot];
   };
 
   const handleSort = (field: SortField) => {
@@ -196,10 +170,18 @@ export function AlertsTable({
     }
   };
 
+  const hasActiveFilters =
+    Boolean(searchTerm) ||
+    riskTab !== "All" ||
+    filterPriceSpike ||
+    filterPriceZ ||
+    filterVolZ ||
+    filterCircuitHits ||
+    filterNewHighs;
+
   const resetFilters = () => {
     setSearchTerm("");
     handleRiskTabChange("All");
-    setStatusFilter("All");
     setFilterPriceSpike(false);
     setFilterPriceZ(false);
     setFilterVolZ(false);
@@ -208,319 +190,299 @@ export function AlertsTable({
   };
 
   const exportCSV = () => {
-    const headers = [
+    const hdrs = [
       "Symbol",
       "Company",
       "ISIN",
       "Risk",
       "PVASF_Score",
       "Price_Rise_Pct",
-      "Price_Z_Score",
-      "Volume_Z_Score",
-      "Circuit_Hit_Days",
-      "New_180D_Highs",
-      "Status",
+      "Price_Z",
+      "Volume_Z",
+      "Circuit_Hits",
+      "New_Highs",
     ];
-
     const rows = sorted.map((s) => [
       s.symbol,
-      `"${s.company || s.symbol}"`,
+      `"${(s.company || s.symbol).replace(/"/g, '""')}"`,
       s.isin || "",
       s.risk,
       s.score,
-      s.price_rise_pct.toFixed(2),
-      s.price_z.toFixed(2),
-      s.volume_z.toFixed(2),
-      s.band_hit_days,
-      s.new_high_days,
-      s.status,
+      s.price_rise_pct != null ? s.price_rise_pct.toFixed(2) : "0.00",
+      s.price_z != null ? s.price_z.toFixed(2) : "0.00",
+      s.volume_z != null ? s.volume_z.toFixed(2) : "0.00",
+      s.band_hit_days || 0,
+      s.new_high_days || 0,
     ]);
-
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute(
-      "download",
-      `pvasf_surveillance_alerts_${new Date().toISOString().slice(0, 10)}.csv`
-    );
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    
+    const csvContent = [hdrs.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pvasf_alerts_${asOfDate || new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
-  const ThCell = ({
-    field,
-    label,
-    align = "left",
-    minWidth,
-  }: {
-    field: SortField;
-    label: string;
-    align?: "left" | "right";
-    minWidth?: number;
-  }) => (
-    <th
-      className={cn(
-        "px-4 py-3 cursor-pointer select-none whitespace-nowrap group",
-        align === "right" && "text-right"
-      )}
-      style={minWidth ? { minWidth } : undefined}
-      onClick={() => handleSort(field)}
-    >
-      <div
-        className={cn(
-          "flex items-center gap-1.5 text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors",
-          align === "right" && "justify-end"
-        )}
-      >
-        {label}
-        <SortIcon field={field} current={sortField} order={sortOrder} />
-      </div>
-    </th>
-  );
-
-  const hasActiveFilters =
-    searchTerm ||
-    riskTab !== "All" ||
-    statusFilter !== "All" ||
-    filterPriceSpike ||
-    filterPriceZ ||
-    filterVolZ ||
-    filterCircuitHits ||
-    filterNewHighs;
+  const riskTabs = [
+    { key: "High", label: "High Risk", count: scrips.filter((s) => s.risk === "High").length },
+    { key: "Medium", label: "Medium", count: scrips.filter((s) => s.risk === "Medium").length },
+    { key: "Low", label: "Low", count: scrips.filter((s) => s.risk === "Low").length },
+    { key: "All", label: "All Risks", count: scrips.length },
+  ];
 
   return (
-    <div className="flex flex-col h-full bg-white overflow-hidden">
-      {/* ── Top Fixed Control Panel ── */}
-      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/80 p-3.5 space-y-3">
-        {/* Row 1: Search + Risk Level Tabs + Export */}
+    <div className="flex flex-col h-full overflow-hidden bg-white text-slate-900">
+      
+      {/* ── Controls Toolbar ── */}
+      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/70 px-5 py-3 space-y-2.5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Search Input */}
-          <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-lg px-3 py-1.5 w-full sm:w-80 shadow-xs focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
-            <Search className="h-4 w-4 text-slate-400 shrink-0" />
-            <input
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search symbol, company name or ISIN..."
-              className="w-full bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400"
-            />
-            {searchTerm && (
-              <button onClick={() => setSearchTerm("")} className="text-slate-400 hover:text-slate-600">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Search */}
+            <div className="flex items-center gap-2 bg-white border border-slate-300/80 rounded-lg px-3 py-1.5 w-64 sm:w-72 shadow-xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+              <Search className="h-4 w-4 text-slate-400 shrink-0" />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search symbol, company or ISIN..."
+                className="w-full bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400 font-medium"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="text-slate-400 hover:text-slate-600 shrink-0"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Risk Tabs */}
+            <div className="flex items-center rounded-lg border border-slate-300/80 bg-white overflow-hidden text-xs font-semibold text-slate-600 divide-x divide-slate-200 shadow-xs">
+              {riskTabs.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => handleRiskTabChange(t.key)}
+                  className={cn(
+                    "px-3 py-1.5 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5",
+                    riskTab === t.key
+                      ? "bg-slate-900 text-white font-bold"
+                      : "hover:bg-slate-50 hover:text-slate-900"
+                  )}
+                >
+                  <span>{t.label}</span>
+                  <span
+                    className={cn(
+                      "text-[10px] px-1.5 py-0.2 rounded-full",
+                      riskTab === t.key ? "bg-slate-800 text-slate-200 font-bold" : "bg-slate-100 text-slate-500"
+                    )}
+                  >
+                    {t.count}
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
 
-          {/* Risk Level Segmented Buttons */}
-          <div className="flex items-center bg-slate-200/80 p-0.5 rounded-lg text-xs font-medium text-slate-600">
-            {["All", "High", "Medium", "Low"].map((level) => (
-              <button
-                key={level}
-                onClick={() => handleRiskTabChange(level)}
-                className={cn(
-                  "px-3 py-1 rounded-md transition-all cursor-pointer",
-                  riskTab === level
-                    ? "bg-white text-slate-900 shadow-xs font-bold"
-                    : "hover:text-slate-900"
-                )}
-              >
-                {level === "All" ? "All Risk Levels" : `${level} Risk`}
-              </button>
-            ))}
-          </div>
-
-          {/* Actions: Export CSV + Reset */}
           <div className="flex items-center gap-2">
             {hasActiveFilters && (
               <button
+                type="button"
                 onClick={resetFilters}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                className="text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer transition-colors underline underline-offset-2 px-2"
               >
-                <X className="h-3.5 w-3.5" /> Reset Filters
+                Reset filters
               </button>
             )}
             <button
+              type="button"
               onClick={exportCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-medium hover:bg-blue-600 transition-colors shadow-xs cursor-pointer"
-              title="Export compliance alert report as CSV"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-xs"
             >
-              <Download className="h-3.5 w-3.5" /> Export CSV
+              <Download className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
             </button>
           </div>
         </div>
 
-        {/* Row 2: Anomaly Filter Toggles */}
-        <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/60 text-xs">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-slate-400 font-semibold flex items-center gap-1 mr-1">
-              <Filter className="h-3 w-3" /> Anomaly Triggers:
-            </span>
-
-            <button
-              onClick={() => setFilterPriceSpike(!filterPriceSpike)}
-              className={cn(
-                "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
-                filterPriceSpike
-                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              )}
-            >
-              <TrendingUp className="h-3 w-3 text-slate-400" /> Price Spike ≥ 15%
-            </button>
-
-            <button
-              onClick={() => setFilterPriceZ(!filterPriceZ)}
-              className={cn(
-                "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
-                filterPriceZ
-                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              )}
-            >
-              <Zap className="h-3 w-3 text-slate-400" /> Price Z ≥ 1.65σ
-            </button>
-
-            <button
-              onClick={() => setFilterVolZ(!filterVolZ)}
-              className={cn(
-                "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
-                filterVolZ
-                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              )}
-            >
-              <BarChart2 className="h-3 w-3 text-slate-400" /> Volume Z ≥ 1.65σ
-            </button>
-
-            <button
-              onClick={() => setFilterCircuitHits(!filterCircuitHits)}
-              className={cn(
-                "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
-                filterCircuitHits
-                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              )}
-            >
-              <ShieldAlert className="h-3 w-3 text-slate-400" /> Circuit Hits ≥ 3d
-            </button>
-
-            <button
-              onClick={() => setFilterNewHighs(!filterNewHighs)}
-              className={cn(
-                "px-2.5 py-1 rounded-md border transition-all flex items-center gap-1 cursor-pointer",
-                filterNewHighs
-                  ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
-                  : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
-              )}
-            >
-              <CheckCircle2 className="h-3 w-3 text-slate-400" /> 180D Breakouts ≥ 1d
-            </button>
-          </div>
-
-          {/* Status Dropdown Filter */}
-          <div className="flex items-center gap-1.5">
-            <span className="text-slate-400 font-medium text-xs">Status:</span>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-white border border-slate-300 text-slate-700 rounded-md px-2 py-1 outline-none text-xs font-semibold cursor-pointer"
-            >
-              <option value="All">All Statuses</option>
-              <option value="Open">Open</option>
-              <option value="Under review">Under Review</option>
-              <option value="Closed">Closed</option>
-            </select>
-          </div>
+        {/* Triggers Bar */}
+        <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-slate-200/80">
+          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none mr-0.5">
+            Triggers:
+          </span>
+          <TriggerPill
+            active={filterPriceSpike}
+            onClick={() => setFilterPriceSpike(!filterPriceSpike)}
+            label="Price ≥ 15%"
+            info="Shows stocks whose price grew by more than 15% in the last 15 days compared to 6 months ago."
+          />
+          <TriggerPill
+            active={filterPriceZ}
+            onClick={() => setFilterPriceZ(!filterPriceZ)}
+            label="Price Z ≥ 1.65σ"
+            info="Shows stocks moving abnormally faster than 95% of their typical daily price movement."
+          />
+          <TriggerPill
+            active={filterVolZ}
+            onClick={() => setFilterVolZ(!filterVolZ)}
+            label="Vol Z ≥ 1.65σ"
+            info="Shows stocks trading volume abnormally higher than 95% of their past 6-month average."
+          />
+          <TriggerPill
+            active={filterCircuitHits}
+            onClick={() => setFilterCircuitHits(!filterCircuitHits)}
+            label="Circuit ≥ 3d"
+            info="Shows stocks that hit or came within 90% of their upper circuit limit for 3 or more days."
+          />
+          <TriggerPill
+            active={filterNewHighs}
+            onClick={() => setFilterNewHighs(!filterNewHighs)}
+            label="180D Highs ≥ 1"
+            info="Shows stocks that hit brand new 6-month record high prices in the last 15 days."
+          />
         </div>
       </div>
 
-      {/* ── Table Scroll Container (Single Scroll Container) ── */}
-      <div className="flex-1 overflow-auto bg-white">
-        <table className="w-full border-collapse" style={{ minWidth: 960 }}>
-          <thead className="sticky top-0 z-20 shadow-2xs">
-            <tr className="bg-slate-50/95 backdrop-blur-xs text-slate-700 text-xs font-bold border-y border-slate-200">
-              <th className="px-4 py-3 text-left sticky left-0 bg-slate-50 z-30 shadow-[1px_0_0_0_#e2e8f0]" style={{ minWidth: 200 }}>
-                <div
-                  className="flex items-center gap-1.5 text-xs font-bold text-slate-700 cursor-pointer hover:text-slate-900 transition-colors"
-                  onClick={() => handleSort("symbol")}
-                >
-                  Security Master
+      {/* ── Data Table ── */}
+      <div className="flex-1 overflow-auto bg-slate-50/30">
+        <table className="w-full border-collapse" style={{ minWidth: 920 }}>
+          <thead className="sticky top-0 z-20 bg-slate-100/95 backdrop-blur-xs border-b border-slate-200 shadow-2xs">
+            <tr>
+              <th
+                className="px-5 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-slate-900 transition-colors"
+                style={{ width: "24%" }}
+                onClick={() => handleSort("symbol")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  Security
+                  <InfoTooltip text="Stock ticker symbol, company name, and ISIN code." placement="bottom" align="left" />
                   <SortIcon field="symbol" current={sortField} order={sortOrder} />
-                </div>
+                </span>
               </th>
-              <ThCell field="score" label="PVASF Score" minWidth={120} />
-              <ThCell field="price_rise_pct" label="Price Rise %" minWidth={115} />
-              <ThCell field="price_z" label="Price Z-Score" minWidth={115} />
-              <ThCell field="volume_z" label="Volume Z-Score" minWidth={120} />
-              <ThCell field="band_hit_days" label="Circuit Hits" minWidth={100} />
-              <ThCell field="new_high_days" label="180D New Highs" minWidth={120} />
-              <th className="px-4 py-3 text-xs font-bold text-slate-700" style={{ minWidth: 110 }}>
-                Case Status
-              </th>
-              <th className="px-4 py-3 text-right text-xs font-bold text-slate-700" style={{ minWidth: 120 }}>
-                Action Workspace
+
+              <ThSort
+                field="score"
+                label="PVASF Score"
+                info="Overall risk score from 0 to 100. Higher scores mean potential price manipulation. Scores 15+ are flagged as High Risk."
+                width="16%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <ThSort
+                field="price_rise_pct"
+                label="Price Rise %"
+                info="How much the price jumped over the last 15 days compared to where it was 6 months ago."
+                width="14%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <ThSort
+                field="price_z"
+                label="Price Z"
+                info="Measures if recent price gains are an unusual statistical spike compared to normal daily movement."
+                width="12%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <ThSort
+                field="volume_z"
+                label="Volume Z"
+                info="Measures if recent trading volume is an unusual spike compared to normal 6-month trading activity."
+                width="12%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <ThSort
+                field="band_hit_days"
+                label="Circuit Hits"
+                info="Number of days in the last 15 days the stock touched or neared its upper circuit limit."
+                width="11%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+              <ThSort
+                field="new_high_days"
+                label="180D Highs"
+                info="Number of days in the last 15 days where the stock hit a fresh 6-month high price."
+                infoAlign="right"
+                width="11%"
+                sortField={sortField}
+                sortOrder={sortOrder}
+                onSort={handleSort}
+              />
+
+              <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none" style={{ width: "10%" }}>
+                Action
               </th>
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className="divide-y divide-slate-200/70 bg-white">
             {loading ? (
               Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className="border-b border-slate-100 animate-pulse">
-                  {Array.from({ length: 9 }).map((_, j) => (
-                    <td key={j} className={cn("px-4 py-3.5", j === 0 && "sticky left-0 bg-white z-10 shadow-[1px_0_0_0_#e2e8f0]")}>
-                      <div className="h-4 bg-slate-100 rounded" style={{ width: j === 0 ? 120 : 60 }} />
+                <tr key={i} className="animate-pulse">
+                  {Array.from({ length: 8 }).map((_, j) => (
+                    <td key={j} className="px-5 py-3.5">
+                      <div className="h-4 rounded bg-slate-200" style={{ width: j === 0 ? 140 : 64 }} />
                     </td>
                   ))}
                 </tr>
               ))
-            ) : sorted.length === 0 ? (
+            ) : page.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-16 text-center">
+                <td colSpan={8} className="px-6 py-16 text-center bg-white">
                   <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <div className="text-slate-600 font-semibold text-sm">No scrips match the active surveillance filter criteria.</div>
-                  <p className="text-xs text-slate-400 mt-1">Try resetting the anomaly triggers or clearing the search text.</p>
+                  <div className="text-slate-700 font-bold text-sm">No scrips match filters</div>
+                  <p className="text-xs text-slate-400 mt-1">Try resetting the search keyword or risk filters</p>
                   {hasActiveFilters && (
                     <button
+                      type="button"
                       onClick={resetFilters}
-                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:underline cursor-pointer"
+                      className="mt-3 text-xs font-semibold text-blue-600 hover:text-blue-700 underline underline-offset-2 cursor-pointer"
                     >
-                      <X className="h-3 w-3" /> Reset All Filters
+                      Reset filters
                     </button>
                   )}
                 </td>
               </tr>
             ) : (
-              paginatedScrips.map((alert, idx) => (
+              page.map((s, idx) => (
                 <tr
-                  key={alert.symbol}
+                  key={s.symbol}
                   className={cn(
-                    "border-b border-slate-100 transition-colors hover:bg-slate-50/80",
-                    idx % 2 === 0 ? "bg-white" : "bg-slate-50/40"
+                    "transition-colors duration-75 border-b border-slate-100",
+                    idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-slate-50/40 hover:bg-slate-100/60"
                   )}
                 >
-                  {/* Security Master */}
-                  <td className={cn("px-4 py-3.5 sticky left-0 z-10 shadow-[1px_0_0_0_#e2e8f0]", idx % 2 === 0 ? "bg-white" : "bg-slate-50/90")}>
-                    <div className="flex items-center gap-2.5">
-                      <div className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", riskDot[alert.risk] || "bg-slate-300")} />
+                  {/* Security */}
+                  <td className="px-5 py-3.5">
+                    <div className="flex items-start gap-2.5">
+                      <div className={cn("w-2.5 h-2.5 rounded-full mt-1 shrink-0", RISK_DOT[s.risk] || "bg-slate-300")} />
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <Link
-                            href={`/analysis/${alert.symbol}`}
-                            className="font-bold text-sm text-blue-700 hover:text-blue-900 hover:underline tracking-tight"
-                          >
-                            {alert.symbol}
-                          </Link>
-                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200">
-                            EQ
-                          </span>
-                        </div>
-                        <div className="text-xs font-medium text-slate-500 truncate max-w-[180px] mt-0.5" title={`${alert.company || alert.symbol} (${alert.isin || ''})`}>
-                          {alert.company || `${alert.symbol} Ltd`}
+                        <Link
+                          href={`/analysis/${s.symbol}?${new URLSearchParams({
+                            ...(asOfDate ? { asOfDate } : {}),
+                            ...(windowDays ? { windowDays: String(windowDays) } : {}),
+                            ...(exchange ? { exchange } : {}),
+                          }).toString()}`}
+                          className="font-bold text-sm text-slate-900 hover:text-blue-600 hover:underline leading-tight transition-colors"
+                        >
+                          {s.symbol}
+                        </Link>
+                        <div className="text-xs text-slate-500 truncate max-w-[200px] mt-0.5" title={s.company || s.symbol}>
+                          {s.company || s.symbol}
                         </div>
                       </div>
                     </div>
@@ -529,120 +491,98 @@ export function AlertsTable({
                   {/* PVASF Score */}
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
-                      <span className={cn(
-                        "text-sm font-bold w-7 text-right tabular-nums",
-                        alert.score >= 15 ? "text-rose-600" : alert.score >= 10 ? "text-amber-600" : "text-emerald-600"
-                      )}>
-                        {alert.score}
-                      </span>
-                      <div className="flex-1 w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <span className="text-sm font-black tabular-nums text-slate-900">{Number(s.score || 0).toFixed(0)}</span>
+                      <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
                         <div
                           className={cn(
                             "h-full rounded-full transition-all",
-                            alert.score >= 15 ? "bg-rose-500" : alert.score >= 10 ? "bg-amber-400" : "bg-emerald-500"
+                            s.risk === "High" ? "bg-rose-500" : s.risk === "Medium" ? "bg-amber-500" : "bg-emerald-500"
                           )}
-                          style={{ width: `${Math.min((alert.score / 100) * 100, 100)}%` }}
+                          style={{ width: `${Math.min((Number(s.score || 0) / 100) * 100, 100)}%` }}
                         />
                       </div>
                     </div>
-                    <div className={cn(
-                      "inline-block mt-1 text-[10px] font-semibold px-1.5 py-0.5 rounded border",
-                      riskColors[alert.risk] || "bg-slate-100 text-slate-600 border-slate-200"
-                    )}>
-                      {alert.risk} Risk
-                    </div>
+                    <span
+                      className={cn(
+                        "inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded leading-tight uppercase tracking-wider",
+                        s.risk === "High"
+                          ? "bg-rose-50 text-rose-700 border border-rose-200"
+                          : s.risk === "Medium"
+                          ? "bg-amber-50 text-amber-800 border border-amber-200"
+                          : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      )}
+                    >
+                      {s.risk}
+                    </span>
                   </td>
 
-                  {/* Price Rise % */}
+                  {/* Price Rise */}
                   <td className="px-4 py-3.5">
-                    <div className={cn(
-                      "text-sm font-bold tabular-nums",
-                      alert.price_rise_pct >= 15 ? "text-rose-600" : alert.price_rise_pct > 0 ? "text-slate-800" : "text-emerald-600"
-                    )}>
-                      {alert.price_rise_pct > 0 ? "+" : ""}{alert.price_rise_pct.toFixed(1)}%
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">vs T‑180 Baseline</div>
+                    <span
+                      className={cn(
+                        "text-sm font-bold tabular-nums",
+                        Number(s.price_rise_pct || 0) > 0 ? "text-emerald-700" : Number(s.price_rise_pct || 0) < 0 ? "text-rose-600" : "text-slate-800"
+                      )}
+                    >
+                      {Number(s.price_rise_pct || 0) > 0 ? "+" : ""}
+                      {Number(s.price_rise_pct || 0).toFixed(1)}%
+                    </span>
+                    <div className="text-[11px] text-slate-400 mt-0.5">vs 6M baseline</div>
                   </td>
 
                   {/* Price Z */}
                   <td className="px-4 py-3.5">
-                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
-                      {alert.price_z.toFixed(2)}σ
-                    </div>
-                    <div className="text-[11px] mt-0.5 font-medium">
-                      {alert.price_z >= 1.645 ? (
-                        <span className="text-rose-600 font-semibold">⚠ Significant</span>
-                      ) : (
-                        <span className="text-slate-400">Normal</span>
-                      )}
-                    </div>
+                    <span className="text-sm font-bold tabular-nums text-slate-800">
+                      {Number(s.price_z || 0).toFixed(2)}σ
+                    </span>
+                    {Number(s.price_z || 0) >= 1.645 ? (
+                      <div className="text-[10px] font-bold text-rose-600 mt-0.5">▲ significant</div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 mt-0.5">normal</div>
+                    )}
                   </td>
 
                   {/* Volume Z */}
                   <td className="px-4 py-3.5">
-                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
-                      {alert.volume_z.toFixed(2)}σ
-                    </div>
-                    <div className="text-[11px] mt-0.5 font-medium">
-                      {alert.volume_z >= 1.645 ? (
-                        <span className="text-rose-600 font-semibold">⚠ Surge</span>
-                      ) : (
-                        <span className="text-slate-400">Normal</span>
-                      )}
-                    </div>
+                    <span className="text-sm font-bold tabular-nums text-slate-800">
+                      {Number(s.volume_z || 0).toFixed(2)}σ
+                    </span>
+                    {Number(s.volume_z || 0) >= 1.645 ? (
+                      <div className="text-[10px] font-bold text-amber-700 mt-0.5">▲ surge</div>
+                    ) : (
+                      <div className="text-[10px] text-slate-400 mt-0.5">normal</div>
+                    )}
                   </td>
 
                   {/* Circuit Hits */}
                   <td className="px-4 py-3.5">
-                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
-                      {alert.band_hit_days} {alert.band_hit_days === 1 ? "day" : "days"}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">≥90% Band</div>
+                    <span className={cn("text-sm font-bold tabular-nums", s.band_hit_days >= 3 ? "text-rose-600" : "text-slate-800")}>
+                      {s.band_hit_days}
+                    </span>
+                    <span className="text-xs text-slate-500 font-normal ml-1">days</span>
                   </td>
 
-                  {/* New Highs */}
+                  {/* 180D Highs */}
                   <td className="px-4 py-3.5">
-                    <div className="text-sm font-bold tabular-nums text-slate-800 font-mono">
-                      {alert.new_high_days} {alert.new_high_days === 1 ? "day" : "days"}
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">180D Breakout</div>
+                    <span className={cn("text-sm font-bold tabular-nums", s.new_high_days >= 1 ? "text-blue-700" : "text-slate-800")}>
+                      {s.new_high_days}
+                    </span>
+                    <span className="text-xs text-slate-500 font-normal ml-1">days</span>
                   </td>
 
-                  {/* Status Dropdown */}
-                  <td className="px-4 py-3.5">
-                    <select
-                      value={alert.status}
-                      onChange={(e) =>
-                        onStatusChange &&
-                        onStatusChange(alert.symbol, e.target.value as "Open" | "Under review" | "Closed")
-                      }
-                      className={cn(
-                        "rounded-lg border text-xs font-semibold px-2.5 py-1.5 outline-none cursor-pointer transition-colors",
-                        alert.status === "Open"
-                          ? "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                          : alert.status === "Under review"
-                          ? "bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100"
-                          : "bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-emerald-100"
-                      )}
+                  {/* Action */}
+                  <td className="px-4 py-3.5 text-right">
+                    <Link
+                      href={`/analysis/${s.symbol}?${new URLSearchParams({
+                        ...(asOfDate ? { asOfDate } : {}),
+                        ...(windowDays ? { windowDays: String(windowDays) } : {}),
+                        ...(exchange ? { exchange } : {}),
+                      }).toString()}`}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs"
                     >
-                      <option value="Open">Open</option>
-                      <option value="Under review">Under Review</option>
-                      <option value="Closed">Closed</option>
-                    </select>
-                  </td>
-
-                  {/* Action Buttons */}
-                  <td className="px-4 py-3.5">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        href={`/analysis/${alert.symbol}`}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-800 font-extrabold text-xs hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-2xs group-hover:border-slate-300"
-                        title="Open Scrip Analysis Workspace"
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                        Analyze Scrip
-                      </Link>
-                    </div>
+                      <Eye className="h-3.5 w-3.5" />
+                      <span>Analyze</span>
+                    </Link>
                   </td>
                 </tr>
               ))
@@ -651,109 +591,271 @@ export function AlertsTable({
         </table>
       </div>
 
-      {/* ── Table Footer Fixed Bar with Pagination ── */}
-      <div className="flex-shrink-0 px-4 py-2.5 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
-        {/* Left: Summary Readout & Page Size Selector */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div>
-            Showing <span className="font-bold text-slate-800">{totalItems > 0 ? startIndex + 1 : 0}</span>–<span className="font-bold text-slate-800">{endIndex}</span> of <span className="font-bold text-slate-800">{totalItems}</span> security alerts
-          </div>
-
-          <div className="flex items-center gap-1.5 border-l border-slate-200 pl-3">
-            <span className="text-slate-400 font-medium">Rows:</span>
+      {/* ── Footer ── */}
+      <div className="flex-shrink-0 px-5 py-2.5 bg-slate-50/80 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+        <div className="flex items-center gap-3">
+          <span>
+            Showing <strong className="text-slate-900 font-bold">{total > 0 ? startIdx + 1 : 0}–{endIdx}</strong> of{" "}
+            <strong className="text-slate-900 font-bold">{total}</strong>
+          </span>
+          <span className="text-slate-300">|</span>
+          <span className="flex items-center gap-1.5">
+            Rows per page:
             <select
               value={pageSize}
               onChange={(e) => setPageSize(Number(e.target.value))}
-              className="bg-white border border-slate-200 text-slate-700 font-bold rounded-lg px-2 py-0.5 text-xs outline-none focus:border-blue-500 cursor-pointer shadow-2xs"
+              className="bg-white border border-slate-300 text-slate-800 font-semibold rounded-md px-2 py-0.5 text-xs outline-none cursor-pointer"
             >
               <option value={10}>10</option>
+              <option value={15}>15</option>
               <option value={25}>25</option>
               <option value={50}>50</option>
-              <option value={100}>100</option>
               <option value={0}>All</option>
             </select>
-          </div>
-        </div>
-
-        {/* Center: Risk breakdown badges */}
-        <div className="hidden lg:flex items-center gap-3">
-          <span className="flex items-center gap-1 text-rose-600 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-rose-500"></span> High: {sorted.filter(s => s.risk === "High").length}
-          </span>
-          <span className="flex items-center gap-1 text-amber-600 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-amber-500"></span> Medium: {sorted.filter(s => s.risk === "Medium").length}
-          </span>
-          <span className="flex items-center gap-1 text-emerald-600 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Normal: {sorted.filter(s => s.risk === "Low").length}
           </span>
         </div>
 
-        {/* Right: Pagination Controls */}
+        <div className="hidden lg:flex items-center gap-3 text-xs font-medium text-slate-500">
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-rose-500" />
+            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "High").length}</strong> High
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-amber-500" />
+            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "Medium").length}</strong> Medium
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "Low").length}</strong> Low
+          </span>
+        </div>
+
         {pageSize > 0 && totalPages > 1 ? (
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => setCurrentPage(1)}
               disabled={currentPage === 1}
-              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="First Page"
+              className="p-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsLeft className="h-3.5 w-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Previous Page"
+              className="p-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
             </button>
-
             <div className="flex items-center gap-1 mx-1">
-              {getPageNumbers(currentPage, totalPages).map((p, i) =>
+              {pageNums(currentPage, totalPages).map((p, i) =>
                 typeof p === "number" ? (
                   <button
                     key={i}
+                    type="button"
                     onClick={() => setCurrentPage(p)}
                     className={cn(
-                      "h-7 min-w-7 px-2 rounded-lg text-xs font-bold transition-all border",
+                      "h-6 min-w-[24px] px-1.5 rounded-md text-xs font-bold transition-all border",
                       currentPage === p
-                        ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
+                        ? "bg-slate-900 text-white border-slate-900"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
                     )}
                   >
                     {p}
                   </button>
                 ) : (
-                  <span key={i} className="px-1 text-slate-400 font-bold">
-                    ...
+                  <span key={i} className="px-0.5 text-slate-400 text-xs">
+                    …
                   </span>
                 )
               )}
             </div>
-
             <button
+              type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Next Page"
+              className="p-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronRight className="h-3.5 w-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => setCurrentPage(totalPages)}
               disabled={currentPage === totalPages}
-              className="p-1 rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              title="Last Page"
+              className="p-1 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
             >
               <ChevronsRight className="h-3.5 w-3.5" />
             </button>
           </div>
-        ) : (
-          <div className="text-slate-400 text-[11px] font-medium">
-            Showing all {totalItems} entries
-          </div>
-        )}
+        ) : null}
       </div>
+    </div>
+  );
+}
+
+export function InfoTooltip({
+  text,
+  className,
+  placement = "bottom",
+  align = "center",
+}: {
+  text: string;
+  className?: string;
+  placement?: "top" | "bottom";
+  align?: "left" | "center" | "right";
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = React.useRef<HTMLSpanElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isOpen]);
+
+  return (
+    <span
+      ref={containerRef}
+      className={cn("relative inline-flex items-center align-middle cursor-pointer", className)}
+      onClick={(e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        setIsOpen((prev) => !prev);
+      }}
+    >
+      <button
+        type="button"
+        className={cn(
+          "p-0.5 rounded transition-colors cursor-pointer focus:outline-none flex items-center justify-center",
+          isOpen ? "text-blue-600 bg-blue-50" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+        )}
+        aria-label="Toggle explanation"
+      >
+        <Info className="w-3.5 h-3.5 shrink-0" />
+      </button>
+
+      {isOpen && (
+        <span
+          onClick={(e) => e.stopPropagation()}
+          className={cn(
+            "absolute z-50 w-72 max-w-[calc(100vw-32px)] whitespace-normal break-words rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md p-3 text-[11px] font-normal normal-case leading-relaxed text-slate-100 shadow-[0_12px_28px_rgba(0,0,0,0.28),0_2px_8px_rgba(0,0,0,0.18)] transition-all animate-in fade-in-0 zoom-in-95 text-left pointer-events-auto select-text",
+            placement === "top" ? "bottom-full mb-2" : "top-full mt-2",
+            align === "left"
+              ? "left-0"
+              : align === "right"
+              ? "right-0"
+              : "left-1/2 -translate-x-1/2"
+          )}
+        >
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <span className="font-bold text-blue-400 text-[10px] uppercase tracking-wider block">Quick Explanation</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+              }}
+              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+          <div>{text}</div>
+          <span
+            className={cn(
+              "absolute border-4 border-transparent",
+              placement === "top"
+                ? "top-full border-t-slate-900/95"
+                : "bottom-full border-b-slate-900/95",
+              align === "left"
+                ? "left-2.5"
+                : align === "right"
+                ? "right-2.5"
+                : "left-1/2 -translate-x-1/2"
+            )}
+          />
+        </span>
+      )}
+    </span>
+  );
+}
+
+function SortIcon({ field, current, order }: { field: string; current: string; order: SortOrder }) {
+  if (field !== current) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
+  return order === "asc" ? (
+    <ArrowUp className="h-3.5 w-3.5 text-blue-600" />
+  ) : (
+    <ArrowDown className="h-3.5 w-3.5 text-blue-600" />
+  );
+}
+
+function ThSort({
+  field,
+  label,
+  info,
+  infoAlign = "center",
+  width,
+  sortField,
+  sortOrder,
+  onSort,
+}: {
+  field: SortField;
+  label: string;
+  info?: string;
+  infoAlign?: "left" | "center" | "right";
+  width?: string;
+  sortField: SortField;
+  sortOrder: SortOrder;
+  onSort: (field: SortField) => void;
+}) {
+  return (
+    <th
+      className="px-4 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-slate-900 transition-colors"
+      style={{ width }}
+      onClick={() => onSort(field)}
+    >
+      <span className="inline-flex items-center gap-1.5">
+        {label}
+        {info && <InfoTooltip text={info} placement="bottom" align={infoAlign} />}
+        <SortIcon field={field} current={sortField} order={sortOrder} />
+      </span>
+    </th>
+  );
+}
+
+function TriggerPill({
+  active,
+  onClick,
+  label,
+  info,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  info?: string;
+}) {
+  return (
+    <div className="inline-flex items-center gap-1">
+      <button
+        type="button"
+        onClick={onClick}
+        className={cn(
+          "px-2.5 py-1 rounded-md border text-xs font-medium transition-all cursor-pointer whitespace-nowrap",
+          active
+            ? "bg-slate-900 border-slate-900 text-white font-semibold shadow-xs"
+            : "bg-white border-slate-300/80 text-slate-600 hover:border-slate-400 hover:text-slate-800"
+        )}
+      >
+        {label}
+      </button>
+      {info && <InfoTooltip text={info} />}
     </div>
   );
 }

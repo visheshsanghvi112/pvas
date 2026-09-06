@@ -25,7 +25,8 @@ If the composite score $S_{\text{final}} \ge 15.0$, the security is shortlisted 
 
 | Documentation File | Target Role | Primary Purpose & Contents |
 | :--- | :--- | :--- |
-| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Full-Stack Engineers, System Architects, Compliance Leads | **Master System Architecture & Codebase Map (v3.6.0)**.<br/>Details full file-by-file module directory, ORM models, API routes, RBAC permissions, UI component ownership, and data lineage. |
+| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Full-Stack Engineers, System Architects, Compliance Leads | **Master System Architecture & Codebase Map (v4.0.0)**.<br/>Details full file-by-file module directory, 18-table ORM models, API routes, RBAC permissions, UI component ownership, and data lineage. |
+| **[`schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/schema.sql)** | Data Engineers, DBAs, Architects | **Complete 18-Table Production SQL Schema & Master DDL**.<br/>Production ANSI/SQLite/PostgreSQL schema definitions with indexes, foreign keys, and column-level comments. |
 | **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)** | Quantitative Analysts, Risk Officers | **Regulatory Anomaly Engine & Scoring Formulas**.<br/>Details mathematical formulas for Price Rise %, Z-Scores, Band Persistence, New Highs, ordinal cutoffs, and default weight calibrations. |
 | **[`PVASF_SCHEMA_REFERENCE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_SCHEMA_REFERENCE.md)** | Data Engineers, DBAs | **Enterprise Data Warehouse Physical Schema Reference**.<br/>Column-by-column physical specifications for all enterprise data tables (`ASD`, `ACSD`, `APPD`, `DECL`, `DDCL`, `FSHG`, `FPRH`, `FCAC`, etc.). |
 | **[`BUSINESS_FUNCTIONAL_DATA_REQUIREMENTS.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/BUSINESS_FUNCTIONAL_DATA_REQUIREMENTS.md)** | Business Analysts, Compliance Officers | **Functional Data Requirements Specification**.<br/>Outlines business data requirements across Watchlist, Stock Analysis, Scrip Comparison, Forensic Cases, Audit Trail, and Settings. |
@@ -83,7 +84,7 @@ UI_PVASF/
 │
 ├── pv_alert_surveillance.py                # Standalone Pure-Python Anomaly Engine & Math Formulas
 ├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification (v3.4.0)
-├── PVASF_CORE_SPEC.md                      # SEBI Anomaly Metric Formulas & Score Mapping
+├── PVASF_CORE_SPEC.md                      # PVASF Anomaly Metric Formulas & Score Mapping
 ├── PVASF_SCHEMA_REFERENCE.md               # Enterprise Data Warehouse Column Specification
 ├── DATA_REQUEST_SPEC.md                    # Teradata ETL & Production SQL Extraction Queries
 ├── BUSINESS_FUNCTIONAL_DATA_REQUIREMENTS.md# Business Data Requirements Specification

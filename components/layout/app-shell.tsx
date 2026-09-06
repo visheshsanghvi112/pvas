@@ -97,7 +97,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         if (isHigh || isMedium) {
           const alertId = `wl-${s.symbol}`;
           const alertTitle = `${s.symbol} — ${s.risk} Risk Surveillance Alert`;
-          const metricStr = `Risk: ${s.risk} · Score: ${s.score.toFixed(0)} · Price Z: ${s.price_z >= 0 ? "+" : ""}${s.price_z.toFixed(2)}σ · Vol Z: ${s.volume_z >= 0 ? "+" : ""}${s.volume_z.toFixed(2)}σ`;
+          const scoreVal = Number(s.score || 0);
+          const priceZVal = Number(s.price_z || 0);
+          const volZVal = Number(s.volume_z || 0);
+          const metricStr = `Risk: ${s.risk} · Score: ${scoreVal.toFixed(0)} · Price Z: ${priceZVal >= 0 ? "+" : ""}${priceZVal.toFixed(2)}σ · Vol Z: ${volZVal >= 0 ? "+" : ""}${volZVal.toFixed(2)}σ`;
 
           alertItems.push({
             id: alertId,

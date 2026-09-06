@@ -1,7 +1,7 @@
 # PVASF Enterprise Data Request Specification & Teradata ETL Directives
 
 **Document Version:** 3.5.0 (Exhaustive & Verified Single Source of Truth)  
-**Target Architecture:** Enterprise 3-Tier SEBI Data Warehouse (Teradata PDM V10.0 / ANSI SQL Standard)  
+**Target Architecture:** Enterprise 3-Tier Regulatory Data Warehouse (Teradata PDM V10.0 / ANSI SQL Standard)  
 **Security Level:** CONFIDENTIAL — Internal Data Engineering & DBA Operations Manual  
 
 ---
@@ -244,7 +244,7 @@ Below is the complete physical table inventory consumed by the surveillance engi
 | `SYS_USERS` | `hashed_password` | `VARCHAR(255)`| **Y** | `'pbkdf2_sha256$100000$...'`| PBKDF2 encrypted password (100k rounds + 16B salt). |
 | `SYS_USERS` | `role` | `VARCHAR(20)` | **Y** | `'Admin'` | RBAC user role (`Admin`, `Analyst`, `Viewer`). |
 | `SYS_AUDIT_LOGS` | `action` | `VARCHAR(100)`| **Y** | `'UPDATE_WEIGHTS'` | Security audit log action type. |
-| `MODEL_SETTINGS` | `score_cutoff` | `FLOAT` | **Y** | `15.0` | SEBI framework alert trigger threshold score cutoff. |
+| `MODEL_SETTINGS` | `score_cutoff` | `FLOAT` | **Y** | `15.0` | PVASF framework alert trigger threshold score cutoff. |
 
 ---
 
@@ -272,6 +272,28 @@ INNER JOIN FACT_PRC_RISE_HIST fprh
     AND asd.Asd_Date = fprh.Fprh_Rec_Date
 WHERE asd.Asd_Date BETWEEN CURRENT_DATE - 180 AND CURRENT_DATE
 ORDER BY asd.Asd_Symbol ASC, asd.Asd_Date ASC;
+```
+
+---
+
+### 4.1.1 Query 1B: Multi-Exchange (NSE + BSE) Canonical Price & Volume Consolidation View
+
+```sql
+-- Production ANSI SQL / Teradata Materialized View: Multi-Exchange Canonical Consolidation
+-- Performs Volume-Weighted Average Price (VWAP) across all venues in the database engine (Terabytes scale)
+CREATE OR REPLACE VIEW V_AGG_SEC_DAY_CONSOLIDATED AS
+SELECT 
+    asd.Asd_Symbol                                                              AS target_symbol,
+    asd.Asd_Date                                                                AS trade_date,
+    MAX(asd.Asd_High_Price)                                                     AS consolidated_high_price,
+    MIN(asd.Asd_Low_Price)                                                      AS consolidated_low_price,
+    SUM(asd.Asd_Tot_Val) / NULLIF(SUM(asd.Asd_Tot_Qty), 0)                      AS consolidated_vwap_close,
+    SUM(asd.Asd_Tot_Qty)                                                        AS consolidated_total_volume,
+    SUM(asd.Asd_Tot_Val)                                                        AS consolidated_total_value,
+    MAX(asd.Asd_Upper_Band_Prc)                                                 AS upper_circuit_limit,
+    COUNT(DISTINCT asd.Asd_Exch_Token)                                          AS active_exchange_count
+FROM AGG_SEC_DAY asd
+GROUP BY asd.Asd_Symbol, asd.Asd_Date;
 ```
 
 ---

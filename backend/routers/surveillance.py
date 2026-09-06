@@ -22,12 +22,21 @@ def health_check():
     }
 
 
+@router.get("/dates")
+def get_available_dates(current_user: SysUser = Depends(get_current_user)):
+    """Returns sorted list of distinct market trading dates available in the warehouse."""
+    return service.get_available_trading_dates()
+
+
 @router.get("/watchlist")
 def get_watchlist(
     search: str = Query("", description="Search ticker symbol"),
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
+    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
-    return get_scrips(search=search, watchlist=True, current_user=current_user)
+    return get_scrips(search=search, watchlist=True, as_of_date=as_of_date, window_days=window_days, exchange=exchange, current_user=current_user)
 
 
 @router.get("/scrips")
@@ -35,14 +44,17 @@ def get_watchlist(
 def get_scrips(
     search: str = Query("", description="Search ticker symbol"),
     watchlist: Optional[bool] = Query(None, description="Filter for watchlist-shortlisted scrips"),
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
+    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
     if watchlist:
-        scrips = service.get_watchlist()
+        scrips = service.get_watchlist(as_of_date=as_of_date, window_days=window_days, exchange=exchange)
     else:
-        scrips = service.get_scrips_summary()
+        scrips = service.get_scrips_summary(as_of_date=as_of_date, window_days=window_days, exchange=exchange)
     if search:
-        scrips = [s for s in scrips if search.lower() in s["ticker"].lower()]
+        scrips = [s for s in scrips if search.lower() in s["ticker"].lower() or search.lower() in (s.get("company") or "").lower()]
     return scrips
 
 
@@ -50,10 +62,13 @@ def get_scrips(
 @legacy_router.get("/scrip/{scrip_id}")
 def get_scrip_detail(
     scrip_id: str,
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
+    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
     try:
-        return service.get_scrip_detail(scrip_id.upper())
+        return service.get_scrip_detail(scrip_id.upper(), as_of_date=as_of_date, window_days=window_days, exchange=exchange)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -61,6 +76,8 @@ def get_scrip_detail(
 @router.get("/scrip/{scrip_id}/participants")
 def get_scrip_participants(
     scrip_id: str,
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
+    window_days: int = Query(15, description="Surveillance window length in trading days"),
     current_user: SysUser = Depends(get_current_user)
 ):
     try:
