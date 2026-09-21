@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 
 export type UserRole = "Admin" | "Analyst" | "Viewer";
 
@@ -33,16 +33,16 @@ interface UserContextType {
   isLoginModalOpen: boolean;
   openLoginModal: () => void;
   closeLoginModal: () => void;
-  login: (username: string, password: string) => Promise<boolean>;
+  login: (u: string, p: string) => Promise<boolean>;
   logout: () => void;
-  setUserRole: (role: UserRole) => void;
+  setUserRole: (r: UserRole) => void;
   usersList: UserProfile[];
-  refreshUsers: () => Promise<void>;
+  refreshUsers: (tokenOverride?: string | null) => Promise<void>;
   auditLogs: AuditLogItem[];
-  refreshAuditLogs: () => Promise<void>;
-  updateUserRoleApi: (userId: number, newRole: UserRole) => Promise<boolean>;
-  toggleUserActiveApi: (userId: number) => Promise<boolean>;
-  createUserApi: (user: { username: string; email: string; full_name: string; department: string; password: string; role: UserRole }) => Promise<boolean>;
+  refreshAuditLogs: (tokenOverride?: string | null) => Promise<void>;
+  updateUserRoleApi: (id: number, role: UserRole) => Promise<boolean>;
+  toggleUserActiveApi: (id: number) => Promise<boolean>;
+  createUserApi: (payload: { username: string; full_name: string; email: string; department: string; password: string; role: UserRole }) => Promise<boolean>;
 }
 
 const defaultGuestUser: UserProfile = {
@@ -55,7 +55,9 @@ const defaultGuestUser: UserProfile = {
   is_active: false,
 };
 
-const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
+  ? process.env.NEXT_PUBLIC_API_URL
+  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 const AUTH_API = `${BASE_HOST}/api/v1/auth`;
 
 const UserContext = createContext<UserContextType>({
@@ -84,16 +86,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
 
-  useEffect(() => {
-    // Check saved token on mount
-    const savedToken = localStorage.getItem("pvasf_auth_token");
-    if (savedToken) {
-      setAuthToken(savedToken);
-      fetchMe(savedToken);
-    }
+  const logout = useCallback(() => {
+    setAuthToken(null);
+    localStorage.removeItem("pvasf_auth_token");
+    setCurrentUser(defaultGuestUser);
   }, []);
 
-  async function fetchMe(token: string | null) {
+  const fetchMe = useCallback(async (token: string | null) => {
     if (!token) {
       setCurrentUser(defaultGuestUser);
       return;
@@ -118,7 +117,56 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error("Failed to fetch current user profile", e);
     }
-  }
+  }, [logout]);
+
+  useEffect(() => {
+    // Check saved token on mount
+    const savedToken = localStorage.getItem("pvasf_auth_token");
+    if (savedToken) {
+      setAuthToken(savedToken);
+      fetchMe(savedToken);
+    }
+  }, [fetchMe]);
+
+  const refreshUsers = useCallback(async (tokenOverride?: string | null) => {
+    try {
+      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
+      const headers: Record<string, string> = {};
+      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
+      const res = await fetch(`${AUTH_API}/users`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(
+          data.map((u: any) => ({
+            id: u.id,
+            username: u.username,
+            name: u.full_name,
+            role: u.role,
+            email: u.email,
+            department: u.department,
+            is_active: u.is_active,
+          }))
+        );
+      }
+    } catch (e) {
+      console.error("Failed to refresh users", e);
+    }
+  }, [authToken]);
+
+  const refreshAuditLogs = useCallback(async (tokenOverride?: string | null) => {
+    try {
+      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
+      const headers: Record<string, string> = {};
+      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
+      const res = await fetch(`${AUTH_API}/audit-logs?limit=100`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setAuditLogs(data);
+      }
+    } catch (e) {
+      console.error("Failed to refresh audit logs", e);
+    }
+  }, [authToken]);
 
   async function login(username: string, password: string): Promise<boolean> {
     try {
@@ -152,55 +200,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     return false;
   }
 
-  function logout() {
-    setAuthToken(null);
-    localStorage.removeItem("pvasf_auth_token");
-    setCurrentUser(defaultGuestUser);
-  }
-
   const setUserRole = (role: UserRole) => {
     // Role state is managed via backend auth token claims
   };
-
-  async function refreshUsers(tokenOverride?: string | null) {
-    try {
-      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
-      const headers: Record<string, string> = {};
-      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
-      const res = await fetch(`${AUTH_API}/users`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setUsersList(
-          data.map((u: any) => ({
-            id: u.id,
-            username: u.username,
-            name: u.full_name,
-            role: u.role,
-            email: u.email,
-            department: u.department,
-            is_active: u.is_active,
-          }))
-        );
-      }
-    } catch (e) {
-      console.error("Failed to refresh users", e);
-    }
-  }
-
-  async function refreshAuditLogs(tokenOverride?: string | null) {
-    try {
-      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
-      const headers: Record<string, string> = {};
-      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
-      const res = await fetch(`${AUTH_API}/audit-logs?limit=100`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setAuditLogs(data);
-      }
-    } catch (e) {
-      console.error("Failed to refresh audit logs", e);
-    }
-  }
 
   async function updateUserRoleApi(userId: number, newRole: UserRole): Promise<boolean> {
     try {

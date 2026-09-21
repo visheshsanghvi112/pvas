@@ -149,12 +149,16 @@ export interface ClientDetail {
   name?: string;
   category?: string;
   client_code?: string;
+  city?: string;
+  risk_grade?: string;
   terminals: Array<{ terminal_id: string; location: string }>;
   depository_accounts: Array<{ dp_id: string; client_id: string; status: string }>;
 }
 
 // Base API URLs pointing to FastAPI backend endpoints
-const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
+  ? process.env.NEXT_PUBLIC_API_URL
+  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
 const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
 const CLIENTS_API_BASE = `${BASE_HOST}/api/v1/clients`;

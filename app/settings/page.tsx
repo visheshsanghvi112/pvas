@@ -113,7 +113,7 @@ export default function SettingsPage() {
   useEffect(() => {
     refreshUsers();
     refreshAuditLogs();
-  }, []);
+  }, [refreshUsers, refreshAuditLogs]);
 
   const handleResetDefaults = () => {
     setWPriceRise(25);

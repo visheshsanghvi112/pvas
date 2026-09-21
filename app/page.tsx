@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo, Suspense } from "react";
+import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Clock,
@@ -72,7 +72,7 @@ function DashboardContent() {
   }, [urlAsOfDate, router, pathname, searchParams]);
 
   // Fetch watchlist data whenever selectedDate, windowDays, or exchange changes
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const data = await fetchWatchlist(undefined, selectedDate || undefined, windowDays, exchange);
@@ -82,13 +82,13 @@ function DashboardContent() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, windowDays, exchange]);
 
   useEffect(() => {
     if (selectedDate || availableDates.length === 0) {
       loadData();
     }
-  }, [selectedDate, windowDays, exchange]);
+  }, [selectedDate, availableDates.length, loadData]);
 
 
   // ── Date Navigation Helpers ──
