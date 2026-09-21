@@ -4,7 +4,6 @@ from typing import Dict, Any, List, Optional, Tuple
 
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
 
 
 # ── Curated Security & Company Lookups ──

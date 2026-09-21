@@ -17,7 +17,6 @@ from sqlalchemy.orm import Session
 
 from backend.repositories.trade_matches_repo import TradeMatchesRepository
 from backend.schemas.trade_matches import TradeMatchesFilter
-from backend.schemas.common import PaginationMeta, PagedResponse
 
 
 class TradeMatchesService:

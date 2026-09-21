@@ -5,7 +5,7 @@ FastAPI router for Security, Authentication, User Management, and Audit Logs.
 """
 
 from typing import List, Optional
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, ConfigDict
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 

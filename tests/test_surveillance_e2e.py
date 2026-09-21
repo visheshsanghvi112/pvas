@@ -15,14 +15,11 @@ Covers:
 import os
 import re
 import sqlite3
-import pytest
 from datetime import date, timedelta
 import pandas as pd
-import numpy as np
 from fastapi.testclient import TestClient
 
 from backend.main import app
-from backend.security import create_access_token, verify_password, hash_password
 from backend.db.database import SessionLocal
 from backend.db.models import (
     ClientIdentityMaster, ClientDematAccount, DailyMarketEod,

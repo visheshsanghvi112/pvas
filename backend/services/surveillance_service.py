@@ -1,7 +1,7 @@
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional, Set
+from typing import Dict, List, Any, Optional
 import numpy as np
 import pandas as pd
 import zlib
@@ -321,11 +321,6 @@ class EODSurveillanceService:
 
     def _generate_sample_trades_df(self) -> pd.DataFrame:
         """Generates sample participant trades data for auditing LTP and counterparty concentration."""
-        # Realistic PAN tokens matching regulatory surveillance format
-        sample_pans = [
-            "GDKNW2066S", "UHKFC2840Q", "EXUFM0503J", "HWFTM1488X", 
-            "MZOKE8130O", "XCGWR8003L", "CVXUL2488S", "SSXSC8612W", "YQMCC7107X"
-        ]
         rows = []
         for ticker in ["ALPHATECH", "NOVAENERGY", "ZENITHBIO", "ORBITCEM", "TCS", "SBIN", "ICICIBANK", "AXISBANK"]:
             # 1. Bilateral high RTR reversal pairs (RTR = 2*min(A->B, B->A)/gross)

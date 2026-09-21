@@ -14,9 +14,8 @@ Populates all 15 clean relational tables in surveillance.db:
 from __future__ import annotations
 
 import math
-import random
 from datetime import date, datetime, timedelta
-from typing import Dict, Any
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -346,8 +345,6 @@ def seed_database(db: Session) -> dict[str, Any]:
 
     # ── 5. Participant Daily Trades ──────────────────────────────────────────
     # High-risk participant trade activities for NOVAENERGY & ALPHATECH
-    recent_dates = eval_trading_days[-15:]
-
     part_trades = [
         # NOVAENERGY top aggressive contributors
         ParticipantDailyTrade(

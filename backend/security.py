@@ -17,14 +17,14 @@ import hmac
 import os
 import json
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
-from backend.db.models import SysUser, SysAuditLog
+from backend.db.models import SysUser
 
 SECRET_KEY = os.getenv("PVASF_SECRET_KEY", "pvasf_surveillance_enterprise_secure_secret_2026")
 ALGORITHM = "HS256"

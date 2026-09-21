@@ -9,7 +9,7 @@ All endpoints consume the TradeMatchesService — no direct DB access here.
 from __future__ import annotations
 
 from datetime import date
-from typing import Annotated, Literal, Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -22,7 +22,6 @@ from backend.schemas.trade_matches import (
 )
 from backend.services.trade_matches_service import TradeMatchesService
 from backend.security import get_current_user
-from backend.db.models import SysUser
 
 router = APIRouter(
     prefix="/api/v1/trades",

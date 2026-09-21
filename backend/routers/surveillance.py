@@ -4,7 +4,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from backend.services.surveillance_service import EODSurveillanceService
 from backend.services.excel_exporter import build_surveillance_dossier_excel
-from backend.security import get_current_user, require_admin, require_analyst
+from backend.security import get_current_user, require_admin
 from backend.db.models import SysUser
 from backend.db.database import get_db
 from backend.services.auth_service import AuthService
