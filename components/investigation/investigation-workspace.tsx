@@ -15,9 +15,10 @@ import {
   Zap,
   Maximize2,
   Minimize2,
-  History,
   PieChart,
   FileText,
+  FileDown,
+  FileSpreadsheet,
   Building,
   Layers,
   ArrowRight,
@@ -25,13 +26,14 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  Megaphone
+  Megaphone,
+  Eye
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
-import { ExchangeScopeSelector, type ExchangeScope } from "@/components/ui/exchange-scope-selector";
+import { type ExchangeScope } from "@/components/ui/exchange-scope-selector";
 import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
@@ -51,6 +53,7 @@ import {
   fetchShareholdingBreakdown,
   fetchCorporateActions,
   fetchAvailableTradingDates,
+  downloadScripExcel,
   getAuthHeaders,
   type ScripDetail,
   type ParticipantAudit,
@@ -58,8 +61,9 @@ import {
 } from "@/lib/api";
 
 import { useUser } from "@/lib/user-context";
+import { SurveillanceDossierPdf } from "@/components/investigation/surveillance-dossier-pdf";
 
-const TABS = ["Overview", "Shareholders", "Corporate Announcements", "Participants"] as const;
+const TABS = ["Overview", "Shareholders", "Corporate Actions", "Participants"] as const;
 type TabType = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
@@ -240,8 +244,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   
   const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
 
+  const { currentUser } = useUser();
   const [activeTab, setActiveTab] = useState<TabType>("Overview");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDossierOpen, setIsDossierOpen] = useState(false);
+  const [autoPrintPdf, setAutoPrintPdf] = useState(false);
+  const [downloadingExcel, setDownloadingExcel] = useState(false);
   const [expandedChart, setExpandedChart] = useState<{
     title: string;
     subtitle?: string;
@@ -268,9 +276,15 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           // Update URL without reload to reflect corrected date
           const newParams = new URLSearchParams(searchParams?.toString() || "");
           newParams.set("asOfDate", nearest);
+          newParams.delete("exchange");
           router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
         } else {
           setSelectedDate(targetDate);
+          if (searchParams?.has("exchange")) {
+            const newParams = new URLSearchParams(searchParams.toString());
+            newParams.delete("exchange");
+            router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+          }
         }
       }
     }
@@ -300,7 +314,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [analysisStatus, setAnalysisStatus] = useState<"Active" | "Completed">("Active");
   const [selectedPan, setSelectedPan] = useState<string | null>(null);
 
   useEffect(() => {
@@ -318,7 +331,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         if (p) setParticipants(p);
         if (sh) setShBreakdown(sh);
         if (ca) setCorpActions(ca);
-        setAnalysisStatus(d.status === "Closed" ? "Completed" : "Active");
       } catch (e: any) {
         console.error("Failed to load investigation workspace data", e);
         setError(e?.message || "Failed to load. Ensure backend is running.");
@@ -407,6 +419,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     
     const newParams = new URLSearchParams(searchParams?.toString() || "");
     newParams.set("asOfDate", finalDate);
+    newParams.delete("exchange");
     router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
   };
 
@@ -419,6 +432,23 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
       return `${parseInt(parts[2], 10)} ${months[mIdx] || parts[1]} ${parts[0]}`;
     }
     return dateStr;
+  };
+
+  const handleDownloadExcel = async () => {
+    setDownloadingExcel(true);
+    try {
+      await downloadScripExcel(symbol, selectedDate || undefined, windowDays, exchange);
+    } catch (err) {
+      console.error("Failed to download Excel dossier:", err);
+      setToastAlert({ show: true, msg: "Failed to download Excel report. Please verify backend connection." });
+    } finally {
+      setDownloadingExcel(false);
+    }
+  };
+
+  const handleTriggerPdf = (autoPrint: boolean = false) => {
+    setAutoPrintPdf(autoPrint);
+    setIsDossierOpen(true);
   };
 
 
@@ -456,36 +486,38 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <RiskBadge risk={risk} />
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <span className={cn(
-                  "px-3 py-1.5 text-xs font-semibold rounded-lg border",
-                  analysisStatus === "Active"
-                    ? "bg-rose-50 text-rose-700 border-rose-200"
-                    : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                )}>
-                  {analysisStatus === "Active" ? "Active Surveillance" : "Surveillance Resolved"}
-                </span>
-                <Link
-                  href={`/history?search=${detail.symbol}`}
-                  className="h-8 text-xs font-semibold px-3.5 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                <button
+                  type="button"
+                  onClick={handleDownloadExcel}
+                  disabled={downloadingExcel}
+                  className="h-8 text-xs font-bold px-3.5 rounded-xl border border-emerald-300/80 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors disabled:opacity-50"
+                  title="Download Multi-Sheet Excel Dossier (.xlsx)"
                 >
-                  <History className="h-3.5 w-3.5 text-slate-500" />
-                  Audit Log
-                </Link>
-                <Button
-                  onClick={() => setAnalysisStatus((p) => (p === "Active" ? "Completed" : "Active"))}
-                  className={cn(
-                    "h-8 text-xs font-semibold px-3.5",
-                    analysisStatus === "Active"
-                      ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                      : "bg-slate-200 text-slate-800 hover:bg-slate-300"
-                  )}
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600" />
+                  <span>{downloadingExcel ? "Excel…" : "Download Excel"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTriggerPdf(true)}
+                  className="h-8 text-xs font-bold px-3.5 rounded-xl border border-blue-300/80 bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  title="Download A4 PDF Dossier (Instant Print / Save as PDF)"
                 >
-                  {analysisStatus === "Active" ? "Mark Safe" : "Reopen"}
-                </Button>
+                  <FileDown className="h-3.5 w-3.5 text-blue-600" />
+                  <span>Download PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTriggerPdf(false)}
+                  className="h-8 text-xs font-semibold px-3 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
+                  title="Preview Full Dossier"
+                >
+                  <Eye className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Preview</span>
+                </button>
               </div>
             </div>
 
-            {/* Row 2: Observation Date Selection & 15D Surveillance Window Indicator Bar */}
+            {/* Row 2: Observation Date Selection & 15D Analysis Window Indicator Bar */}
             <div className="flex items-center justify-between gap-3 pt-2 border-t border-slate-100 flex-wrap">
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
@@ -521,16 +553,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
-
-                {/* Exchange Scope Selector */}
-                <ExchangeScopeSelector selected={exchange} onChange={setExchange} size="sm" />
               </div>
 
               {/* Window Range Badge */}
               <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-xl px-2.5 py-1 text-xs text-amber-950 font-semibold shadow-2xs">
                 <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
                 <span>
-                  15D Evaluation Window:{" "}
+                  15D Analysis Window:{" "}
                   <strong className="font-mono font-bold text-amber-950">
                     {formatDateDisplay(windowStartDate)} → {formatDateDisplay(selectedDate)}
                   </strong>
@@ -606,6 +635,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {/* TAB: OVERVIEW */}
         {activeTab === "Overview" && (
           <div className="space-y-6">
+
             {/* 5-Parameter Risk Radar Signature Command Card */}
             <Card className="bg-gradient-to-br from-white via-slate-50/60 to-blue-50/20 border-slate-200/90 shadow-xs">
               <SectionHeader
@@ -628,10 +658,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               <SectionHeader
                 icon={<TrendingUp className="w-4.5 h-4.5 text-indigo-600" />}
                 title="Unified Price, Volume & DMA Analysis"
-                subtitle="Dual-axis market chart with 20 DMA, 50 DMA, traded volume, and 15-day surveillance window"
+                subtitle="Dual-axis market chart with 20 DMA, 50 DMA, traded volume, and 15-day analysis window"
                 onExpand={() => setExpandedChart({
                   title: "Unified Price, Volume & DMA Analysis",
-                  subtitle: "Dual-axis market chart with 20 DMA, 50 DMA, traded volume, and 15-day surveillance window",
+                  subtitle: "Dual-axis market chart with 20 DMA, 50 DMA, traded volume, and 15-day analysis window",
                   chart: <CombinedMarketChart history={history} metrics={metrics} isExpanded={true} />
                 })}
               />
@@ -649,10 +679,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 <SectionHeader
                   icon={<Zap className="w-4 h-4 text-amber-600" />}
                   title="Number of days in past 15 days the scrip hit 180-day high & 90% of price band"
-                  subtitle="Breakout frequency and price band persistence counts over the 15-day surveillance window"
+                  subtitle="Breakout frequency and price band persistence counts over the 15-day analysis window"
                   onExpand={() => setExpandedChart({
                     title: "Number of days in past 15 days the scrip hit 180-day high & 90% of price band",
-                    subtitle: "Breakout frequency and price band persistence counts over the 15-day surveillance window",
+                    subtitle: "Breakout frequency and price band persistence counts over the 15-day analysis window",
                     chart: <AnomalyEventMatrixChart history={history} metrics={metrics} bandPercent={detail?.price_band ?? 0.05} isExpanded={true} />
                   })}
                 />
@@ -714,10 +744,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
                           unique_pans_diff >= 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
                         )}>
-                          {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff} ({unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%)
+                          {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff}
                         </span>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{unique_pans_180} PANs</strong></div>
                     </div>
 
                     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
@@ -733,10 +762,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
                           avg_pans_diff >= 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-700 border-slate-200"
                         )}>
-                          {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff} ({avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%)
+                          {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff}
                         </span>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500 font-medium">180D Avg: <strong className="text-slate-800 font-mono">{avg_pans_180d} PANs/day</strong></div>
                     </div>
 
                     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
@@ -755,7 +783,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           {promoter_pct_diff >= 0 ? "+" : ""}{promoter_pct_diff}%
                         </span>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{promoter_pct_180}%</strong> ({promoter_shares_180.toLocaleString("en-IN")})</div>
                     </div>
 
                     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs">
@@ -774,7 +801,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           {top1_pct_diff >= 0 ? "+" : ""}{top1_pct_diff}%
                         </span>
                       </div>
-                      <div className="mt-2 text-[11px] text-slate-500 font-medium">Day T-180: <strong className="text-slate-800 font-mono">{top1_pct_180}%</strong> ({top1_shares_180.toLocaleString("en-IN")})</div>
                     </div>
                   </div>
 
@@ -784,7 +810,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       icon={<PieChart className="w-4 h-4 text-blue-600" />}
                       title="Shareholder Structure (Day t vs Day T-180)"
                       subtitle="Holding distribution across Promoters, Top 1% large holders, and Public float"
-                      info="PVASF Section 5.3.3: Compares shares held by promoters and top 1% shareholders on day t & day T-180."
+                      info="Compares shares held by promoters and top 1% shareholders on day t & day T-180."
                     />
                     <DataTable
                       headers={[
@@ -857,7 +883,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       icon={<Users className="w-4 h-4 text-indigo-600" />}
                       title="PAN Delivery Demographics & Trading Activity"
                       subtitle="Unique PAN holding counts (Day t vs T-180) & average daily trading counts (15D vs 180D)"
-                      info="PVASF Section 5.3.1 & 5.3.2: Tracks unique PAN-holders in scrip on day t & T-180 and average unique PANs trading in past 15 days & 180 days."
+                      info="Tracks unique PAN-holders in scrip on day t & T-180 and average unique PANs trading in past 15 days & 180 days."
                     />
                     <DataTable
                       headers={[
@@ -872,7 +898,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           <span key="r-hpt" className="font-mono font-bold text-slate-900">{unique_pans_t} PANs</span>,
                           <span key="r-hp180" className="font-mono font-bold text-slate-700">{unique_pans_180} PANs</span>,
                           <span key="r-hpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", unique_pans_diff >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-rose-700 bg-rose-50 border border-rose-100")}>
-                            {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff} PANs ({unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%)
+                            {unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%
                           </span>,
                         ],
                         [
@@ -880,7 +906,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           <span key="r-tpt" className="font-mono font-bold text-slate-900">{avg_pans_15d} PANs / day</span>,
                           <span key="r-tp180" className="font-mono font-bold text-slate-700">{avg_pans_180d} PANs / day</span>,
                           <span key="r-tpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", avg_pans_diff >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-slate-700 bg-slate-100 border border-slate-200")}>
-                            {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff} PANs ({avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%)
+                            {avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%
                           </span>,
                         ],
                       ]}
@@ -892,13 +918,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           </div>
         )}
 
-        {/* TAB: CORPORATE ANNOUNCEMENTS */}
-        {activeTab === "Corporate Announcements" && (
+        {/* TAB: CORPORATE ACTIONS */}
+        {activeTab === "Corporate Actions" && (
           <div className="space-y-5">
             <Card className="border-slate-200/90 shadow-xs overflow-hidden">
               <SectionHeader
                 icon={<FileText className="w-4.5 h-4.5 text-blue-600" />}
-                title="Corporate Announcements & Material Disclosures (Past 15 Days)"
+                title="Corporate Actions & Material Disclosures (Past 15 Days)"
                 subtitle="Dividends, bonus issues, stock splits, rights issues, and material disclosures recorded during the observation window"
               />
               {corpActions && corpActions.length > 0 ? (
@@ -927,7 +953,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   </div>
                   <p className="text-sm font-bold text-slate-800">No Corporate Actions Recorded in Past 15 Days</p>
                   <p className="text-xs text-slate-500 mt-1 max-w-md">
-                    No dividend, bonus issue, stock split, or board meeting actions recorded for {symbol} during the 15-day surveillance observation window.
+                    No dividend, bonus issue, stock split, or board meeting actions recorded for {symbol} during the 15-day analysis window.
                   </p>
                 </div>
               )}
@@ -954,17 +980,34 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 ? participants.neg_ltp_contributors
                 : allLtp.filter(p => (p.neg_val ?? (p.net_val && p.net_val < 0 ? Math.abs(p.net_val) : 0)) > 0 || (p.contribution && p.contribution < 0));
 
+              const panNameMap: Record<string, string> = {};
+              for (const p of participants.ltp_contributors || []) {
+                if (p.participant && p.name) panNameMap[p.participant] = p.name;
+              }
+              for (const p of participants.pos_ltp_contributors || []) {
+                if (p.participant && p.name) panNameMap[p.participant] = p.name;
+              }
+              for (const p of participants.neg_ltp_contributors || []) {
+                if (p.participant && p.name) panNameMap[p.participant] = p.name;
+              }
+              for (const p of participants.volume_share || []) {
+                if (p.participant && p.name) panNameMap[p.participant] = p.name;
+              }
+              for (const p of participants.profit_makers || []) {
+                if (p.participant && p.name) panNameMap[p.participant] = p.name;
+              }
+
               return (
                 <>
-                  {/* Row 1: Two Dedicated LTP Contribution Tables (Positive & Negative) */}
+                  {/* Row 1: Two Dedicated LTP Contribution Tables (Gross Positive & Gross Negative) */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    {/* Positive LTP Contribution Table */}
+                    {/* Gross Positive LTP Contribution Table */}
                     <Card>
                       <SectionHeader
                         icon={<TrendingUp className="w-4 h-4 text-slate-600" />}
-                        title="Positive LTP Contribution"
+                        title="Gross Positive LTP Contribution"
                         subtitle="Aggressive buy orders driving upward price momentum (+₹)"
-                        info="PVASF Section 4.1: Positive LTP contribution delivered into the order book. Quantifies accounts aggressively lifting ask prices to drive stock price upwards."
+                        info="Gross positive LTP contribution delivered into the order book. Quantifies accounts aggressively lifting ask prices to drive stock price upwards."
                       />
                       {posList.length === 0 ? (
                         <div className="p-6 text-center text-xs text-slate-500">
@@ -976,7 +1019,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Price Push <InfoTooltip text="Rupee LTP contribution driving price upwards." /></span>,
+                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Aggressive Buy Value <InfoTooltip text="Total rupee turnover value of aggressive buy orders lifting ask price." /></span>,
                             <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of upward price momentum." /></span>
                           ]}
                           rows={posList.map((p) => {
@@ -1012,13 +1055,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       )}
                     </Card>
 
-                    {/* Negative LTP Contribution Table */}
+                    {/* Gross Negative LTP Contribution Table */}
                     <Card>
                       <SectionHeader
                         icon={<TrendingDown className="w-4 h-4 text-slate-600" />}
-                        title="Negative LTP Contribution"
+                        title="Gross Negative LTP Contribution"
                         subtitle="Aggressive sell orders dampening price or hitting bids (-₹)"
-                        info="PVASF Section 4.1: Negative LTP contribution delivered into the order book. Quantifies accounts aggressively hitting bid prices to pull or suppress stock price downwards."
+                        info="Gross negative LTP contribution delivered into the order book. Quantifies accounts aggressively hitting bid prices to pull or suppress stock price downwards."
                       />
                       {negList.length === 0 ? (
                         <div className="p-6 text-center text-xs text-slate-500">
@@ -1030,7 +1073,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Price Pull <InfoTooltip text="Rupee LTP contribution pulling price downwards." /></span>,
+                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Aggressive Sell Value <InfoTooltip text="Total rupee turnover value of aggressive sell orders hitting bid price." /></span>,
                             <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of price dampening impact." /></span>
                           ]}
                           rows={negList.map((p) => {
@@ -1074,7 +1117,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       <SectionHeader
                         title="Concentrated Volume Share"
                         subtitle="Top 5 participants by volume"
-                        info="PVASF Section 4.2: Measures percentage of total scrip volume traded by top client PANs over the 15-day window to detect cornering of floating supply."
+                        info="Measures percentage of total scrip volume traded by top client PANs over the 15-day window to detect cornering of floating supply."
                       />
                       <DataTable
                         alignments={["left", "left", "right", "right"]}
@@ -1113,39 +1156,42 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     <Card>
                       <SectionHeader
                         title="Counterparty Concentration"
-                        subtitle="Top 5 counterparty pairs"
-                        info="PVASF Section 4.3: Evaluates bilateral trade volume between buyer-seller PAN pairs. High concentration suggests synchronized or non-genuine ring trading."
+                        subtitle="Top 5 bilateral trading pairs by volume"
+                        info="Evaluates bilateral trade volume between buyer-seller PAN pairs. High concentration suggests synchronized or non-genuine ring trading."
                       />
                       <DataTable
                         alignments={["left", "right", "right"]}
                         headers={[
-                          <span key="h-cppair" className="inline-flex items-center gap-1 whitespace-nowrap">Counterparty Pair <InfoTooltip text="Buyer PAN and Seller PAN pair identified from AGG_PAN_PAIR_DAY." /></span>,
+                          <span key="h-cppair" className="inline-flex items-center gap-1 whitespace-nowrap">Matched Entities & PANs <InfoTooltip text="Buyer and Seller entities and PANs identified from bilateral counterparty trade records." /></span>,
                           <span key="h-cpvol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total shares matched between this specific bilateral pair." /></span>,
                           <span key="h-cppct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Percentage of total scrip volume accounted for by this pair." /></span>
                         ]}
                         rows={participants.counterparty_pairs.map((p) => {
                           const pairParts = p.pair.split(" <-> ");
-                          const p1 = pairParts[0] || p.pair;
-                          const p2 = pairParts[1] || "";
+                          const p1 = p.pan1 || pairParts[0] || p.pair;
+                          const p2 = p.pan2 || pairParts[1] || "";
+                          const n1 = p.name1 || panNameMap[p1] || p1;
+                          const n2 = p.name2 || panNameMap[p2] || p2;
                           return [
-                            <div key={p.pair} className="inline-flex items-center gap-1.5 font-mono text-xs whitespace-nowrap">
-                              <span
-                                className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold border border-slate-200 inline-flex items-center gap-1"
-                              >
-                                <UserCircle className="w-3 h-3 text-slate-500" />
-                                {p1}
-                              </span>
-                              {p2 && (
-                                <>
-                                  <span className="text-slate-400 font-bold px-0.5">⇄</span>
-                                  <span
-                                    className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold border border-slate-200 inline-flex items-center gap-1"
-                                  >
-                                    <UserCircle className="w-3 h-3 text-slate-500" />
-                                    {p2}
-                                  </span>
-                                </>
-                              )}
+                            <div key={p.pair} className="flex flex-col gap-1 py-1">
+                              {/* Entity Names */}
+                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 leading-snug">
+                                <span className="truncate max-w-[130px]" title={n1}>{n1}</span>
+                                <span className="text-slate-400 font-bold shrink-0">⇄</span>
+                                <span className="truncate max-w-[130px]" title={n2}>{n2}</span>
+                              </div>
+                              {/* PAN Badges */}
+                              <div className="inline-flex items-center gap-1 font-mono text-[11px]">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                                  <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
+                                  {p1}
+                                </span>
+                                <span className="text-slate-300 font-bold">⇄</span>
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                                  <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
+                                  {p2}
+                                </span>
+                              </div>
                             </div>,
                             <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
                               {Number(p.volume || 0).toLocaleString("en-IN")}
@@ -1159,12 +1205,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     </Card>
                   </div>
 
-                  {/* Row 3: Net P&L — Top 5 Profit Makers */}
+                  {/* Row 3: Net P&L — Top Beneficiaries */}
                   <Card>
                     <SectionHeader
-                      title="Net P&L — Top 5 Profit Makers"
-                      subtitle="highest net gainers in 15D window"
-                      info="PVASF Section 4.4: Mark-to-Market net trading P&L (Total Sells - Total Buys + Open Position @ Latest Close) during the 15-day window. Pinpoints who extracted cash profits."
+                      title="Net P&L — Top Trading Beneficiaries"
+                      subtitle="Net realized & unrealized gainers/position holders in 15D window"
+                      info="Mark-to-Market net trading P&L (Total Sells - Total Buys + Open Position @ Latest Close) during the 15-day window. Pinpoints who extracted cash profits."
                     />
                     <DataTable
                       alignments={["left", "left", "right", "right", "right"]}
@@ -1184,7 +1230,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           {p.participant}
                         </span>,
-                        <span key="pnl" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                        <span key="pnl" className={cn(
+                          "font-mono text-xs font-semibold whitespace-nowrap tabular-nums",
+                          Number(p.net_pnl || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
+                        )}>
                           {Number(p.net_pnl || 0) >= 0
                             ? `+₹${Number(p.net_pnl || 0).toLocaleString("en-IN")}`
                             : `-₹${Math.abs(Number(p.net_pnl || 0)).toLocaleString("en-IN")}`}
@@ -1345,6 +1394,21 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         message={toastAlert.msg} 
         onClose={() => setToastAlert({ ...toastAlert, show: false })} 
         type="warning" 
+      />
+
+      {/* Comprehensive Surveillance Dossier PDF Modal & Print Container */}
+      <SurveillanceDossierPdf
+        detail={detail}
+        shBreakdown={shBreakdown}
+        corpActions={corpActions}
+        participants={participants}
+        selectedDate={selectedDate}
+        windowDays={windowDays}
+        exchange={exchange}
+        isOpen={isDossierOpen}
+        onClose={() => setIsDossierOpen(false)}
+        currentUser={currentUser}
+        autoPrint={autoPrintPdf}
       />
     </div>
   );

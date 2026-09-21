@@ -874,7 +874,7 @@ class EODSurveillanceService:
             ticker, self.current_trades_df, final_close, total_vol
         )
         
-        # Total positive LTP contribution across all participants or net 15-day price movement (PVASF Spec 4.1)
+        # Total positive & negative LTP contributions across all participants or net 15-day price movement (PVASF Spec 4.1)
         ticker_trades = self.current_trades_df[self.current_trades_df["Ticker"] == ticker] if not self.current_trades_df.empty else pd.DataFrame()
         if not ticker_trades.empty and "PosContVal" in ticker_trades.columns and float(ticker_trades["PosContVal"].sum()) > 0:
             tot_pos_ltp = float(ticker_trades["PosContVal"].sum())
@@ -885,12 +885,28 @@ class EODSurveillanceService:
             tot_pos_ltp = scrip_15d_price_change
         tot_pos_ltp = max(tot_pos_ltp, 1e-4)
 
+        if not ticker_trades.empty and "NegContVal" in ticker_trades.columns and float(ticker_trades["NegContVal"].sum()) > 0:
+            tot_neg_ltp = float(ticker_trades["NegContVal"].sum())
+        elif not ticker_trades.empty and "LTPContribution" in ticker_trades.columns:
+            neg_vals = abs(ticker_trades[ticker_trades["LTPContribution"] < 0]["LTPContribution"].sum())
+            tot_neg_ltp = float(neg_vals) if neg_vals > 0 else scrip_15d_price_change
+        else:
+            tot_neg_ltp = scrip_15d_price_change
+        tot_neg_ltp = max(tot_neg_ltp, 1e-4)
+
         # Resolve legal entity / individual names from DimExchClntDtls
         pan_names: Dict[str, str] = {}
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import DimExchClntDtls
             db = SessionLocal()
+            
+            cp_pans = []
+            for row in part_res.counterparty_pairs:
+                pair_str = row.get("Pair", "")
+                if " <-> " in pair_str:
+                    cp_pans.extend([p.strip() for p in pair_str.split(" <-> ") if p.strip()])
+
             pans_to_lookup = set(
                 [row["PAN"] for row in part_res.ltp_contributors if "PAN" in row] +
                 [row["PAN"] for row in getattr(part_res, "pos_ltp_contributors", []) if "PAN" in row] +
@@ -899,7 +915,8 @@ class EODSurveillanceService:
                 [row["PAN"] for row in part_res.profit_makers if "PAN" in row] +
                 [row.get("PAN1") for row in part_res.reversal_pairs if row.get("PAN1")] +
                 [row.get("PAN2") for row in part_res.reversal_pairs if row.get("PAN2")] +
-                [node for row in part_res.circular_loops for node in row.get("Nodes", [])]
+                [node for row in part_res.circular_loops for node in row.get("Nodes", [])] +
+                cp_pans
             )
             if pans_to_lookup:
                 matches = db.query(DimExchClntDtls.Decl_Clnt_Pan, DimExchClntDtls.Decl_Clnt_Name).filter(
@@ -930,7 +947,7 @@ class EODSurveillanceService:
                 {
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
-                    "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "contribution": round((float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))) / tot_pos_ltp) * 100, 2),
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
                     "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
@@ -942,7 +959,7 @@ class EODSurveillanceService:
                 {
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
-                    "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "contribution": round((float(row.get("NegContVal", abs(float(row.get("LTPContribution", 0))))) / tot_neg_ltp) * 100, 2),
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
                     "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
@@ -960,7 +977,15 @@ class EODSurveillanceService:
                 for row in part_res.volume_share
             ],
             "counterparty_pairs": [
-                {"pair": row["Pair"], "volume": row["Volume"], "share_pct": round(row["SharePercent"], 2)}
+                {
+                    "pair": row["Pair"],
+                    "pan1": row["Pair"].split(" <-> ")[0] if " <-> " in row["Pair"] else row["Pair"],
+                    "pan2": row["Pair"].split(" <-> ")[1] if " <-> " in row["Pair"] else "",
+                    "name1": pan_names.get(row["Pair"].split(" <-> ")[0] if " <-> " in row["Pair"] else "", "Unknown Entity"),
+                    "name2": pan_names.get(row["Pair"].split(" <-> ")[1] if " <-> " in row["Pair"] else "", "Unknown Entity"),
+                    "volume": row["Volume"],
+                    "share_pct": round(row["SharePercent"], 2)
+                }
                 for row in part_res.counterparty_pairs
             ],
             "reversal_pairs": [

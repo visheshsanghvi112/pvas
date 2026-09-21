@@ -24,18 +24,18 @@ MAPPING_RULES = {
     "Ticker": ["ticker", "scrip", "symbol", "scripcode", "stock", "ticker_symbol", "tickersymbol"],
     "Date": ["date", "trade_date", "datetime", "timestamp", "tradedate"],
     "Open": ["open", "openprice", "open_price"],
-    "High": ["high", "highprice", "high_price"],
-    "Low": ["low", "lowprice", "low_price"],
+    "High": ["high", "highprice", "high_price", "day_high_price", "dayhighprice"],
+    "Low": ["low", "lowprice", "low_price", "day_low_price", "daylowprice"],
     "Close": ["close", "closeprice", "close_price", "ltp"],          
-    "Volume": ["volume", "qty", "quantity", "traded_qty", "volume_traded"],
-    "BandPercent": ["bandpercent", "band_percent", "circuit", "circuit_limit", "band"],
-    "PAN": ["pan", "pan_id", "participant", "investor", "panno", "pan_no"],
-    "CounterpartyPAN": ["counterpartypan", "counterparty_pan", "counterparty", "cp_pan"],
+    "Volume": ["volume", "qty", "quantity", "traded_qty", "volume_traded", "total_traded_quantity", "totaltradedquantity"],
+    "BandPercent": ["bandpercent", "band_percent", "circuit", "circuit_limit", "band", "upper_circuit_limit"],
+    "PAN": ["pan", "pan_id", "participant", "investor", "panno", "pan_no", "client_pan", "clientpan"],
+    "CounterpartyPAN": ["counterpartypan", "counterparty_pan", "counterparty", "cp_pan", "buyer_pan", "seller_pan"],
     "BuyVolume": ["buyvolume", "buy_volume", "buy_qty", "buy_quantity", "buyqty"],
     "SellVolume": ["sellvolume", "sell_volume", "sell_qty", "sell_quantity", "sellqty"],
-    "BuyValue": ["buyvalue", "buy_value", "buy_amt", "buy_amount"],
-    "SellValue": ["sellvalue", "sell_value", "sell_amt", "sell_amount"],
-    "LTPContribution": ["ltpcontribution", "ltp_contribution", "price_impact", "price_contrib"]
+    "BuyValue": ["buyvalue", "buy_value", "buy_amt", "buy_amount", "buy_turnover_value", "buyturnovervalue"],
+    "SellValue": ["sellvalue", "sell_value", "sell_amt", "sell_amount", "sell_turnover_value", "sellturnovervalue"],
+    "LTPContribution": ["ltpcontribution", "ltp_contribution", "price_impact", "price_contrib", "gross_positive_ltp_value", "grosspositiveltpvalue"]
 }
 
 
@@ -327,6 +327,10 @@ class SurveillanceEngine:
         lookback = self.config.lookback_days
         recent = self.config.recent_days
         required_len = lookback + recent + 1
+
+        if "Close" not in df.columns:
+            df = normalize_columns(df, ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"])
+
         if len(df) < required_len:
             raise ValueError(
                 f"Only {len(df)} trading days available, need at least {required_len} days for 180d lookback analysis"
@@ -468,6 +472,12 @@ class SurveillanceEngine:
           4.5 Circular Trading Loops ("Cycle Detection"): Graph DFS isolating directed rings (A->B->C->A).
           4.6 Mark-to-Market PnL ("Profit-Makers" Metric): Realized cash gains + unrealized inventory value.
         """
+        if trades_df.empty:
+            return ParticipantAuditResult()
+
+        if "Ticker" not in trades_df.columns:
+            trades_df = normalize_columns(trades_df, ["Ticker", "PAN", "CounterpartyPAN", "BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution"])
+
         if trades_df.empty or ticker not in trades_df["Ticker"].values:
             return ParticipantAuditResult()
 

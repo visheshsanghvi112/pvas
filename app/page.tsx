@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { AlertsTable, InfoTooltip } from "@/components/dashboard/alerts-table";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
-import { ExchangeScopeSelector, type ExchangeScope } from "@/components/ui/exchange-scope-selector";
+import { type ExchangeScope } from "@/components/ui/exchange-scope-selector";
 import { Toast } from "@/components/ui/toast";
 import { fetchWatchlist, fetchAvailableTradingDates, type ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -56,9 +56,15 @@ function DashboardContent() {
           // Update URL without reload to reflect corrected date
           const newParams = new URLSearchParams(searchParams?.toString() || "");
           newParams.set("asOfDate", nearest);
+          newParams.delete("exchange");
           router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
         } else {
           setSelectedDate(targetDate);
+          if (searchParams?.has("exchange")) {
+            const newParams = new URLSearchParams(searchParams.toString());
+            newParams.delete("exchange");
+            router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+          }
         }
       }
     }
@@ -100,16 +106,11 @@ function DashboardContent() {
 
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
-  const isLatest = dateIndex === 0;
-
   const handlePrevDay = () => {
     if (canGoPrev) setSelectedDate(availableDates[dateIndex + 1]);
   };
   const handleNextDay = () => {
     if (canGoNext) setSelectedDate(availableDates[dateIndex - 1]);
-  };
-  const handleLatestEOD = () => {
-    if (availableDates.length > 0) setSelectedDate(availableDates[0]);
   };
 
   /** Snap a date string to the nearest available trading date and update URL */
@@ -175,31 +176,19 @@ function DashboardContent() {
               <span>Next Day</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
-            {!isLatest && (
-              <button
-                onClick={handleLatestEOD}
-                className="px-3 py-1.5 text-blue-700 bg-blue-50/80 hover:bg-blue-100 font-bold transition-colors cursor-pointer"
-                title="Jump to Latest Available EOD Data"
-              >
-                Latest EOD
-              </button>
-            )}
           </div>
-
-          {/* Exchange Scope Selector (Consolidated / NSE / BSE) */}
-          <ExchangeScopeSelector selected={exchange} onChange={setExchange} />
 
           {/* Spacer pushes window badge right */}
           <div className="flex-1" />
 
-          {/* 15D surveillance window readout */}
+          {/* 15D analysis window readout */}
           <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] text-amber-900 font-semibold select-none">
             <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
             <span className="font-mono">
               {fmtShort(windowStartDate)}&nbsp;→&nbsp;{fmtShort(selectedDate)}
             </span>
             <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-300/70 rounded px-1.5 py-px inline-flex items-center gap-1">
-              15D Window
+              15D Analysis Window
               <InfoTooltip
                 text="Recent 15 trading days being examined and compared against the 6-month historical baseline."
                 align="right"

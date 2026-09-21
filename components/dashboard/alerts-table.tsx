@@ -228,66 +228,192 @@ export function AlertsTable({
     URL.revokeObjectURL(url);
   };
 
-  const riskTabs = [
-    { key: "High", label: "High Risk", count: scrips.filter((s) => s.risk === "High").length },
-    { key: "Medium", label: "Medium", count: scrips.filter((s) => s.risk === "Medium").length },
-    { key: "Low", label: "Low", count: scrips.filter((s) => s.risk === "Low").length },
-    { key: "All", label: "All Risks", count: scrips.length },
+  const riskCards = [
+    {
+      key: "High",
+      label: "High Risk",
+      count: scrips.filter((s) => s.risk === "High").length,
+      subtitle: "Alert Score ≥ 70",
+      dot: "bg-rose-400",
+      activeCardClass: "bg-rose-50/50 border-rose-300 ring-2 ring-rose-400/20 shadow-xs",
+      activeBadge: "bg-rose-100/90 text-rose-800 border-rose-200/80",
+      activeBar: "bg-rose-400",
+      titleColor: "text-rose-900",
+    },
+    {
+      key: "Medium",
+      label: "Medium",
+      count: scrips.filter((s) => s.risk === "Medium").length,
+      subtitle: "Alert Score 40–69",
+      dot: "bg-amber-400",
+      activeCardClass: "bg-amber-50/50 border-amber-300 ring-2 ring-amber-400/20 shadow-xs",
+      activeBadge: "bg-amber-100/90 text-amber-800 border-amber-200/80",
+      activeBar: "bg-amber-400",
+      titleColor: "text-amber-900",
+    },
+    {
+      key: "Low",
+      label: "Low",
+      count: scrips.filter((s) => s.risk === "Low").length,
+      subtitle: "Alert Score < 40",
+      dot: "bg-emerald-400",
+      activeCardClass: "bg-emerald-50/50 border-emerald-300 ring-2 ring-emerald-400/20 shadow-xs",
+      activeBadge: "bg-emerald-100/90 text-emerald-800 border-emerald-200/80",
+      activeBar: "bg-emerald-400",
+      titleColor: "text-emerald-900",
+    },
+    {
+      key: "All",
+      label: "All Risks",
+      count: scrips.length,
+      subtitle: "Total Securities",
+      dot: "bg-slate-400",
+      activeCardClass: "bg-slate-50 border-slate-300 ring-2 ring-slate-400/20 shadow-xs",
+      activeBadge: "bg-slate-200/80 text-slate-800 border-slate-300",
+      activeBar: "bg-slate-600",
+      titleColor: "text-slate-900",
+    },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-white text-slate-900">
       
+      {/* ── Risk Summary Cards (Decent Height) ── */}
+      <div className="flex-shrink-0 border-b border-slate-200/80 bg-slate-50/40 px-5 py-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          {riskCards.map((c) => {
+            const isActive = riskTab === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => handleRiskTabChange(c.key)}
+                className={cn(
+                  "group relative flex flex-col justify-between p-3.5 sm:p-4 rounded-xl border text-left transition-all duration-150 cursor-pointer min-h-[88px] sm:min-h-[96px]",
+                  isActive
+                    ? cn(c.activeCardClass, "shadow-xs")
+                    : "bg-white hover:bg-slate-50/80 border-slate-200/90 hover:border-slate-300 shadow-2xs hover:shadow-xs hover:-translate-y-0.5"
+                )}
+              >
+                {/* Top Row: Dot + Label + Status Tag */}
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "w-2.5 h-2.5 rounded-full shrink-0 transition-all",
+                        isActive ? cn(c.dot, "ring-2 ring-white/80") : "bg-slate-300"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "text-xs sm:text-[13px] font-bold tracking-wide uppercase",
+                        isActive ? c.titleColor : "text-slate-600 group-hover:text-slate-900"
+                      )}
+                    >
+                      {c.label}
+                    </span>
+                  </div>
+                  {isActive ? (
+                    <span
+                      className={cn(
+                        "text-[10px] font-bold px-1.5 py-0.5 rounded-md border",
+                        c.activeBadge
+                      )}
+                    >
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Filter
+                    </span>
+                  )}
+                </div>
+
+                {/* Bottom Row: Big Number + Subtitle */}
+                <div className="mt-2 flex items-baseline justify-between gap-2">
+                  <span className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-slate-900">
+                    {c.count}
+                  </span>
+                  <span className="text-[11px] font-medium text-slate-400 group-hover:text-slate-500">
+                    {c.subtitle}
+                  </span>
+                </div>
+
+                {/* Bottom subtle active indicator line */}
+                {isActive && (
+                  <span
+                    className={cn(
+                      "absolute bottom-0 left-3 right-3 h-0.5 rounded-full",
+                      c.activeBar
+                    )}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* ── Controls Toolbar ── */}
-      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/70 px-5 py-3 space-y-2.5">
+      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/70 px-5 py-2.5 space-y-2">
         <div className="flex flex-wrap items-center justify-between gap-3">
           
           <div className="flex flex-wrap items-center gap-3">
             {/* Search */}
-            <div className="flex items-center gap-2 bg-white border border-slate-300/80 rounded-lg px-3 py-1.5 w-64 sm:w-72 shadow-xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+            <div className="flex items-center gap-2.5 bg-white border border-slate-300/80 rounded-xl px-3.5 h-10 w-72 sm:w-80 shadow-2xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
               <Search className="h-4 w-4 text-slate-400 shrink-0" />
               <input
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search symbol, company or ISIN..."
-                className="w-full bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400 font-medium"
+                className="w-full bg-transparent border-none outline-none text-xs sm:text-[13px] text-slate-800 placeholder:text-slate-400 font-medium"
               />
               {searchTerm && (
                 <button
                   type="button"
                   onClick={() => setSearchTerm("")}
-                  className="text-slate-400 hover:text-slate-600 shrink-0"
+                  className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Risk Tabs */}
-            <div className="flex items-center rounded-lg border border-slate-300/80 bg-white overflow-hidden text-xs font-semibold text-slate-600 divide-x divide-slate-200 shadow-xs">
-              {riskTabs.map((t) => (
-                <button
-                  key={t.key}
-                  type="button"
-                  onClick={() => handleRiskTabChange(t.key)}
-                  className={cn(
-                    "px-3 py-1.5 transition-all whitespace-nowrap cursor-pointer flex items-center gap-1.5",
-                    riskTab === t.key
-                      ? "bg-slate-900 text-white font-bold"
-                      : "hover:bg-slate-50 hover:text-slate-900"
-                  )}
-                >
-                  <span>{t.label}</span>
-                  <span
-                    className={cn(
-                      "text-[10px] px-1.5 py-0.2 rounded-full",
-                      riskTab === t.key ? "bg-slate-800 text-slate-200 font-bold" : "bg-slate-100 text-slate-500"
-                    )}
-                  >
-                    {t.count}
-                  </span>
-                </button>
-              ))}
+            {/* Triggers Bar */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none mr-0.5">
+                Triggers:
+              </span>
+              <TriggerPill
+                active={filterPriceSpike}
+                onClick={() => setFilterPriceSpike(!filterPriceSpike)}
+                label="Price ≥ 15%"
+                info="Shows stocks whose price grew by more than 15% in the last 15 days compared to 6 months ago."
+              />
+              <TriggerPill
+                active={filterPriceZ}
+                onClick={() => setFilterPriceZ(!filterPriceZ)}
+                label="Price Z ≥ 1.65σ"
+                info="Shows stocks moving abnormally faster than 95% of their typical daily price movement."
+              />
+              <TriggerPill
+                active={filterVolZ}
+                onClick={() => setFilterVolZ(!filterVolZ)}
+                label="Vol Z ≥ 1.65σ"
+                info="Shows stocks trading volume abnormally higher than 95% of their past 6-month average."
+              />
+              <TriggerPill
+                active={filterCircuitHits}
+                onClick={() => setFilterCircuitHits(!filterCircuitHits)}
+                label="Circuit ≥ 3d"
+                info="Shows stocks that hit or came within 90% of their upper circuit limit for 3 or more days."
+              />
+              <TriggerPill
+                active={filterNewHighs}
+                onClick={() => setFilterNewHighs(!filterNewHighs)}
+                label="180D Highs ≥ 1"
+                info="Shows stocks that hit brand new 6-month record high prices in the last 15 days."
+              />
             </div>
           </div>
 
@@ -304,49 +430,12 @@ export function AlertsTable({
             <button
               type="button"
               onClick={exportCSV}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+              className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
             >
               <Download className="h-3.5 w-3.5" />
               <span>Export CSV</span>
             </button>
           </div>
-        </div>
-
-        {/* Triggers Bar */}
-        <div className="flex flex-wrap items-center gap-2 pt-1.5 border-t border-slate-200/80">
-          <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none mr-0.5">
-            Triggers:
-          </span>
-          <TriggerPill
-            active={filterPriceSpike}
-            onClick={() => setFilterPriceSpike(!filterPriceSpike)}
-            label="Price ≥ 15%"
-            info="Shows stocks whose price grew by more than 15% in the last 15 days compared to 6 months ago."
-          />
-          <TriggerPill
-            active={filterPriceZ}
-            onClick={() => setFilterPriceZ(!filterPriceZ)}
-            label="Price Z ≥ 1.65σ"
-            info="Shows stocks moving abnormally faster than 95% of their typical daily price movement."
-          />
-          <TriggerPill
-            active={filterVolZ}
-            onClick={() => setFilterVolZ(!filterVolZ)}
-            label="Vol Z ≥ 1.65σ"
-            info="Shows stocks trading volume abnormally higher than 95% of their past 6-month average."
-          />
-          <TriggerPill
-            active={filterCircuitHits}
-            onClick={() => setFilterCircuitHits(!filterCircuitHits)}
-            label="Circuit ≥ 3d"
-            info="Shows stocks that hit or came within 90% of their upper circuit limit for 3 or more days."
-          />
-          <TriggerPill
-            active={filterNewHighs}
-            onClick={() => setFilterNewHighs(!filterNewHighs)}
-            label="180D Highs ≥ 1"
-            info="Shows stocks that hit brand new 6-month record high prices in the last 15 days."
-          />
         </div>
       </div>
 
@@ -475,7 +564,6 @@ export function AlertsTable({
                           href={`/analysis/${s.symbol}?${new URLSearchParams({
                             ...(asOfDate ? { asOfDate } : {}),
                             ...(windowDays ? { windowDays: String(windowDays) } : {}),
-                            ...(exchange ? { exchange } : {}),
                           }).toString()}`}
                           className="font-bold text-sm text-slate-900 hover:text-blue-600 hover:underline leading-tight transition-colors"
                         >
@@ -576,7 +664,6 @@ export function AlertsTable({
                       href={`/analysis/${s.symbol}?${new URLSearchParams({
                         ...(asOfDate ? { asOfDate } : {}),
                         ...(windowDays ? { windowDays: String(windowDays) } : {}),
-                        ...(exchange ? { exchange } : {}),
                       }).toString()}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs"
                     >

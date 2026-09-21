@@ -122,3 +122,75 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Institutional Print & Multi-Page PDF Export Styling ── */
+@page {
+  size: A4 portrait;
+  margin: 10mm 12mm 10mm 12mm;
+}
+
+@media print {
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide regular UI elements when printing */
+  body {
+    visibility: hidden !important;
+  }
+
+  /* Make print root visible and full width */
+  #surveillance-dossier-print-root,
+  #surveillance-dossier-print-root * {
+    visibility: visible !important;
+  }
+
+  #surveillance-dossier-print-root {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    display: block !important;
+    transform: none !important;
+  }
+
+  .dossier-page {
+    page-break-after: always !important;
+    break-after: page !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    height: 275mm !important;
+    max-height: 275mm !important;
+    overflow: hidden !important;
+  }
+
+  .dossier-page:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .avoid-break {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+}
+

@@ -1,7 +1,9 @@
 from typing import Optional, Dict, Any
 from fastapi import APIRouter, Query, UploadFile, File, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from backend.services.surveillance_service import EODSurveillanceService
+from backend.services.excel_exporter import build_surveillance_dossier_excel
 from backend.security import get_current_user, require_admin, require_analyst
 from backend.db.models import SysUser
 from backend.db.database import get_db
@@ -32,7 +34,7 @@ def get_available_dates(current_user: SysUser = Depends(get_current_user)):
 def get_watchlist(
     search: str = Query("", description="Search ticker symbol"),
     as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
-    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    window_days: int = Query(15, description="Analysis window length in trading days"),
     exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
@@ -45,7 +47,7 @@ def get_scrips(
     search: str = Query("", description="Search ticker symbol"),
     watchlist: Optional[bool] = Query(None, description="Filter for watchlist-shortlisted scrips"),
     as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
-    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    window_days: int = Query(15, description="Analysis window length in trading days"),
     exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
@@ -63,7 +65,7 @@ def get_scrips(
 def get_scrip_detail(
     scrip_id: str,
     as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
-    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    window_days: int = Query(15, description="Analysis window length in trading days"),
     exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
     current_user: SysUser = Depends(get_current_user)
 ):
@@ -77,7 +79,7 @@ def get_scrip_detail(
 def get_scrip_participants(
     scrip_id: str,
     as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
-    window_days: int = Query(15, description="Surveillance window length in trading days"),
+    window_days: int = Query(15, description="Analysis window length in trading days"),
     current_user: SysUser = Depends(get_current_user)
 ):
     try:
@@ -100,6 +102,53 @@ def get_scrip_corporate_actions(
     current_user: SysUser = Depends(get_current_user)
 ):
     return service.get_scrip_corporate_actions(scrip_id.upper())
+
+
+@router.get("/scrip/{scrip_id}/export-excel")
+def export_scrip_excel(
+    scrip_id: str,
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
+    window_days: int = Query(15, description="Analysis window length in trading days"),
+    exchange: str = Query("ALL", description="Exchange scope: ALL, NSE, BSE"),
+    current_user: SysUser = Depends(get_current_user)
+):
+    try:
+        sym = scrip_id.upper()
+        detail = service.get_scrip_detail(sym, as_of_date=as_of_date, window_days=window_days, exchange=exchange)
+        try:
+            participants = service.get_scrip_participants(sym)
+        except Exception:
+            participants = None
+        try:
+            sh_breakdown = service.get_scrip_shareholding_breakdown(sym)
+        except Exception:
+            sh_breakdown = None
+        try:
+            corp_actions = service.get_scrip_corporate_actions(sym)
+        except Exception:
+            corp_actions = []
+
+        excel_buf = build_surveillance_dossier_excel(
+            detail=detail,
+            participants=participants,
+            sh_breakdown=sh_breakdown,
+            corp_actions=corp_actions,
+            selected_date=as_of_date or "",
+            window_days=window_days,
+            exchange=exchange
+        )
+
+        filename = f"PVASF_Surveillance_{sym}_{as_of_date or 'EOD'}.xlsx"
+        return StreamingResponse(
+            excel_buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Excel dossier: {str(e)}")
+
 
 
 @router.post("/weights")

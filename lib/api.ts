@@ -125,26 +125,7 @@ export interface ParticipantAudit {
   pos_ltp_contributors?: LtpContributor[];
   neg_ltp_contributors?: LtpContributor[];
   volume_share: Array<{ participant: string; name?: string; volume: number; share_pct: number }>;
-  counterparty_pairs: Array<{ pair: string; volume: number; share_pct: number }>;
-  reversal_pairs?: Array<{
-    pair: string;
-    pan1?: string;
-    pan2?: string;
-    name1?: string;
-    name2?: string;
-    volume: number;
-    vol_a_to_b?: number;
-    vol_b_to_a?: number;
-    reversal_ratio: number;
-  }>;
-  circular_loops?: Array<{
-    loop: string;
-    nodes?: string[];
-    length?: number;
-    volume: number;
-    gross_volume: number;
-    efficiency_pct?: number;
-  }>;
+  counterparty_pairs: Array<{ pair: string; name1?: string; name2?: string; pan1?: string; pan2?: string; volume: number; share_pct: number }>;
   profit_makers: Array<{ participant: string; name?: string; net_pnl: number; buy_volume: number; sell_volume: number }>;
 }
 
@@ -453,4 +434,32 @@ export async function fetchCorporateActions(scripId: string) {
   if (!res.ok) return [];
   return await res.json();
 }
+
+export async function downloadScripExcel(
+  scripId: string,
+  asOfDate?: string,
+  windowDays = 15,
+  exchange = "ALL"
+): Promise<void> {
+  const cleanId = scripId.toUpperCase();
+  const params = new URLSearchParams();
+  if (asOfDate) params.set("as_of_date", asOfDate);
+  params.set("window_days", String(windowDays));
+  params.set("exchange", exchange);
+
+  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/export-excel?${params.toString()}`);
+  if (!res.ok) {
+    throw new Error(`Failed to download Excel dossier: ${res.statusText}`);
+  }
+  const blob = await res.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `PVASF_Surveillance_${cleanId}_${asOfDate || "EOD"}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  window.URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+}
+
 

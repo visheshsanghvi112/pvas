@@ -105,13 +105,6 @@ export function TradingDatePicker({
   const earliestDate = availableDates[availableDates.length - 1];
   const isLatest = selectedDate === latestDate;
 
-  // Selected date relative index (e.g. T-0, T-1)
-  const relativeIndex = useMemo(() => {
-    if (!selectedDate || availableDates.length === 0) return 0;
-    const idx = availableDates.indexOf(selectedDate);
-    return idx >= 0 ? idx : null;
-  }, [selectedDate, availableDates]);
-
   // Format selected date for button display: "11 Aug 2026"
   const formattedDisplay = useMemo(() => {
     if (!selectedDate) return "Select date";
@@ -236,21 +229,9 @@ export function TradingDatePicker({
           </div>
 
           <div className="flex flex-col text-left">
-            <div className="flex items-center gap-1.5">
-              <span className="font-bold text-slate-900 text-xs tracking-tight">
-                {typeof formattedDisplay === "object" ? formattedDisplay.short : formattedDisplay}
-              </span>
-              {isLatest ? (
-                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 rounded-full px-1.5 py-0.2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                  Latest
-                </span>
-              ) : relativeIndex !== null ? (
-                <span className="inline-flex items-center text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.2">
-                  T-{relativeIndex}
-                </span>
-              ) : null}
-            </div>
+            <span className="font-bold text-slate-900 text-xs tracking-tight">
+              {typeof formattedDisplay === "object" ? formattedDisplay.short : formattedDisplay}
+            </span>
           </div>
         </div>
 
@@ -266,71 +247,8 @@ export function TradingDatePicker({
       {isOpen && (
         <div className="absolute left-0 top-full mt-1.5 z-50 w-80 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 text-slate-800 animate-in fade-in zoom-in-95 duration-150">
           
-          {/* Quick Jump Shortcuts */}
-          <div className="flex items-center gap-1.5 pb-3 border-b border-slate-100 overflow-x-auto">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-0.5">
-              Quick:
-            </span>
-            {latestDate && (
-              <button
-                type="button"
-                onClick={() => handleSelect(latestDate)}
-                className={cn(
-                  "px-2 py-0.8 rounded-md text-[11px] font-bold transition-colors cursor-pointer shrink-0 border",
-                  selectedDate === latestDate
-                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                    : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
-                )}
-              >
-                Latest EOD
-              </button>
-            )}
-            {availableDates[1] && (
-              <button
-                type="button"
-                onClick={() => handleSelect(availableDates[1])}
-                className={cn(
-                  "px-2 py-0.8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer shrink-0 border",
-                  selectedDate === availableDates[1]
-                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                )}
-              >
-                T-1
-              </button>
-            )}
-            {availableDates[4] && (
-              <button
-                type="button"
-                onClick={() => handleSelect(availableDates[4])}
-                className={cn(
-                  "px-2 py-0.8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer shrink-0 border",
-                  selectedDate === availableDates[4]
-                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                )}
-              >
-                T-5
-              </button>
-            )}
-            {availableDates[14] && (
-              <button
-                type="button"
-                onClick={() => handleSelect(availableDates[14])}
-                className={cn(
-                  "px-2 py-0.8 rounded-md text-[11px] font-semibold transition-colors cursor-pointer shrink-0 border",
-                  selectedDate === availableDates[14]
-                    ? "bg-blue-600 text-white border-blue-600 shadow-2xs"
-                    : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
-                )}
-              >
-                T-15
-              </button>
-            )}
-          </div>
-
           {/* Month & Year Navigation */}
-          <div className="flex items-center justify-between pt-3 pb-2">
+          <div className="flex items-center justify-between pb-2">
             <button
               type="button"
               onClick={handlePrevMonth}
@@ -384,7 +302,7 @@ export function TradingDatePicker({
                   )}
                   title={
                     isAvailable
-                      ? `Trading Session: ${cd.dateStr}${cd.isLatest ? " (Latest)" : ""}`
+                      ? `Trading Session: ${cd.dateStr}`
                       : `${cd.dateStr} (No trading session / holiday)`
                   }
                 >
