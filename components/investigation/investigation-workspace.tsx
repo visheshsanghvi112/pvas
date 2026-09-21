@@ -1272,7 +1272,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             {!client360 ? (
               <div className="p-4 text-sm text-slate-500 flex items-center gap-2">
                 <div className="h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                Loading from DIM_EXCH_CLNT_DTLS…
+                Loading client details…
               </div>
             ) : (
               <div className="p-4 space-y-4 overflow-y-auto flex-1">

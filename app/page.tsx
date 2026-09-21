@@ -36,7 +36,7 @@ function DashboardContent() {
   const [exchange, setExchange] = useState<ExchangeScope>(urlExchange);
   const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
 
-  // Initialize available dates from AGG_SEC_DAY warehouse
+  // Initialize available dates from surveillance warehouse
   useEffect(() => {
     async function loadDates() {
       const dates = await fetchAvailableTradingDates();

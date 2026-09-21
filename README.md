@@ -39,8 +39,8 @@ If the composite score $S_{\text{final}} \ge 15.0$, the security is shortlisted 
 - **Charting Engine**: Recharts (Screener-Style Dual-Axis Master Surveillance Chart with 20 DMA & 50 DMA, Real-Time Crosshair Tracker, Deliverable Volume Ratio `D: xx%`, Parameter Radar Chart, Normalized Price Acceleration Curve)
 - **Backend API**: FastAPI (Python 3.9+, Pydantic v2, Uvicorn)
 - **Surveillance Engine**: Pure-Python `pv_alert_surveillance.py` (Vectorized NumPy/Pandas math)
-- **Data Layer**: SQLAlchemy 2.0 ORM with SQLite (Development/Test) & Teradata Data Warehouse (Production)
-- **Security & Auth**: PBKDF2-HMAC-SHA256 password hashing, Bearer Token Auth, 1-click identity switching modal, RBAC middleware, and `SYS_AUDIT_LOGS` audit trail
+- **Data Layer**: SQLAlchemy 2.0 ORM with SQLite (Development/Test) & ANSI SQL Relational Warehouse (Production)
+- **Security & Auth**: PBKDF2-HMAC-SHA256 password hashing, Bearer Token Auth, 1-click identity switching modal, RBAC middleware, and compliance audit trail
 
 ---
 
@@ -72,18 +72,22 @@ UI_PVASF/
 ├── backend/                                # FastAPI Python Backend
 │   ├── main.py                             # Server Entrypoint & CORS Setup
 │   ├── security.py                         # Password Hashing & Bearer Token Authentication
-│   ├── db/                                 # Database Engine, Models & Synthetic Seeder
+│   ├── db/                                 # Database Engine, Models & Seeder
 │   │   ├── database.py                     # SQLAlchemy Engine & Session Factory
-│   │   ├── models.py                       # Relational Table ORM Models (`SYS_USERS`, `SYS_AUDIT_LOGS`, `MODEL_SETTINGS`, `AGG_SEC_DAY`, etc.)
-│   │   └── seed.py                         # Synthetic Market Data Generator (260 Trading Days)
+│   │   ├── models.py                       # Relational Table ORM Models (15 Clean Tables)
+│   │   ├── schema.sql                      # Master DDL with 15 Tables & 3 Analytical Views
+│   │   ├── seed.py                         # Deterministic Market Data Seeder (3,600 EOD records)
+│   │   └── surveillance.db                 # Unified Production SQLite Database
+│   ├── repositories/                       # Clean Data Access Repositories (Trades, Clients)
 │   ├── routers/                            # REST API Endpoints (`surveillance`, `auth`, `clients`, `trades`)
+│   ├── schemas/                            # Pydantic v2 DTO Request/Response Contracts
 │   └── services/                           # Business Domain Services & Score Engine Integration
 │
 ├── pv_alert_surveillance.py                # Standalone Pure-Python Anomaly Engine & Math Formulas
-├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification (v3.4.0)
+├── surveillance_schema.sql                 # Clean ANSI SQL Database Schema & Views
+├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification
 ├── PVASF_CORE_SPEC.md                      # PVASF Anomaly Metric Formulas & Score Mapping
-├── PVASF_SCHEMA_REFERENCE.md               # Enterprise Data Warehouse Column Specification
-├── DATA_REQUEST_SPEC.md                    # Teradata ETL & Production SQL Extraction Queries
+├── DATA_REQUEST_SPEC.md                    # Data Feed Specification & Production Contracts
 ├── BUSINESS_FUNCTIONAL_DATA_REQUIREMENTS.md# Business Data Requirements Specification
 └── FUTURE_SCOPE.md                         # Future Analytical Roadmap & Scope
 ```

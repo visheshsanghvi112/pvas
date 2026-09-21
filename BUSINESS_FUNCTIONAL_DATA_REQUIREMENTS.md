@@ -35,14 +35,14 @@
 * **Top Command Bar**: Displays stock symbol, company name, ISIN, risk badge, and direct navigation links to **Forensic Dossiers**, **Audit Logs**, and **Mark Safe / Active** workflow toggles.
 * **5 Investigation Tabs**:
   - **Overview Tab**: 5-Parameter Radar Signature, Screener-Style Dual-Axis Master Surveillance Chart (20 & 50 DMA, Volume bars, Live Crosshair Stats Tracker, Screener `D: xx%` Delivery Metric, 15D Window Toggle, Adaptive Date Ticks), and 180-day breakout & band persistence matrix.
-  - **Shareholders Tab**: Direct comparative tables for Promoter / Top 1% / Public float (Day $t$ vs $T-180$), PAN Demographics (Unique PANs & Avg Trading PANs 15D vs 180D), and 15-Day Corporate Announcements (`FACT_CORP_ACTIONS`).
+  - **Shareholders Tab**: Direct comparative tables for Promoter / Top 1% / Public float (Day $t$ vs $T-180$), PAN Demographics (Unique PANs & Avg Trading PANs 15D vs 180D), and 15-Day Corporate Announcements (`corporate_events_feed`).
   - **Participants Tab**: Participant Suspect Breakdown Table (Net LTP contribution, Buy/Sell volume, Concentration HHI, RTR, MTM PnL), Counterparty Pairs, and DFS Circular Trading Loops.
 * **Client 360° Drawer**: 1-click drill-down on any participant PAN displaying legal entity KYC, UCC, DP/BO accounts, Bank details, and demographic profile.
 
 ---
 
 ## 3. Module 3: Security & System Audit Trail (`/history`)
-**Purpose:** Maintains immutable audit logs of regulatory decisions, parameter calibration updates, and system security events (`SYS_AUDIT_LOGS`).
+**Purpose:** Maintains immutable audit logs of regulatory decisions, parameter calibration updates, and system security events (`compliance_audit_logs`).
 
 ### Key Capabilities
 * **Immutable Audit Trail Table**: Displays timestamp, officer, role, action code, target resource, details, and IP address.

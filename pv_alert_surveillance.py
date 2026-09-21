@@ -1,0 +1,1038 @@
+"""
+Price-Volume (PV) Alert Surveillance Framework
+------------------------------------------------
+A modular, programmatic Python framework for price-volume compliance surveillance.
+Implements the 5 core statistical metrics and participant trade audit logic.
+Designed to be imported and run in web backends (FastAPI, Next.js API routes),
+Spark pipelines, or stand-alone CLI scripts.
+"""
+
+
+import argparse
+import sys
+import os
+import json
+from dataclasses import dataclass, field, asdict
+from typing import Dict, List, Tuple, Any, Optional
+import numpy as np
+import pandas as pd
+
+# ----------------------------------------------------------------------
+# Column Synonyms Mapping for Data Validation & Ingestion Robustness
+# ----------------------------------------------------------------------
+MAPPING_RULES = {
+    "Ticker": ["ticker", "scrip", "symbol", "scripcode", "stock", "ticker_symbol", "tickersymbol"],
+    "Date": ["date", "trade_date", "datetime", "timestamp", "tradedate"],
+    "Open": ["open", "openprice", "open_price"],
+    "High": ["high", "highprice", "high_price", "day_high_price", "dayhighprice"],
+    "Low": ["low", "lowprice", "low_price", "day_low_price", "daylowprice"],
+    "Close": ["close", "closeprice", "close_price", "ltp"],          
+    "Volume": ["volume", "qty", "quantity", "traded_qty", "volume_traded", "total_traded_quantity", "totaltradedquantity"],
+    "BandPercent": ["bandpercent", "band_percent", "circuit", "circuit_limit", "band", "upper_circuit_limit"],
+    "PAN": ["pan", "pan_id", "participant", "investor", "panno", "pan_no", "client_pan", "clientpan"],
+    "CounterpartyPAN": ["counterpartypan", "counterparty_pan", "counterparty", "cp_pan", "buyer_pan", "seller_pan"],
+    "BuyVolume": ["buyvolume", "buy_volume", "buy_qty", "buy_quantity", "buyqty"],
+    "SellVolume": ["sellvolume", "sell_volume", "sell_qty", "sell_quantity", "sellqty"],
+    "BuyValue": ["buyvalue", "buy_value", "buy_amt", "buy_amount", "buy_turnover_value", "buyturnovervalue"],
+    "SellValue": ["sellvalue", "sell_value", "sell_amt", "sell_amount", "sell_turnover_value", "sellturnovervalue"],
+    "LTPContribution": ["ltpcontribution", "ltp_contribution", "price_impact", "price_contrib", "gross_positive_ltp_value", "grosspositiveltpvalue"]
+}
+
+
+
+
+def normalize_columns(df: pd.DataFrame, standard_cols: List[str]) -> pd.DataFrame:
+    """Renames mixed-case, spaced, or synonymous column headers to standard PascalCase columns."""
+    df = df.copy()
+    col_map = {}
+    existing_cols = {c.lower().replace("_", "").replace(" ", ""): c for c in df.columns}
+    
+    for std in standard_cols:
+        std_key = std.lower().replace("_", "").replace(" ", "")
+        if std_key in existing_cols:
+            col_map[existing_cols[std_key]] = std
+        else:
+            rules = MAPPING_RULES.get(std, [])
+            for rule in rules:
+                rule_key = rule.lower().replace("_", "").replace(" ", "")
+                if rule_key in existing_cols:
+                    col_map[existing_cols[rule_key]] = std
+                    break
+                    
+    df.rename(columns=col_map, inplace=True)
+    return df
+
+
+def clean_historical_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Sanitizes pricing archives by sorting, dropping NaNs/duplicates, and filling missing bounds."""
+    df = normalize_columns(df, ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"])
+    required = ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Historical price data is missing required columns: {missing}")
+        
+    df["Date"] = pd.to_datetime(df["Date"])
+    # Drop rows with critical NaN values
+    df = df.dropna(subset=["Ticker", "Date", "Close", "Volume"])
+    
+    # Graceful boundaries imputation
+    df["Open"] = df["Open"].fillna(df["Close"])
+    df["High"] = df["High"].fillna(df["Close"])
+    df["Low"] = df["Low"].fillna(df["Close"])
+    
+    df = df.sort_values(["Ticker", "Date"])
+    df = df.drop_duplicates(subset=["Ticker", "Date"], keep="last")
+    
+    # Enforce non-negative values
+    df = df[(df["Close"] >= 0) & (df["Volume"] >= 0)]
+    return df
+
+
+def clean_bands_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = normalize_columns(df, ["Ticker", "BandPercent"])
+    required = ["Ticker", "BandPercent"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Bands data is missing required columns: {missing}")
+    df = df.dropna(subset=["Ticker", "BandPercent"])
+    return df
+
+
+def clean_shareholding_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = normalize_columns(df, ["Ticker", "UniquePANs", "PromoterPercent", "Top1PercentShare"])
+    required = ["Ticker", "UniquePANs", "PromoterPercent", "Top1PercentShare"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Shareholding data is missing required columns: {missing}")
+    df = df.dropna(subset=["Ticker"])
+    return df
+
+
+def clean_announcements_data(df: pd.DataFrame) -> pd.DataFrame:
+    df = normalize_columns(df, ["Ticker", "Date", "Details"])
+    required = ["Ticker", "Date", "Details"]
+    missing = [c for c in required if c not in df.columns]
+    if missing:
+        raise ValueError(f"Announcements data is missing required columns: {missing}")
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.dropna(subset=["Ticker", "Date"])
+    return df
+
+
+# ----------------------------------------------------------------------
+# Core Data Container Structs
+# ----------------------------------------------------------------------
+
+@dataclass
+class SurveillanceConfig:
+    """Configuration weights and lookup parameters for the Surveillance Engine."""
+    weights: Dict[str, float] = field(default_factory=lambda: {
+        "price_rise": 25.0,
+        "price_z": 20.0,
+        "volume_z": 25.0,
+        "band_persistence": 15.0,
+        "new_high": 15.0,
+    })
+    default_band_percent: float = 0.20
+    lookback_days: int = 180
+    recent_days: int = 15
+    threshold: float = 15.0
+
+
+@dataclass
+class MarketMetricsResult:
+    """Surveillance results for a single scrip's core market indicators."""
+    ticker: str
+    price_rise_pct: float
+    price_rise_score: int
+    price_z: float
+    price_z_score: int
+    volume_z: float
+    volume_z_score: int
+    band_hit_days: int
+    band_score: int
+    new_high_days: int
+    new_high_score: int
+    final_score: float
+    price_mod_z: float = 0.0
+    volume_mod_z: float = 0.0
+
+    def as_dict(self) -> Dict[str, Any]:
+        return {
+            "Ticker": self.ticker,
+            "ticker": self.ticker,
+            "Price Rise %": round(self.price_rise_pct, 2),
+            "price_rise_pct": round(self.price_rise_pct, 2),
+            "Price Rise Score": self.price_rise_score,
+            "price_rise_score": self.price_rise_score,
+            "Price Z": round(self.price_z, 2),
+            "price_z": round(self.price_z, 2),
+            "Price Z Score": self.price_z_score,
+            "price_z_score": self.price_z_score,
+            "Price Mod Z": round(self.price_mod_z, 2),
+            "price_mod_z": round(self.price_mod_z, 2),
+            "Volume Z": round(self.volume_z, 2),
+            "volume_z": round(self.volume_z, 2),
+            "Volume Z Score": self.volume_z_score,
+            "volume_z_score": self.volume_z_score,
+            "Volume Mod Z": round(self.volume_mod_z, 2),
+            "volume_mod_z": round(self.volume_mod_z, 2),
+            "Band Hit Days (15d)": self.band_hit_days,
+            "band_hit_days": self.band_hit_days,
+            "Band Score": self.band_score,
+            "band_score": self.band_score,
+            "180d New Highs (15d)": self.new_high_days,
+            "new_high_days": self.new_high_days,
+            "New High Score": self.new_high_score,
+            "new_high_score": self.new_high_score,
+            "Final Score": round(self.final_score, 2),
+            "final_score": round(self.final_score, 2),
+        }
+
+
+
+@dataclass
+class ParticipantAuditResult:
+    """Participant trade audit findings including price impact and PnL."""
+    ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
+    pos_ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
+    neg_ltp_contributors: List[Dict[str, Any]] = field(default_factory=list)
+    volume_share: List[Dict[str, Any]] = field(default_factory=list)
+    counterparty_pairs: List[Dict[str, Any]] = field(default_factory=list)
+    profit_makers: List[Dict[str, Any]] = field(default_factory=list)
+    reversal_pairs: List[Dict[str, Any]] = field(default_factory=list)
+    circular_loops: List[Dict[str, Any]] = field(default_factory=list)
+
+
+@dataclass
+class ScripSurveillanceReport:
+    """Full integrated compliance report for a stock."""
+    ticker: str
+    market_metrics: MarketMetricsResult
+    participant_audit: ParticipantAuditResult
+    shareholding: Dict[str, Any] = field(default_factory=dict)
+    announcements: List[Dict[str, Any]] = field(default_factory=list)
+    market_summary: Dict[str, Any] = field(default_factory=dict)
+    watchlist: bool = False
+
+
+# ----------------------------------------------------------------------
+# Core Surveillance Engine Implementation
+# ----------------------------------------------------------------------
+
+class SurveillanceEngine:
+    """Engine executing core market analytics and participant audits."""
+
+    def __init__(self, config: Optional[SurveillanceConfig] = None):
+        self.config = config or SurveillanceConfig()
+
+    def score_price_rise(self, pct: float) -> int:
+        """
+        Metric 1: 6-Month Price Growth Score (PVASF 2.1)
+        ------------------------------------------------
+        Checks how much the stock's price grew over the past 6 months (T-180 to now).
+        Higher score = bigger pump.
+
+        Scoring tiers:
+          - Under 15% rise  -> Score 0 (Normal market movement)
+          - 15% to 75% rise -> Score 1 (Moderate rally)
+          - 76% to 150% rise-> Score 3 (High price pump)
+          - More than 150%  -> Score 5 (Extreme outlier pump)
+        """
+        if pct < 15:
+            return 0
+        if pct <= 75:
+            return 1
+        if pct <= 150:
+            return 3
+        return 5
+
+    def score_zscore(self, z: float) -> int:
+        """
+        Statistical Z-Score Mapper (PVASF 2.2 & 2.3)
+        -------------------------------------------
+        Converts a statistical Z-score into a 0 to 5 risk score.
+        Tells us if current activity is an extreme statistical outlier.
+
+        Scoring tiers:
+          - Z < 1.645  -> Score 0 (Normal variance, within top 95%)
+          - Z >= 1.645 -> Score 1 (95th percentile outlier)
+          - Z >= 2.33  -> Score 3 (99th percentile outlier)
+          - Z >= 3.09  -> Score 5 (99.9th percentile extreme outlier)
+        """
+        if z >= 3.09:
+            return 5
+        if z >= 2.33:
+            return 3
+        if z >= 1.645:
+            return 1
+        return 0
+
+    def score_band_persistence(self, days: int) -> int:
+        """
+        Metric 4: Upper Circuit Locking Score (PVASF 2.4)
+        -------------------------------------------------
+        Counts how many days (in the last 15 days) the stock hit or came close
+        (at least 90%) to its upper price limit (upper circuit).
+        Manipulators repeatedly hit the circuit to lock out sellers and trigger retail FOMO.
+
+        Scoring tiers:
+          - 0 to 2 days     -> Score 0 (Normal trading)
+          - 3 to 5 days     -> Score 1 (Frequent circuit hits)
+          - 6 to 9 days     -> Score 3 (Repeated circuit locking)
+          - 10 or more days -> Score 5 (Severe multi-day circuit manipulation)
+        """
+        if days >= 10:
+            return 5
+        if days >= 6:
+            return 3
+        if days >= 3:
+            return 1
+        return 0
+
+    def score_new_high(self, days: int) -> int:
+        """
+        Metric 5: 180-Day New High Breakout Score (PVASF 2.5)
+        ----------------------------------------------------
+        Counts how many days in the last 15 days the stock broke its previous 6-month peak.
+        Manipulators push new highs to trigger automatic buy signals.
+
+        Scoring tiers:
+          - 0 days          -> Score 0 (No new 6-month highs)
+          - 1 to 4 days     -> Score 1 (Occasional breakout)
+          - 5 to 9 days     -> Score 3 (Frequent breakouts)
+          - 10 or more days -> Score 5 (Aggressive multi-day breakout run)
+        """
+        if days >= 10:
+            return 5
+        if days >= 5:
+            return 3
+        if days >= 1:
+            return 1
+        return 0
+
+    def calculate_core_metrics(self, ticker: str, df: pd.DataFrame, band_percent: Optional[float] = None) -> MarketMetricsResult:
+        """
+        Calculates all 5 Core Surveillance Metrics for a single stock:
+        -------------------------------------------------------------
+        1. Price Rise %: (Highest price in last 15 days - Price 180 days ago) / Price 180 days ago
+        2. Price Z-Score: Is the 15-day average daily return abnormal compared to 180 days history?
+        3. Volume Z-Score: Is the 15-day average daily volume abnormal compared to 180 days history?
+        4. Band Persistence: How many days did it hit >= 90% of the upper circuit limit?
+        5. 180-Day New Highs: How many days did it break its previous 180-day high?
+        
+        Final Score: Combines all 5 metrics into a single 0 to 100 risk score.
+        A score of 15.0 or higher flags the stock for the compliance watchlist.
+        """
+        lookback = self.config.lookback_days
+        recent = self.config.recent_days
+        required_len = lookback + recent + 1
+
+        if "Close" not in df.columns:
+            df = normalize_columns(df, ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"])
+
+        if len(df) < required_len:
+            raise ValueError(
+                f"Only {len(df)} trading days available, need at least {required_len} days for 180d lookback analysis"
+            )
+
+        # If price band is not provided, estimate it from historical high moves (2%, 5%, 10%, or 20%)
+        if band_percent is None:
+            prev_close_all = df["Close"].shift(1)
+            high_pct_all = (df["High"] - prev_close_all) / prev_close_all
+            p99 = high_pct_all.dropna().quantile(0.99)
+            
+            if p99 <= 0.03:
+                band_percent = 0.02
+            elif p99 <= 0.075:
+                band_percent = 0.05
+            elif p99 <= 0.15:
+                band_percent = 0.10
+            else:
+                band_percent = 0.20
+        else:
+            if band_percent > 1.0:
+                band_percent /= 100.0
+
+        close = pd.to_numeric(df["Close"], errors="coerce").ffill().bfill().fillna(1e-4)
+        volume = pd.to_numeric(df["Volume"], errors="coerce").fillna(0.0).clip(lower=0.0)
+        high = pd.to_numeric(df["High"], errors="coerce").ffill().bfill().fillna(1e-4)
+        low = pd.to_numeric(df["Low"], errors="coerce").ffill().bfill().fillna(1e-4)
+
+        # --- 1. Price Rise % ---
+        # Compare highest price in the last 15 days against the price 180 days ago
+        last15_high = high.iloc[-recent:].max()
+        close_t180 = float(close.iloc[-(lookback + 1)])
+        safe_close_t180 = max(close_t180, 1e-4) if close_t180 != 0 else 1e-4
+        price_rise_pct = ((last15_high - close_t180) / safe_close_t180) * 100
+        price_rise_score = self.score_price_rise(price_rise_pct)
+
+        # Helper: Calculate rolling 15-day average of daily Close-to-Close returns
+        def rolling_mean_pct_change(c: pd.Series) -> pd.Series:
+            return (c.pct_change(fill_method=None) * 100).rolling(recent).mean()
+
+        # Helper: Calculate rolling 15-day average of daily volume
+        def rolling_mean_volume(v: pd.Series) -> pd.Series:
+            return v.rolling(recent).mean()
+
+        # Helper: Standard Z-score = (Current Value - Historical Mean) / Historical Std Dev
+        def zscore_latest(series: pd.Series) -> float:
+            series_clean = series.dropna()
+            if len(series_clean) < lookback + 1:
+                return 0.0
+            latest = series_clean.iloc[-1]
+            background = series_clean.iloc[-(lookback + 1):-1]
+            mu = background.mean()
+            sigma = background.std()
+            if sigma < 1e-6 or np.isnan(sigma):
+                return 0.0
+            return float((latest - mu) / sigma)
+
+        # Helper: Robust Modified Z-score using Median & MAD (less sensitive to single huge spikes)
+        def modified_zscore_latest(series: pd.Series) -> float:
+            series_clean = series.dropna()
+            if len(series_clean) < lookback + 1:
+                return 0.0
+            latest = series_clean.iloc[-1]
+            background = series_clean.iloc[-(lookback + 1):-1]
+            median = background.median()
+            mad = (background - median).abs().median()
+            if mad < 1e-6 or np.isnan(mad):
+                return 0.0
+            return float(0.6745 * (latest - median) / mad)
+
+        # --- 2. Price Z-Score ---
+        # Tests if the 15-day average daily price return is a statistical outlier
+        price_roll = rolling_mean_pct_change(close)
+        price_z = zscore_latest(price_roll)
+        price_mod_z = modified_zscore_latest(price_roll)
+        price_z_score = self.score_zscore(price_z)
+
+        # --- 3. Volume Z-Score ---
+        # Tests if the 15-day average daily volume is a statistical outlier
+        vol_roll = rolling_mean_volume(volume)
+        volume_z = zscore_latest(vol_roll)
+        volume_mod_z = modified_zscore_latest(vol_roll)
+        volume_z_score = self.score_zscore(volume_z)
+
+        # --- 4. Price Band Persistence (Upper Circuit Hits) ---
+        # Counts days where the stock rose by at least 90% of its daily circuit band
+        prev_close = close.shift(1).replace(0, np.nan).fillna(1e-4)
+        high_pct = (high - prev_close) / prev_close
+        band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
+        band_score = self.score_band_persistence(band_hit_days)
+
+        # --- 5. 180-Day New High Breakout ---
+        # Counts days where today's high broke past the previous 180-day ceiling (PVASF 2.5.1)
+        rolling_180_high_prev = high.shift(1).rolling(lookback).max()
+        is_new_high = high > rolling_180_high_prev
+        new_high_days = int(is_new_high.iloc[-recent:].sum())
+        new_high_score = self.score_new_high(new_high_days)
+
+        # --- Final Weighted Score (0.0 to 100.0) ---
+        # Multiplies each parameter score (0-5) by its calibrated weight (e.g. 25%, 20%)
+        w = self.config.weights
+        final_score = round(sum((w.get(key, 0.0) * score) / 5.0 for key, score in {
+            "price_rise": price_rise_score,
+            "price_z": price_z_score,
+            "volume_z": volume_z_score,
+            "band_persistence": band_score,
+            "new_high": new_high_score,
+        }.items()), 2)
+
+        return MarketMetricsResult(
+            ticker=ticker,
+            price_rise_pct=price_rise_pct,
+            price_rise_score=price_rise_score,
+            price_z=price_z,
+            price_z_score=price_z_score,
+            volume_z=volume_z,
+            volume_z_score=volume_z_score,
+            band_hit_days=band_hit_days,
+            band_score=band_score,
+            new_high_days=new_high_days,
+            new_high_score=new_high_score,
+            final_score=final_score,
+            price_mod_z=price_mod_z,
+            volume_mod_z=volume_mod_z
+        )
+
+    def analyze_participants(self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float) -> ParticipantAuditResult:
+        """
+        Executes Participant-Level Conduct Audits & Algorithmic Abuse Detection (PVASF Section 4).
+        
+        Analyzes client-level trade logs to identify specific entities (PANs) responsible for
+        price distortion, artificial volume generation, circular trading, and profit extraction.
+        
+        Sub-Analyses Performed:
+          4.1 Net LTP Contribution ("Price Pusher" Metric): Identifies aggressive initiators.
+          4.2 Volume Share ("Dominance / Cornering" Metric): Identifies entities dominating exchange volume.
+          4.3 Counterparty Concentration ("Collusion" Metric): Highlights bilateral trading rings.
+          4.4 Trade Reversal Ratio ("RTR / Wash Trade" Metric): Quantifies synchronized round-tripping.
+          4.5 Circular Trading Loops ("Cycle Detection"): Graph DFS isolating directed rings (A->B->C->A).
+          4.6 Mark-to-Market PnL ("Profit-Makers" Metric): Realized cash gains + unrealized inventory value.
+        """
+        if trades_df.empty:
+            return ParticipantAuditResult()
+
+        if "Ticker" not in trades_df.columns:
+            trades_df = normalize_columns(trades_df, ["Ticker", "PAN", "CounterpartyPAN", "BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution"])
+
+        if trades_df.empty or ticker not in trades_df["Ticker"].values:
+            return ParticipantAuditResult()
+
+        df = trades_df[trades_df["Ticker"] == ticker].copy()
+        
+        # Ensure all required columns exist with safe null boundaries
+        for col in ["BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution", "CounterpartyPAN"]:
+            if col not in df.columns:
+                if col == "CounterpartyPAN":
+                    df[col] = "UNKNOWN"
+                else:
+                    df[col] = 0.0
+
+        # --- 4.1 LTP Contribution (The "Price Pusher" Metric) ---
+        # Sums the net price impact created by each entity when acting as an aggressive market order.
+        # Rationale: Identifies whether price rise was driven by a single coordinated entity.
+        if "PosContVal" not in df.columns:
+            df["PosContVal"] = df["LTPContribution"].apply(lambda x: max(0.0, float(x)))
+        if "NegContVal" not in df.columns:
+            df["NegContVal"] = df["LTPContribution"].apply(lambda x: abs(min(0.0, float(x))))
+
+        ltp_group = df.groupby("PAN").agg({
+            "LTPContribution": "sum",
+            "PosContVal": "sum",
+            "NegContVal": "sum"
+        }).reset_index()
+
+        ltp_group["AbsLTPContribution"] = ltp_group["LTPContribution"].abs()
+        top_ltp_df = ltp_group.sort_values(["AbsLTPContribution", "PosContVal"], ascending=[False, False]).head(20)
+        
+        top_ltp = []
+        for _, r in top_ltp_df.iterrows():
+            net_c = float(r["LTPContribution"])
+            pos_c = float(r["PosContVal"])
+            neg_c = float(r["NegContVal"])
+            effect = "POSITIVE" if net_c > 0.001 else ("NEGATIVE" if net_c < -0.001 else "NEUTRAL")
+            top_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(net_c, 2),
+                "PosContVal": round(pos_c, 2),
+                "NegContVal": round(neg_c, 2),
+                "Effect": effect
+            })
+
+        # Top Positive Contributors (Upward Price Push)
+        pos_df = ltp_group[(ltp_group["PosContVal"] > 0) | (ltp_group["LTPContribution"] > 0)].sort_values(
+            ["PosContVal", "LTPContribution"], ascending=[False, False]
+        ).head(10)
+        pos_ltp = []
+        for _, r in pos_df.iterrows():
+            pos_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(float(r["LTPContribution"]), 2),
+                "PosContVal": round(float(r["PosContVal"]), 2),
+                "NegContVal": round(float(r["NegContVal"]), 2),
+                "Effect": "POSITIVE"
+            })
+
+        # Top Negative Contributors (Downward Price Pull / Suppression)
+        neg_df = ltp_group[(ltp_group["NegContVal"] > 0) | (ltp_group["LTPContribution"] < 0)].sort_values(
+            ["NegContVal", "LTPContribution"], ascending=[False, True]
+        ).head(10)
+        neg_ltp = []
+        for _, r in neg_df.iterrows():
+            neg_ltp.append({
+                "PAN": r["PAN"],
+                "LTPContribution": round(float(r["LTPContribution"]), 2),
+                "PosContVal": round(float(r["PosContVal"]), 2),
+                "NegContVal": round(float(r["NegContVal"]), 2),
+                "Effect": "NEGATIVE"
+            })
+
+        # --- 4.2 Volume Share (The "Dominance" Metric) ---
+        # Formula: (Individual PAN Volume over 15d / Total Scrip Volume over 15d) * 100 (PVASF 4.2)
+        # Rationale: Flags single entities cornering or monopolizing liquidity.
+        df["PANVolume"] = df["BuyVolume"] + df["SellVolume"]
+        vol_group = df.groupby("PAN")["PANVolume"].sum().reset_index()
+        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / max(1.0, total_exchange_vol)) * 100.0
+        top_vol = vol_group.sort_values("VolumeSharePercent", ascending=False).head(5).to_dict("records")
+
+        # Extract directed flow mapping between counterparties
+        df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
+        flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
+        flows = {(r["PAN"], r["CounterpartyPAN"]): r["BuyVolume"] for _, r in flow_df.iterrows()}
+
+        # --- 4.3 Counterparty Concentration (The "Collusive Pair" Metric) ---
+        # Formula: (Bilateral Matched Volume / Total Scrip Volume over 15d) * 100
+        # Rationale: Flags pairs of accounts repeatedly exchanging shares with each other.
+        pair_dict = {}
+        for (A, B), vol in flows.items():
+            if vol > 0:
+                p1, p2 = sorted([A, B])
+                pair_name = f"{p1} <-> {p2}"
+                pair_dict[pair_name] = pair_dict.get(pair_name, 0.0) + vol
+
+        if pair_dict:
+            top_pairs = [
+                {
+                    "Pair": pair_name,
+                    "Volume": vol,
+                    "SharePercent": (vol / max(1.0, total_exchange_vol)) * 100.0
+                }
+                for pair_name, vol in sorted(pair_dict.items(), key=lambda x: x[1], reverse=True)[:5]
+            ]
+        else:
+            top_pairs = []
+
+        # --- 4.4 Trade Reversal Ratio (RTR) ---
+        # Formula: RTR = [ 2 * min(Vol(A->B), Vol(B->A)) / (Vol(A->B) + Vol(B->A)) ] * 100
+        # Rationale: Detects perfectly synchronized buying and selling between two entities
+        # where shares are passed back and forth without genuine transfer of beneficial ownership.
+        undir_pairs = set()
+        for A, B in flows.keys():
+            p1, p2 = sorted([A, B])
+            undir_pairs.add((p1, p2))
+            
+        reversal_list = []
+        for A, B in undir_pairs:
+            v_a_b = flows.get((A, B), 0.0)
+            v_b_a = flows.get((B, A), 0.0)
+            gross = v_a_b + v_b_a
+            if gross > 0:
+                rtr = (2.0 * min(v_a_b, v_b_a) / gross) * 100.0
+                reversal_list.append({
+                    "Pair": f"{A} <-> {B}",
+                    "PAN1": A,
+                    "PAN2": B,
+                    "Vol_A_to_B": float(v_a_b),
+                    "Vol_B_to_A": float(v_b_a),
+                    "GrossVolume": float(gross),
+                    "ReversalRatio": round(rtr, 2)
+                })
+        top_reversals = sorted(reversal_list, key=lambda x: (x["ReversalRatio"], x["GrossVolume"]), reverse=True)[:10]
+
+        # --- 4.5 Circular Trade Loops Detection ---
+        # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)
+        # where volume is rotated across multiple mule/surrogate accounts to evade 2-party filters.
+        adj = {}
+        for (A, B), vol in flows.items():
+            if vol > 0:
+                if A not in adj:
+                    adj[A] = set()
+                adj[A].add(B)
+
+        detected_loops = []
+        
+        def find_cycles(start_node):
+            path = [start_node]
+            visited = {start_node}
+            
+            def backtrack(u):
+                if len(path) > 5:
+                    return
+                if u in adj:
+                    for v in adj[u]:
+                        if v == start_node:
+                            if len(path) >= 3:
+                                # Canonical cycle normalization: rotate list so smallest node is first
+                                min_idx = path.index(min(path))
+                                normalized_cycle = path[min_idx:] + path[:min_idx]
+                                if normalized_cycle not in detected_loops:
+                                    detected_loops.append(normalized_cycle)
+                        elif v not in visited:
+                            visited.add(v)
+                            path.append(v)
+                            backtrack(v)
+                            path.pop()
+                            visited.remove(v)
+            backtrack(start_node)
+
+        for node in adj.keys():
+            find_cycles(node)
+            
+        loop_results = []
+        for cycle in detected_loops:
+            edges = list(zip(cycle, cycle[1:] + [cycle[0]]))
+            edge_vols = [flows.get(edge, 0.0) for edge in edges]
+            bottleneck_vol = min(edge_vols)
+            gross_vol = sum(edge_vols)
+            efficiency = round((bottleneck_vol / max(1.0, gross_vol)) * 100.0, 1)
+            loop_results.append({
+                "Cycle": " -> ".join(str(node) for node in cycle) + f" -> {cycle[0]}",
+                "Nodes": list(cycle),
+                "Length": len(cycle),
+                "RotatedVolume": float(bottleneck_vol),
+                "GrossVolume": float(gross_vol),
+                "EfficiencyPercent": efficiency
+            })
+        top_loops = sorted(loop_results, key=lambda x: (x["RotatedVolume"], -x["Length"]), reverse=True)[:10]
+
+        # --- 4.6 Profit-Makers (MTM PnL Analysis) ---
+        # Formula: Net PnL = Total Sell Value - Total Buy Value + (Net Remaining Position * Latest Close Price)
+        # Rationale: Identifies the primary beneficiaries extracting cash profits during the pump.
+        pnl_df = df.groupby("PAN").agg({
+            "BuyVolume": "sum",
+            "SellVolume": "sum",
+            "BuyValue": "sum",
+            "SellValue": "sum"
+        }).reset_index()
+
+        pnl_records = []
+        for _, row in pnl_df.iterrows():
+            net_pos = row["BuyVolume"] - row["SellVolume"]
+            pnl = row["SellValue"] - row["BuyValue"] + (net_pos * final_close)
+            pnl_records.append({
+                "PAN": row["PAN"],
+                "BuyVolume": int(row["BuyVolume"]),
+                "SellVolume": int(row["SellVolume"]),
+                "NetPnL": round(pnl, 2)
+            })
+
+        top_profit = sorted(pnl_records, key=lambda x: x["NetPnL"], reverse=True)[:5]
+
+        return ParticipantAuditResult(
+            ltp_contributors=top_ltp,
+            pos_ltp_contributors=pos_ltp,
+            neg_ltp_contributors=neg_ltp,
+            volume_share=top_vol,
+            counterparty_pairs=top_pairs,
+            profit_makers=top_profit,
+            reversal_pairs=top_reversals,
+            circular_loops=top_loops
+        )
+
+    def run_pipeline(
+        self,
+        historical_df: pd.DataFrame,
+        bands_df: Optional[pd.DataFrame] = None,
+        trades_df: Optional[pd.DataFrame] = None,
+        shareholding_df: Optional[pd.DataFrame] = None,
+        announcements_df: Optional[pd.DataFrame] = None
+    ) -> List[ScripSurveillanceReport]:
+        """Runs the complete surveillance engine end-to-end on dataframes in memory."""
+        # 1. Clean and validate historical data
+        historical_df = clean_historical_data(historical_df)
+        tickers = historical_df["Ticker"].unique().tolist()
+
+        # 2. Clean and validate bands
+        bands_dict = {}
+        if bands_df is not None and not bands_df.empty:
+            df_b = clean_bands_data(bands_df)
+            bands_dict = dict(zip(df_b["Ticker"], df_b["BandPercent"]))
+
+        # 3. Clean and validate shareholder pattern
+        sh_df = pd.DataFrame()
+        if shareholding_df is not None and not shareholding_df.empty:
+            sh_df = clean_shareholding_data(shareholding_df)
+
+        # 4. Clean and validate announcements
+        ann_df = pd.DataFrame()
+        if announcements_df is not None and not announcements_df.empty:
+            ann_df = clean_announcements_data(announcements_df)
+
+        # 5. Clean, sanitize and estimate trades data
+        trades_df_clean = pd.DataFrame()
+
+        if trades_df is not None and not trades_df.empty:
+            trades_df = normalize_columns(trades_df, ["Ticker", "Date", "PAN", "CounterpartyPAN", "BuyVolume", "SellVolume", "BuyValue", "SellValue", "LTPContribution"])
+            req = ["Ticker", "Date", "PAN", "BuyVolume", "SellVolume"]
+            missing_req = [c for c in req if c not in trades_df.columns]
+            if missing_req:
+                print(f"[warning] Trade logs missing required columns {missing_req}. Skipping trade audits.", file=sys.stderr)
+            else:
+                trades_df["Date"] = pd.to_datetime(trades_df["Date"])
+                trades_df = trades_df.dropna(subset=["Ticker", "Date", "PAN"])
+                
+                # Default missing counterparty
+                if "CounterpartyPAN" not in trades_df.columns:
+                    trades_df["CounterpartyPAN"] = "UNKNOWN"
+                else:
+                    trades_df["CounterpartyPAN"] = trades_df["CounterpartyPAN"].fillna("UNKNOWN")
+                    
+                # Merge with historical to estimate missing values
+                df_m = pd.merge(trades_df, historical_df[["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"]], on=["Ticker", "Date"], how="left")
+                
+                # Fill missing BuyValue / SellValue
+                if "BuyValue" not in trades_df.columns:
+                    trades_df["BuyValue"] = trades_df["BuyVolume"] * df_m["Close"].fillna(0.0)
+                else:
+                    trades_df["BuyValue"] = trades_df["BuyValue"].fillna(trades_df["BuyVolume"] * df_m["Close"].fillna(0.0))
+                    
+                if "SellValue" not in trades_df.columns:
+                    trades_df["SellValue"] = trades_df["SellVolume"] * df_m["Close"].fillna(0.0)
+                else:
+                    trades_df["SellValue"] = trades_df["SellValue"].fillna(trades_df["SellVolume"] * df_m["Close"].fillna(0.0))
+                    
+                # Fill missing LTPContribution (Estimator fallback)
+                if "LTPContribution" not in trades_df.columns:
+                    net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
+                    price_change = df_m["Close"] - df_m["Open"]
+                    trades_df["LTPContribution"] = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
+                else:
+                    net_vol = trades_df["BuyVolume"] - trades_df["SellVolume"]
+                    price_change = df_m["Close"] - df_m["Open"]
+                    estimated = (net_vol / df_m["Volume"].fillna(1.0).replace(0, 1.0)) * price_change.fillna(0.0)
+                    trades_df["LTPContribution"] = trades_df["LTPContribution"].fillna(estimated).fillna(0.0)
+                    
+                trades_df_clean = trades_df
+
+        reports = []
+        
+        for ticker in tickers:
+            df_ticker = historical_df[historical_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
+            band_percent = bands_dict.get(ticker, None)
+            
+            try:
+                # Market indicators
+                market_res = self.calculate_core_metrics(ticker, df_ticker, band_percent)
+                
+                # Participant audits
+                final_close = float(df_ticker["Close"].iloc[-1])
+                total_exchange_vol = float(df_ticker["Volume"].iloc[-self.config.recent_days:].sum())
+                
+                part_res = ParticipantAuditResult()
+                
+                if not trades_df_clean.empty:
+                    part_res = self.analyze_participants(ticker, trades_df_clean, final_close, total_exchange_vol)
+
+                # Shareholder details
+                ticker_sh = {}
+                if not sh_df.empty and ticker in sh_df["Ticker"].values:
+                    ticker_sh = sh_df[sh_df["Ticker"] == ticker].iloc[0].to_dict()
+
+                # Corporate announcements
+                ticker_ann = []
+                if not ann_df.empty and ticker in ann_df["Ticker"].values:
+                    ticker_ann = ann_df[ann_df["Ticker"] == ticker].to_dict("records")
+
+                # Market statistics summary
+                lookback = self.config.lookback_days
+                recent = self.config.recent_days
+                hist_summary = {
+                    "StartPrice": float(df_ticker["Close"].iloc[-(lookback + 1)]),
+                    "EndPrice": float(df_ticker["Close"].iloc[-1]),
+                    "PriceChangePercent": float(((df_ticker["Close"].iloc[-1] - df_ticker["Close"].iloc[-(lookback + 1)]) / df_ticker["Close"].iloc[-(lookback + 1)]) * 100),
+                    "15dAvgDailyReturn": float((df_ticker["Close"].pct_change() * 100).iloc[-recent:].mean()),
+                    "15dAvgVolume": float(df_ticker["Volume"].iloc[-recent:].mean())
+                }
+
+                report = ScripSurveillanceReport(
+                    ticker=ticker,
+                    market_metrics=market_res,
+                    participant_audit=part_res,
+                    shareholding=ticker_sh,
+                    announcements=ticker_ann,
+                    market_summary=hist_summary,
+                    watchlist=(market_res.final_score >= self.config.threshold)
+                )
+                reports.append(report)
+            except Exception as e:
+                print(f"[skip] {ticker}: {e}", file=sys.stderr)
+
+        return sorted(reports, key=lambda r: r.market_metrics.final_score, reverse=True)
+
+
+# ----------------------------------------------------------------------
+# CLI Dashboard Printer Utility
+# ----------------------------------------------------------------------
+
+def print_dashboard(report: ScripSurveillanceReport, threshold: float):
+    """Prints a beautiful, comprehensive compliance surveillance report for a scrip."""
+    ticker = report.ticker
+    core = report.market_metrics
+    participant = report.participant_audit
+    sh_pattern = report.shareholding
+    announcements = report.announcements
+    hist_summary = report.market_summary
+
+    print("=" * 72)
+    print(f" SURVEILLANCE REPORT: {ticker} ".center(72, "#"))
+    print("=" * 72)
+
+    watchlist_status = "!! ALERT: WATCHLIST SHORTLISTED !!" if report.watchlist else "PASSED SURVEILLANCE"
+    print(f"Status: {watchlist_status} | Final Alert Score: {core.final_score:.2f} (Threshold: {threshold})")
+    print("-" * 72)
+
+    # Core Metrics
+    print(f"{'Surveillance Metric':<35} | {'Value (Std / Mod Z)':<22} | {'Score':<10}")
+    print("-" * 72)
+    print(f"2.1 Price Rise % (15d High vs T-180) | {core.price_rise_pct:>20.2f}% | {core.price_rise_score:<10}")
+    print(f"2.2 Price Z-Score (15d Avg daily %)   | {core.price_z:>8.2f} / {core.price_mod_z:<11.2f} | {core.price_z_score:<10}")
+    print(f"2.3 Volume Z-Score (15d Avg Vol)      | {core.volume_z:>8.2f} / {core.volume_mod_z:<11.2f} | {core.volume_z_score:<10}")
+    print(f"2.4 Price Band Hits (last 15 days)    | {core.band_hit_days:>21d} | {core.band_score:<10}")
+    print(f"2.5 180d New High Hits (last 15 days) | {core.new_high_days:>21d} | {core.new_high_score:<10}")
+    print("-" * 72)
+
+    # Market Indicators
+    if hist_summary:
+        print(f"Price Path (180d ago -> Latest): {hist_summary.get('StartPrice', 0.0):.2f} -> {hist_summary.get('EndPrice', 0.0):.2f} ({hist_summary.get('PriceChangePercent', 0.0):.2f}%)")
+        print(f"Rolling 15d Avg Price Move:      {hist_summary.get('15dAvgDailyReturn', 0.0):.3f}%")
+        print(f"Rolling 15d Avg Volume:          {hist_summary.get('15dAvgVolume', 0.0):,.0f} shares")
+    else:
+        print("Price Path & Market Summary: No Data Available")
+    print("-" * 72)
+
+    # Shareholding Pattern
+    if sh_pattern:
+        print("Shareholder Statistics:")
+        print(f"  - Unique PAN Holders:       {sh_pattern.get('UniquePANs', 0):,}")
+        print(f"  - Promoter Holding:         {sh_pattern.get('PromoterPercent', 0.0):.2f}%")
+        print(f"  - Top 1% Shareholder Share: {sh_pattern.get('Top1PercentShare', 0.0):.2f}%")
+    else:
+        print("Shareholder Statistics: No Data Available")
+    print("-" * 72)
+
+    # Announcements
+    print(f"Corporate Announcements (Last 15 days): {len(announcements)}")
+    for ann in announcements:
+        print(f"  - [{ann['Date']}] {ann['Details']}")
+    print("-" * 72)
+
+    # Participant Details
+    print("Participant Audit (Last 15 days):")
+    
+    print("\n  Top 5 LTP Price Impact Contributors:")
+    if participant.ltp_contributors:
+        print("    " + f"{'PAN':<15} | {'Net LTP Contrib (Price)':<22}")
+        for p in participant.ltp_contributors:
+            print("    " + f"{p['PAN']:<15} | {p['LTPContribution']:>22.4f}")
+    else:
+        print("    No participant trade records found.")
+
+    print("\n  Top 5 Volume Share Concentrators:")
+    if participant.volume_share:
+        print("    " + f"{'PAN':<15} | {'Total Volume':<15} | {'% of Exchange Volume':<20}")
+        for p in participant.volume_share:
+            print("    " + f"{p['PAN']:<15} | {p['PANVolume']:>15,} | {p['VolumeSharePercent']:>19.3f}%")
+    else:
+        print("    No participant trade records found.")
+
+    print("\n  Top 5 Trading Counterparty Pairs (Circular Trade Risk):")
+    if participant.counterparty_pairs:
+        print("    " + f"{'Counterparty Pair':<33} | {'Volume':<12} | {'% of Exchange Vol':<18}")
+        for p in participant.counterparty_pairs:
+            print("    " + f"{p['Pair']:<33} | {p['Volume']:>12,} | {p['SharePercent']:>17.3f}%")
+    else:
+        print("    No counterparty details available.")
+
+    print("\n  Top 5 Trade Reversal Pairs (RTR / Collusion Risk):")
+    if participant.reversal_pairs:
+        print("    " + f"{'Participant Pair':<33} | {'Gross Volume':<12} | {'Reversal Ratio (RTR)':<20}")
+        for p in participant.reversal_pairs:
+            print("    " + f"{p['Pair']:<33} | {p['GrossVolume']:>12,} | {p['ReversalRatio']:>19.2f}%")
+    else:
+        print("    No trade reversal details available.")
+
+    print("\n  Circular Trade Loops Detected (Lengths 3-5):")
+    if participant.circular_loops:
+        print("    " + f"{'Detected Collusive Loop':<55} | {'Rotated Vol':<12}")
+        for p in participant.circular_loops:
+            print("    " + f"{p['Cycle']:<55} | {p['RotatedVolume']:>12,}")
+    else:
+        print("    No circular trading loops detected.")
+
+    print("\n  Top 5 Participant Profit-Makers (MTM PnL):")
+    if participant.profit_makers:
+        print("    " + f"{'PAN':<15} | {'Buy Qty':<10} | {'Sell Qty':<10} | {'Net MTM PnL (INR)':<18}")
+        for p in participant.profit_makers:
+            print("    " + f"{p['PAN']:<15} | {p['BuyVolume']:>10,} | {p['SellVolume']:>10,} | {p['NetPnL']:>17.2f}")
+    else:
+        print("    No trade records to calculate PnL.")
+    print("=" * 72 + "\n")
+
+# ----------------------------------------------------------------------
+# CLI Application Wrapper
+# ----------------------------------------------------------------------
+
+def main():
+    parser = argparse.ArgumentParser(description="Offline PV Alert Surveillance Framework (modular library & CLI wrapper)")
+    parser.add_argument("--historical", required=True, help="Path to historical price-volume CSV (required)")
+    parser.add_argument("--bands", help="Path to price bands CSV")
+    parser.add_argument("--trades", help="Path to PAN trades CSV")
+    parser.add_argument("--shareholding", help="Path to shareholding pattern CSV")
+    parser.add_argument("--announcements", help="Path to corporate announcements CSV")
+    parser.add_argument("--threshold", type=float, default=10.0, help="Watch-list score threshold")
+    parser.add_argument("--lookback", type=int, default=180, help="Historical baseline lookback period in days (default: 180)")
+    parser.add_argument("--recent", type=int, default=15, help="Recent evaluation window in days (default: 15)")
+    parser.add_argument("--out", default="pv_surveillance_output.csv", help="Output summary CSV path")
+    parser.add_argument("--json-out", default="pv_surveillance_details.json", help="Detailed JSON report output path")
+    parser.add_argument("--verbose", action="store_true", help="Print dashboard for all scrips, not just watchlist")
+    args = parser.parse_args()
+
+    if not os.path.exists(args.historical):
+        parser.error(f"Historical file not found: {args.historical}. Please verify files and try again.")
+
+    # 1. Load files as DataFrames
+    df_hist = pd.read_csv(args.historical)
+    df_bands = pd.read_csv(args.bands) if args.bands and os.path.exists(args.bands) else None
+    df_trades = pd.read_csv(args.trades) if args.trades and os.path.exists(args.trades) else None
+    df_sh = pd.read_csv(args.shareholding) if args.shareholding and os.path.exists(args.shareholding) else None
+    df_ann = pd.read_csv(args.announcements) if args.announcements and os.path.exists(args.announcements) else None
+
+    # 2. Configure and run programmatic engine
+    config = SurveillanceConfig(
+        threshold=args.threshold,
+        lookback_days=args.lookback,
+        recent_days=args.recent
+    )
+    engine = SurveillanceEngine(config)
+    reports = engine.run_pipeline(
+        historical_df=df_hist,
+        bands_df=df_bands,
+        trades_df=df_trades,
+        shareholding_df=df_sh,
+        announcements_df=df_ann
+    )
+
+    if not reports:
+        print("No surveillance results generated. Check the integrity of your historical price-volume file.")
+        return
+
+    # 3. Format CLI output
+    df_summary = pd.DataFrame([r.market_metrics.as_dict() for r in reports])
+    df_summary["Watchlist"] = df_summary["Final Score"] >= args.threshold
+
+    print("\n" + "#" * 72)
+    print(" SURVEILLANCE SUMMARY ".center(72, "#"))
+    print("#" * 72)
+    pd.set_option("display.width", 160)
+    print(df_summary.to_string(index=False))
+    print("-" * 72)
+
+    watchlist_reports = [r for r in reports if r.watchlist]
+    print(f"\n{len(watchlist_reports)}/{len(reports)} scrips exceeded watchlist threshold ({args.threshold})\n")
+
+    reports_to_print = reports if args.verbose else watchlist_reports
+    for r in reports_to_print:
+        print_dashboard(r, args.threshold)
+
+    # 4. Save exports
+    df_summary.to_csv(args.out, index=False)
+    print(f"Saved summary watchlist: {args.out}")
+
+    # Export full dashboard objects to JSON
+    json_export = {}
+    for r in reports:
+        json_export[r.ticker] = {
+            "surveillance_score": r.market_metrics.as_dict(),
+            "participant_audits": {
+                "ltp_contributors": r.participant_audit.ltp_contributors,
+                "volume_share": r.participant_audit.volume_share,
+                "counterparty_pairs": r.participant_audit.counterparty_pairs,
+                "profit_makers": r.participant_audit.profit_makers,
+                "reversal_pairs": r.participant_audit.reversal_pairs,
+                "circular_loops": r.participant_audit.circular_loops
+            },
+            "shareholders": r.shareholding,
+            "announcements": r.announcements,
+            "market_summary": r.market_summary
+        }
+
+    with open(args.json_out, "w") as f:
+        json.dump(json_export, f, indent=2, default=str)
+    print(f"Saved detailed compliance reports: {args.json_out}")
+
+
+if __name__ == "__main__":
+    main()

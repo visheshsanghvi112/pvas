@@ -61,14 +61,14 @@ class EODSurveillanceService:
     Enterprise EOD Surveillance Service.
     
     Coordinates the Price-Volume Alert Surveillance Framework (PVASF) across:
-      1. Market Data Extraction: Queries AGG_SEC_DAY (EOD OHLCV warehouse table) with
-         rolling 180-day baseline and 15-day evaluation windows.
+      1. Market Data Extraction: Queries daily_market_eod with rolling 180-day baseline
+         and 15-day evaluation windows.
       2. Scoring & Anomaly Detection: Drives SurveillanceEngine to evaluate Price Rise,
          Price Z-Score, Volume Z-Score, Upper Circuit Persistence, and 180D New Highs.
-      3. Participant Conduct Auditing: Joins AGG_CLNT_SEC_DAY with DIM_EXCH_CLNT_DTLS
+      3. Participant Conduct Auditing: Queries participant_daily_trades & counterparty_trade_pairs
          to calculate net LTP contributions, volume dominance, counterparty rings, and PnL.
-      4. Shareholder & Governance Analytics: Queries FACT_MAIN_SHLDNG, FACT_PROM_SHLDR_DTLS,
-         and FACT_CORP_ACTIONS for ownership concentration and corporate announcement timelines.
+      4. Shareholder & Governance Analytics: Queries shareholding_summary, large_shareholders_registry,
+         and corporate_events_feed for ownership concentration and corporate announcements.
     """
 
     def __init__(self):
@@ -76,92 +76,65 @@ class EODSurveillanceService:
         self.engine = SurveillanceEngine(self.config)
         self.calendar = MarketCalendarService()
         
-        # Load EOD pricing archives from database AGG_SEC_DAY; fallback to deterministic synthetic feed
+        # Load EOD pricing archives from database daily_market_eod; fallback to deterministic synthetic feed
         db_df = self._load_db_eod()
-        self.current_df = db_df if db_df is not None else self._generate_sample_teradata_eod()
+        self.current_df = db_df if db_df is not None else self._generate_sample_eod()
 
-        # Load participant trade logs from database AGG_CLNT_SEC_DAY; fallback to synthetic trade records
+        # Load participant trade logs from database counterparty_trade_pairs & participant_daily_trades
         db_trades = self._load_db_trades()
         self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
-        """
-        Loads EOD OHLCV data directly from the enterprise warehouse table AGG_SEC_DAY.
-        
-        Lineage:
-          - Asd_Symbol -> Ticker
-          - Asd_Date -> Date
-          - Asd_Open_Price -> Open
-          - Asd_High_Price -> High
-          - Asd_Low_Price -> Low
-          - Asd_Close_Price -> Close
-          - Asd_Tot_Qty -> Volume
-        """
+        """Loads EOD OHLCV data directly from daily_market_eod."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import AggSecDay
+            from backend.db.models import DailyMarketEod
 
             db = SessionLocal()
             q = db.query(
-                AggSecDay.Asd_Symbol.label("Ticker"),
-                AggSecDay.Asd_Date.label("Date"),
-                AggSecDay.Asd_Open_Price.label("Open"),
-                AggSecDay.Asd_High_Price.label("High"),
-                AggSecDay.Asd_Low_Price.label("Low"),
-                AggSecDay.Asd_Close_Price.label("Close"),
-                AggSecDay.Asd_Tot_Qty.label("Volume")
-            ).order_by(AggSecDay.Asd_Symbol, AggSecDay.Asd_Date)
+                DailyMarketEod.symbol.label("Ticker"),
+                DailyMarketEod.trade_date.label("Date"),
+                DailyMarketEod.open_price.label("Open"),
+                DailyMarketEod.day_high_price.label("High"),
+                DailyMarketEod.day_low_price.label("Low"),
+                DailyMarketEod.close_price.label("Close"),
+                DailyMarketEod.total_traded_quantity.label("Volume")
+            ).order_by(DailyMarketEod.symbol, DailyMarketEod.trade_date)
 
             df = pd.read_sql(q.statement, db.bind)
             if not df.empty and len(df) > 10:
                 return clean_historical_data(df)
         except Exception as e:
-            print(f"[surveillance_service] DB EOD load error from AGG_SEC_DAY: {e}")
+            print(f"[surveillance_service] DB EOD load error: {e}")
         finally:
             if db:
                 db.close()
         return None
 
     def _load_db_trades(self) -> Optional[pd.DataFrame]:
-        """
-        Loads participant trade aggregates directly from AGG_PAN_PAIR_DAY and AGG_CLNT_SEC_DAY.
-        
-        Lineage & Computations:
-          - AggPanPairDay joined with Buyer & Seller DimExchClntDtls -> Exact Bilateral Pairings
-          - Buyer PAN <-> Seller PAN -> Counterparty Concentration, Reversal Ratios (RTR), Circular Loops
-          - AggPanPairDay.Appd_Pos_Contri - Appd_Neg_Contri -> Net LTP Contribution
-          - BuyValue, SellValue -> Mark-to-Market PnL accounting
-        """
+        """Loads participant and counterparty trades from clean relational tables."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import AggPanPairDay, DimExchClntDtls, AggSecDay, AggClntSecDay
-            from sqlalchemy.orm import aliased
+            from backend.db.models import CounterpartyTradePair, ParticipantDailyTrade
 
             db = SessionLocal()
             
-            # Primary: Load exact bilateral paired trades from AGG_PAN_PAIR_DAY
-            BuyerDecl = aliased(DimExchClntDtls)
-            SellerDecl = aliased(DimExchClntDtls)
-
+            # Primary: Load exact bilateral paired trades from counterparty_trade_pairs
             q_pair = db.query(
-                AggSecDay.Asd_Symbol.label("Ticker"),
-                AggPanPairDay.Appd_Date.label("Date"),
-                BuyerDecl.Decl_Clnt_Pan.label("BuyerPAN"),
-                SellerDecl.Decl_Clnt_Pan.label("SellerPAN"),
-                AggPanPairDay.Appd_Buy_Tot_Qty.label("TrdQty"),
-                AggPanPairDay.Appd_Buy_Tot_Val.label("TrdVal"),
-                AggPanPairDay.Appd_Pos_Contri.label("PosContVal"),
-                AggPanPairDay.Appd_Neg_Contri.label("NegContVal"),
-            ).join(BuyerDecl, AggPanPairDay.Appd_Exch_Clnt_Token == BuyerDecl.Decl_Exch_Clnt_Token)\
-             .join(SellerDecl, AggPanPairDay.Appd_Cpty_Exch_Clnt_Token == SellerDecl.Decl_Exch_Clnt_Token)\
-             .join(AggSecDay, (AggPanPairDay.Appd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggPanPairDay.Appd_Date == AggSecDay.Asd_Date))
+                CounterpartyTradePair.symbol.label("Ticker"),
+                CounterpartyTradePair.trade_date.label("Date"),
+                CounterpartyTradePair.buyer_pan.label("BuyerPAN"),
+                CounterpartyTradePair.seller_pan.label("SellerPAN"),
+                CounterpartyTradePair.matched_quantity.label("TrdQty"),
+                CounterpartyTradePair.matched_turnover_value.label("TrdVal"),
+                CounterpartyTradePair.pairwise_ltp_push_value.label("PosContVal"),
+            )
 
             raw_df = pd.read_sql(q_pair.statement, db.bind)
             if not raw_df.empty:
                 pos_vals = raw_df["PosContVal"].astype(float).fillna(0.0)
-                neg_vals = raw_df["NegContVal"].astype(float).fillna(0.0)
                 # Construct matched buyer rows
                 b_df = pd.DataFrame({
                     "Ticker": raw_df["Ticker"],
@@ -186,27 +159,25 @@ class EODSurveillanceService:
                     "SellVolume": raw_df["TrdQty"].astype(float),
                     "BuyValue": 0.0,
                     "SellValue": raw_df["TrdVal"].astype(float),
-                    "LTPContribution": -neg_vals,
+                    "LTPContribution": 0.0,
                     "PosContVal": 0.0,
-                    "NegContVal": neg_vals,
+                    "NegContVal": 0.0,
                 })
                 full_df = pd.concat([b_df, s_df], ignore_index=True)
                 return full_df
 
-            # Fallback: Load client aggregates from AGG_CLNT_SEC_DAY if AGG_PAN_PAIR_DAY is unpopulated
+            # Fallback: Load participant daily trade aggregates
             q_clnt = db.query(
-                AggSecDay.Asd_Symbol.label("Ticker"),
-                AggClntSecDay.Acsd_Date.label("Date"),
-                DimExchClntDtls.Decl_Clnt_Pan.label("PAN"),
-                AggClntSecDay.Acsd_Buy_Tot_Qty.label("BuyVolume"),
-                AggClntSecDay.Acsd_Sell_Tot_Qty.label("SellVolume"),
-                AggClntSecDay.Acsd_Buy_Tot_Val.label("BuyValue"),
-                AggClntSecDay.Acsd_Sell_Tot_Val.label("SellValue"),
-                AggClntSecDay.Acsd_Pos_Cont_Val.label("PosContVal"),
-                AggClntSecDay.Acsd_Neg_Cont_Val.label("NegContVal"),
-                (AggClntSecDay.Acsd_Buy_Wash_Qty + AggClntSecDay.Acsd_Sell_Wash_Qty).label("WashVolume")
-            ).join(DimExchClntDtls, AggClntSecDay.Acsd_Clnt_Token == DimExchClntDtls.Decl_Exch_Clnt_Token)\
-             .join(AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date))
+                ParticipantDailyTrade.symbol.label("Ticker"),
+                ParticipantDailyTrade.trade_date.label("Date"),
+                ParticipantDailyTrade.client_pan.label("PAN"),
+                ParticipantDailyTrade.buy_quantity.label("BuyVolume"),
+                ParticipantDailyTrade.sell_quantity.label("SellVolume"),
+                ParticipantDailyTrade.buy_turnover_value.label("BuyValue"),
+                ParticipantDailyTrade.sell_turnover_value.label("SellValue"),
+                ParticipantDailyTrade.gross_positive_ltp_value.label("PosContVal"),
+                ParticipantDailyTrade.gross_negative_ltp_value.label("NegContVal"),
+            )
 
             df = pd.read_sql(q_clnt.statement, db.bind)
             if not df.empty:
@@ -224,8 +195,8 @@ class EODSurveillanceService:
                 db.close()
         return None
 
-    def _generate_sample_teradata_eod(self, days: int = 260) -> pd.DataFrame:
-        """Generates sample structured Teradata EOD price-volume extract for standard scrips."""
+    def _generate_sample_eod(self, days: int = 260) -> pd.DataFrame:
+        """Generates fallback sample EOD price-volume extract for standard scrips."""
         end_date = datetime.now()
         dates = [end_date - timedelta(days=days - i) for i in range(days)]
         
@@ -722,86 +693,36 @@ class EODSurveillanceService:
         top_1pct_concentration = 0.0
         promoter_pct = 52.4
         public_pct = 47.6
+        unique_pans_holding_t = 0
+        unique_pans_holding_180 = 0
+        avg_trading_pans_15d = 0
+        avg_trading_pans_180d = 0
 
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import AggClntSecDay, AggSecDay, FactMainShldng
+            from backend.db.models import ShareholdingSummary
             db = SessionLocal()
 
-            # Query real trade aggregate database AGG_CLNT_SEC_DAY
-            clnt_records = db.query(AggClntSecDay, AggSecDay.Asd_Date).join(
-                AggSecDay, (AggClntSecDay.Acsd_Cmp_Token == AggSecDay.Asd_Cmp_Token) & (AggClntSecDay.Acsd_Date == AggSecDay.Asd_Date)
-            ).filter(AggSecDay.Asd_Symbol == ticker).all()
+            sh_records = db.query(ShareholdingSummary).filter(ShareholdingSummary.symbol == ticker).all()
+            for sh in sh_records:
+                if sh.category_type == "PROMOTER_GROUP":
+                    promoter_pct = float(sh.holding_percentage or 50.0)
+                    if sh.unique_holding_pans:
+                        unique_pans_180d = sh.unique_holding_pans
+                    if sh.avg_daily_trading_pans:
+                        avg_trading_pans_180d = sh.avg_daily_trading_pans
+                elif sh.category_type == "TOP_1_PCT_PUBLIC":
+                    top_1pct_concentration = float(sh.holding_percentage or 20.0)
+                elif sh.category_type == "GENERAL_PUBLIC_FLOAT":
+                    public_pct = float(sh.holding_percentage or 30.0)
+                    if sh.unique_holding_pans:
+                        unique_pans_15d = sh.unique_holding_pans
+                    if sh.avg_daily_trading_pans:
+                        avg_trading_pans_15d = sh.avg_daily_trading_pans
 
-            unique_pans_holding_t = 0
-            unique_pans_holding_180 = 0
-            avg_trading_pans_15d = 0
-            avg_trading_pans_180d = 0
-
-            if clnt_records:
-                dates = [r[1] for r in clnt_records if r[1] is not None]
-                distinct_dates = sorted(list(set(dates)))
-                last_15_trading_dates = set(distinct_dates[-15:]) if len(distinct_dates) >= 15 else set(distinct_dates)
-
-                pans_180d = set(r[0].Acsd_Clnt_Token for r in clnt_records if r[0].Acsd_Clnt_Token)
-                pans_15d = set(r[0].Acsd_Clnt_Token for r in clnt_records if r[0].Acsd_Clnt_Token and r[1] in last_15_trading_dates)
-
-                unique_pans_15d = len(pans_15d) if pans_15d else len(pans_180d)
-                unique_pans_180d = len(pans_180d)
-
-                # Daily trading PAN counts for average calculation (PVASF 5.3.2)
-                daily_15d: Dict[Any, Set[int]] = {}
-                daily_180d: Dict[Any, Set[int]] = {}
-                for r in clnt_records:
-                    rec = r[0]
-                    dt = r[1]
-                    if rec.Acsd_Clnt_Token and dt:
-                        daily_180d.setdefault(dt, set()).add(rec.Acsd_Clnt_Token)
-                        if dt in last_15_trading_dates:
-                            daily_15d.setdefault(dt, set()).add(rec.Acsd_Clnt_Token)
-
-                counts_15 = [len(s) for s in daily_15d.values()]
-                counts_180 = [len(s) for s in daily_180d.values()]
-                avg_trading_pans_15d = int(round(np.mean(counts_15))) if counts_15 else max(1, int(unique_pans_15d * 0.45))
-                avg_trading_pans_180d = int(round(np.mean(counts_180))) if counts_180 else max(1, int(unique_pans_180d * 0.35))
-
-                unique_pans_holding_t = unique_pans_15d
-                unique_pans_holding_180 = unique_pans_180d
-
-                # Concentration
-                buy_vols: Dict[int, float] = {}
-                for r in clnt_records:
-                    rec = r[0]
-                    if rec.Acsd_Clnt_Token:
-                        buy_vols[rec.Acsd_Clnt_Token] = buy_vols.get(rec.Acsd_Clnt_Token, 0.0) + float(rec.Acsd_Buy_Tot_Qty or 0.0)
-                tot_v = sum(buy_vols.values())
-                if tot_v > 0 and len(buy_vols) > 0:
-                    sorted_vols = sorted(buy_vols.values(), reverse=True)
-                    top_n = max(1, int(np.ceil(len(sorted_vols) * 0.01)))
-                    top_1pct_concentration = round(float((sum(sorted_vols[:top_n]) / tot_v) * 100), 2)
-
-            # Fallback if DB records are missing or sparse: calculate scrip-specific dynamic PAN counts
-            if unique_pans_15d == 0 or unique_pans_180d == 0:
-                ticker_seed = sum(ord(c) for c in ticker)
-                avg_vol = float(df_t["Volume"].tail(15).mean()) if "Volume" in df_t.columns and not df_t.empty else 100000.0
-                base_pans = int(max(35, (ticker_seed % 150) + int(avg_vol ** 0.35)))
-                unique_pans_15d = base_pans
-                unique_pans_180d = int(base_pans * (1.8 + (ticker_seed % 7) * 0.3))
-                unique_pans_holding_t = unique_pans_15d
-                unique_pans_holding_180 = unique_pans_180d
-                avg_trading_pans_15d = max(12, int(unique_pans_15d * 0.42))
-                avg_trading_pans_180d = max(18, int(unique_pans_180d * 0.30))
-                if top_1pct_concentration == 0.0:
-                    top_1pct_concentration = round(22.5 + (ticker_seed % 35), 2)
-
-            # Query real shareholding database FactMainShldng
-            sh_prom = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker, FactMainShldng.Fshg_Shldng_Catg_Type == 1).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).first()
-            sh_pub = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker, FactMainShldng.Fshg_Shldng_Catg_Type == 2).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).first()
-            if sh_prom:
-                promoter_pct = round(float(sh_prom.Fshg_Tot_Shares_Pct or 0.0), 2)
-            if sh_pub:
-                public_pct = round(float(sh_pub.Fshg_Tot_Shares_Pct or 0.0), 2)
+            unique_pans_holding_t = unique_pans_15d
+            unique_pans_holding_180 = unique_pans_180d
         except Exception as e:
             print(f"[surveillance_service] Shareholding DB lookup error: {e}")
             ticker_seed = sum(ord(c) for c in ticker)
@@ -833,19 +754,19 @@ class EODSurveillanceService:
         """Retrieves official corporate announcements from Database for the given ticker."""
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactCorpActions
+            from backend.db.models import CorporateEventsFeed
             db = SessionLocal()
-            ann_list = db.query(FactCorpActions)\
-                         .filter(FactCorpActions.Fcac_Symbol == ticker)\
-                         .order_by(FactCorpActions.Fcac_Rec_Date.desc())\
+            ann_list = db.query(CorporateEventsFeed)\
+                         .filter(CorporateEventsFeed.symbol == ticker)\
+                         .order_by(CorporateEventsFeed.announcement_date.desc())\
                          .all()
             db.close()
             if ann_list:
                 return [
                     {
-                        "date": a.Fcac_Rec_Date.strftime("%Y-%m-%d") if hasattr(a.Fcac_Rec_Date, "strftime") else str(a.Fcac_Rec_Date),
-                        "category": a.Fcac_Corp_Action_Catg or "General",
-                        "title": a.Fcac_Divnd_Prpse or f"Corporate Action — {a.Fcac_Corp_Action_Catg}",
+                        "date": a.announcement_date.strftime("%Y-%m-%d") if hasattr(a.announcement_date, "strftime") else str(a.announcement_date),
+                        "category": a.action_category or "General",
+                        "title": a.announcement_purpose or f"Corporate Action — {a.action_category}",
                         "status": "Verified"
                     }
                     for a in ann_list
@@ -894,11 +815,11 @@ class EODSurveillanceService:
             tot_neg_ltp = scrip_15d_price_change
         tot_neg_ltp = max(tot_neg_ltp, 1e-4)
 
-        # Resolve legal entity / individual names from DimExchClntDtls
+        # Resolve legal entity / individual names from ClientIdentityMaster
         pan_names: Dict[str, str] = {}
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import DimExchClntDtls
+            from backend.db.models import ClientIdentityMaster
             db = SessionLocal()
             
             cp_pans = []
@@ -919,8 +840,8 @@ class EODSurveillanceService:
                 cp_pans
             )
             if pans_to_lookup:
-                matches = db.query(DimExchClntDtls.Decl_Clnt_Pan, DimExchClntDtls.Decl_Clnt_Name).filter(
-                    DimExchClntDtls.Decl_Clnt_Pan.in_(pans_to_lookup)
+                matches = db.query(ClientIdentityMaster.client_pan, ClientIdentityMaster.client_legal_name).filter(
+                    ClientIdentityMaster.client_pan.in_(pans_to_lookup)
                 ).all()
                 for pan_code, full_name in matches:
                     if pan_code and full_name:
@@ -1026,7 +947,7 @@ class EODSurveillanceService:
         }
 
     def load_eod_csv(self, file_contents: bytes, filename: str) -> Dict[str, Any]:
-        """Ingests structured EOD CSV file (e.g. Teradata export) into the surveillance engine."""
+        """Ingests structured EOD CSV or Excel file into the surveillance engine."""
         try:
             if filename.endswith(".csv"):
                 df = pd.read_csv(pd.io.common.BytesIO(file_contents))
@@ -1050,64 +971,72 @@ class EODSurveillanceService:
             return {"error": f"Failed to ingest EOD file: {str(e)}"}
 
     def get_scrip_shareholding_breakdown(self, ticker: str) -> Dict[str, Any]:
-        """Queries full quarter-by-quarter Enterprise Data Warehouse shareholding tables (FMSH, FSHG, FPRH, FPUH)."""
+        """Queries quarter-by-quarter shareholding summaries and large shareholder registries."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactMainShldng, FactPromShldrDtls, FactPubShldrDtls
+            from backend.db.models import ShareholdingSummary, LargeShareholdersRegistry
             db = SessionLocal()
             
-            main_records = db.query(FactMainShldng).filter(FactMainShldng.Fshg_Symbol == ticker).order_by(FactMainShldng.Fshg_Shldng_Date.desc()).all()
-            prom_records = db.query(FactPromShldrDtls).filter(FactPromShldrDtls.Fprh_Symbol == ticker).all()
-            pub_records = db.query(FactPubShldrDtls).filter(FactPubShldrDtls.Fpuh_Symbol == ticker).all()
+            main_records = (
+                db.query(ShareholdingSummary)
+                .filter(ShareholdingSummary.symbol == ticker)
+                .order_by(ShareholdingSummary.filing_date.desc())
+                .all()
+            )
+            prom_records = (
+                db.query(LargeShareholdersRegistry)
+                .filter(LargeShareholdersRegistry.symbol == ticker)
+                .all()
+            )
 
             quarters = {}
             for r in main_records:
-                q = r.Fshg_Qrtr_Num
+                q = r.quarter_code
                 if q not in quarters:
-                    quarters[q] = {"quarter": q, "date": str(r.Fshg_Shldng_Date), "promoter_pct": 0.0, "public_pct": 0.0, "pledged_pct": 0.0}
-                if r.Fshg_Shldng_Catg_Type == 1:
-                    quarters[q]["promoter_pct"] = float(r.Fshg_Tot_Shares_Pct or 0.0)
-                    quarters[q]["pledged_pct"] = float(r.Fshg_Plge_Tot_Shares_Pct or 0.0)
-                elif r.Fshg_Shldng_Catg_Type == 2:
-                    quarters[q]["public_pct"] = float(r.Fshg_Tot_Shares_Pct or 0.0)
+                    quarters[q] = {
+                        "quarter": q,
+                        "date": str(r.filing_date),
+                        "promoter_pct": 0.0,
+                        "public_pct": 0.0,
+                        "pledged_pct": 0.0
+                    }
+                cat = (r.category_type or "").upper()
+                if "PROMOTER" in cat:
+                    quarters[q]["promoter_pct"] = float(r.holding_percentage or 0.0)
+                    quarters[q]["pledged_pct"] = float(r.pledged_shares_percentage or 0.0)
+                elif "PUBLIC" in cat or "FLOAT" in cat:
+                    quarters[q]["public_pct"] = float(r.holding_percentage or 0.0)
 
             promoters = [
                 {
-                    "name": p.Fprh_Shldr_Name,
-                    "quarter": p.Fprh_Qrtr_Num,
-                    "shares": p.Fprh_Tot_Shares,
-                    "share_pct": float(p.Fprh_Tot_Shares_Pct or 0.0),
-                    "pledged_pct": float(p.Fprh_Plge_Shares_Pct or 0.0)
+                    "name": p.holder_legal_name,
+                    "quarter": p.quarter_code,
+                    "shares": p.shares_held,
+                    "share_pct": float(p.holding_percentage or 0.0),
+                    "pledged_pct": round(float(p.pledged_shares_count or 0) / max(1, p.shares_held) * 100.0, 2)
                 }
                 for p in prom_records
+                if "PROMOTER" in (p.holder_category or "").upper()
             ]
 
-            # Calculate Day t vs Day T-180 aggregated metrics directly from DB records
             quarter_keys = sorted(quarters.keys(), reverse=True)
-            latest_q = quarter_keys[0] if quarter_keys else "Q4"
+            latest_q = quarter_keys[0] if quarter_keys else "Q127"
             prior_q = quarter_keys[-1] if len(quarter_keys) > 1 else latest_q
 
-            # Promoter shares on Day t vs Day T-180
-            prom_latest = [p for p in prom_records if p.Fprh_Qrtr_Num == latest_q]
-            prom_prior = [p for p in prom_records if p.Fprh_Qrtr_Num == prior_q]
-            promoter_shares_t = sum(p.Fprh_Tot_Shares or 0 for p in prom_latest) if prom_latest else 5420000
-            promoter_pct_t = round(sum(float(p.Fprh_Tot_Shares_Pct or 0.0) for p in prom_latest), 2) if prom_latest else quarters.get(latest_q, {}).get("promoter_pct", 54.2)
-            promoter_shares_180 = sum(p.Fprh_Tot_Shares or 0 for p in prom_prior) if prom_prior else int(promoter_shares_t * 1.015)
-            promoter_pct_180 = round(sum(float(p.Fprh_Tot_Shares_Pct or 0.0) for p in prom_prior), 2) if prom_prior else quarters.get(prior_q, {}).get("promoter_pct", 55.0)
+            prom_latest = [r for r in main_records if r.quarter_code == latest_q and "PROMOTER" in (r.category_type or "").upper()]
+            prom_prior = [r for r in main_records if r.quarter_code == prior_q and "PROMOTER" in (r.category_type or "").upper()]
+            promoter_shares_t = sum(p.total_shares_count or 0 for p in prom_latest) if prom_latest else 58450000
+            promoter_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in prom_latest), 2) if prom_latest else 58.45
+            promoter_shares_180 = sum(p.total_shares_count or 0 for p in prom_prior) if prom_prior else int(promoter_shares_t * 1.015)
+            promoter_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in prom_prior), 2) if prom_prior else 58.45
 
-            # Top 1% public shareholders on Day t vs Day T-180
-            pub_latest = [p for p in pub_records if p.Fpuh_Qrtr_Num == latest_q]
-            pub_prior = [p for p in pub_records if p.Fpuh_Qrtr_Num == prior_q]
-            sorted_pub_t = sorted(pub_latest, key=lambda x: x.Fpuh_Tot_Shares or 0, reverse=True)
-            sorted_pub_180 = sorted(pub_prior, key=lambda x: x.Fpuh_Tot_Shares or 0, reverse=True)
-            top_n_t = max(1, int(np.ceil(len(sorted_pub_t) * 0.05))) if sorted_pub_t else 1
-            top_n_180 = max(1, int(np.ceil(len(sorted_pub_180) * 0.05))) if sorted_pub_180 else 1
-
-            top1_shares_t = sum(p.Fpuh_Tot_Shares or 0 for p in sorted_pub_t[:top_n_t]) if sorted_pub_t else int(promoter_shares_t * 0.6)
-            top1_pct_t = round(sum(float(p.Fpuh_Tot_Shares_Pct or 0.0) for p in sorted_pub_t[:top_n_t]), 2) if sorted_pub_t else 32.5
-            top1_shares_180 = sum(p.Fpuh_Tot_Shares or 0 for p in sorted_pub_180[:top_n_180]) if sorted_pub_180 else int(top1_shares_t * 0.8)
-            top1_pct_180 = round(sum(float(p.Fpuh_Tot_Shares_Pct or 0.0) for p in sorted_pub_180[:top_n_180]), 2) if sorted_pub_180 else 26.0
+            top1_latest = [r for r in main_records if r.quarter_code == latest_q and "TOP_1_PCT" in (r.category_type or "").upper()]
+            top1_prior = [r for r in main_records if r.quarter_code == prior_q and "TOP_1_PCT" in (r.category_type or "").upper()]
+            top1_shares_t = sum(p.total_shares_count or 0 for p in top1_latest) if top1_latest else 18200000
+            top1_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in top1_latest), 2) if top1_latest else 18.20
+            top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else int(top1_shares_t * 0.9)
+            top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else 17.50
 
             return {
                 "symbol": ticker,
@@ -1128,83 +1057,57 @@ class EODSurveillanceService:
                 "symbol": ticker,
                 "quarterly_history": [],
                 "promoter_group": [],
-                "promoter_shares_t": 5420000,
-                "promoter_pct_t": 54.2,
-                "promoter_shares_180": 5500000,
-                "promoter_pct_180": 55.0,
-                "top1_shares_t": 3250000,
-                "top1_pct_t": 32.5,
-                "top1_shares_180": 2600000,
-                "top1_pct_180": 26.0,
+                "promoter_shares_t": 58450000,
+                "promoter_pct_t": 58.45,
+                "promoter_shares_180": 58450000,
+                "promoter_pct_180": 58.45,
+                "top1_shares_t": 18200000,
+                "top1_pct_t": 18.20,
+                "top1_shares_180": 17500000,
+                "top1_pct_180": 17.50,
             }
         finally:
             if db:
                 db.close()
 
     def get_scrip_corporate_actions(self, ticker: str) -> List[Dict[str, Any]]:
-        """Queries official Enterprise Data Warehouse corporate actions & dilution factors (FCAC, FCDF)."""
+        """Queries corporate actions & dilution factors from corporate_events_feed and price_dilution_factors."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import FactCorpActions, FactCaDilFctr
+            from backend.db.models import CorporateEventsFeed, PriceDilutionFactor
             db = SessionLocal()
             
-            actions = db.query(FactCorpActions).filter(FactCorpActions.Fcac_Symbol == ticker).order_by(FactCorpActions.Fcac_Rec_Date.desc()).all()
-            dilutions = {d.Fcdf_Corp_Action_Catg: float(d.Fcdf_Price_Adj_Factor or 1.0) for d in db.query(FactCaDilFctr).filter(FactCaDilFctr.Fcdf_Symbol == ticker).all()}
+            actions = (
+                db.query(CorporateEventsFeed)
+                .filter(CorporateEventsFeed.symbol == ticker)
+                .order_by(CorporateEventsFeed.announcement_date.desc())
+                .all()
+            )
+            dilutions = {
+                d.symbol: float(d.split_multiplier or 1.0)
+                for d in db.query(PriceDilutionFactor).filter(PriceDilutionFactor.symbol == ticker).all()
+            }
 
             res = []
             for a in actions:
-                catg = a.Fcac_Corp_Action_Catg or "General"
-                
-                # Determine detailed purpose across all schema purpose columns
-                purpose = (
-                    a.Fcac_Divnd_Prpse or
-                    a.Fcac_Bonus_Prpse or
-                    a.Fcac_Split_Prpse or
-                    a.Fcac_Rights_Prpse or
-                    a.Fcac_Agm_Prpse or
-                    a.Fcac_Egm_Prpse or
-                    a.Fcac_Other_Prpse or
-                    f"Corporate Action — {catg}"
-                )
-                
-                # Determine Ex-Date
-                ex_date = (
-                    str(a.Fcac_Ex_Divnd_Date) if a.Fcac_Ex_Divnd_Date else
-                    str(a.Fcac_Ex_Bonus_Date) if a.Fcac_Ex_Bonus_Date else
-                    str(a.Fcac_Ex_Split_Date) if a.Fcac_Ex_Split_Date else
-                    str(a.Fcac_Ex_Rights_Date) if a.Fcac_Ex_Rights_Date else
-                    str(a.Fcac_Ex_Arngmt_Schema_Date) if a.Fcac_Ex_Arngmt_Schema_Date else
-                    "—"
-                )
-
-                # Determine Ratio or Value representation
-                ratio_val = "—"
-                if a.Fcac_Divnd_Val:
-                    pct_str = f" ({float(a.Fcac_Divnd_Pct)}%)" if a.Fcac_Divnd_Pct else ""
-                    ratio_val = f"₹{float(a.Fcac_Divnd_Val):.2f}/sh{pct_str}"
-                elif a.Fcac_Bonus_Ratio:
-                    ratio_val = f"{a.Fcac_Bonus_Ratio} Bonus"
-                elif a.Fcac_Split_Ratio:
-                    ratio_val = f"{float(a.Fcac_Split_Ratio):.0f}:1 Split"
-                elif a.Fcac_Rights_Ratio:
-                    ratio_val = f"{a.Fcac_Rights_Ratio} Rights"
-
-                # Book Closure Window
-                bc_window = None
-                if a.Fcac_BC_Start_Date and a.Fcac_BC_End_Date:
-                    bc_window = f"{a.Fcac_BC_Start_Date} → {a.Fcac_BC_End_Date}"
+                catg = a.action_category or "GENERAL"
+                purpose = a.announcement_purpose or f"Corporate Action — {catg}"
+                ex_date = str(a.ex_date) if a.ex_date else "—"
+                rec_date = str(a.record_date) if a.record_date else str(a.announcement_date)
+                ratio_val = a.ratio_or_value or "—"
+                dil_factor = float(a.dilution_factor or dilutions.get(a.symbol, 1.0))
 
                 res.append({
-                    "id": a.id,
+                    "id": a.event_id,
                     "symbol": ticker,
                     "category": catg,
                     "purpose": purpose,
-                    "record_date": str(a.Fcac_Rec_Date),
+                    "record_date": rec_date,
                     "ex_date": ex_date,
                     "ratio_value": ratio_val,
-                    "book_closure": bc_window,
-                    "dilution_factor": dilutions.get(catg, 1.0)
+                    "book_closure": None,
+                    "dilution_factor": dil_factor
                 })
             return res
         except Exception as e:
@@ -1213,3 +1116,4 @@ class EODSurveillanceService:
         finally:
             if db:
                 db.close()
+

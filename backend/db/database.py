@@ -3,13 +3,9 @@ backend/db/database.py
 ────────────────────────────────────────────────────────────────────────────
 Database engine and session factory.
 
-The DATABASE_URL environment variable controls the backend:
-  - Not set  → defaults to SQLite (surveillance.db) — used during development
-  - Set to a Teradata JDBC/ODBC URL → production Teradata environment
-
-Teradata migration path (future):
-  export DATABASE_URL="teradatasql://user:pass@host/mydb"
-  Replace get_engine() with teradatasql dialect and nothing else changes.
+The DATABASE_URL environment variable controls the backend connection:
+  - Defaults to local SQLite (surveillance.db)
+  - Can be overridden via DATABASE_URL to point to PostgreSQL or external RDBMS
 """
 
 import os
@@ -34,9 +30,8 @@ if DATABASE_URL.startswith("sqlite"):
 engine = create_engine(
     DATABASE_URL,
     connect_args=connect_args,
-    # Pool settings suitable for both SQLite and Teradata
     pool_pre_ping=True,
-    echo=False,          # Set to True for SQL debugging
+    echo=False,
 )
 
 # Enable FK enforcement for SQLite

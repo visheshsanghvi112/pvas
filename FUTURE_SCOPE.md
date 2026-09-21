@@ -20,15 +20,15 @@ While the current framework uses standard Gaussian Z-Scores ($Z = \frac{X - \mu}
 
 ---
 
-## 2. Corporate Action Adjustment Factor Integration (`FACT_CA_DIL_FCTR`)
+## 2. Corporate Action Adjustment Factor Integration (`price_dilution_factors`)
 
 ### Overview
-Currently, 180-day baseline price calculations utilize historical close prices (`Asd_Close_Price`). Corporate actions such as 1:1 Bonus Issues, 2:1 Stock Splits, or Rights Offerings artificially drop historical close prices without reflecting real market capital loss.
+Currently, 180-day baseline price calculations utilize historical close prices (`close_price`). Corporate actions such as 1:1 Bonus Issues, 2:1 Stock Splits, or Rights Offerings artificially drop historical close prices without reflecting real market capital loss.
 
 ### Future Scope Specification
-- Integrate `FACT_CA_DIL_FCTR.Fcdf_Price_Adj_Factor` into the $T-180$ base price lookup:
-  $$\text{Adjusted Price}_{T-180} = \text{Closing Price}_{T-180} \times \text{Fcdf\_Price\_Adj\_Factor}$$
-- Ensures Price Rise % ($\frac{\text{High}_{15D} - \text{Price}_{T-180}}{\text{Price}_{T-180}}$) accurately accounts for corporate action dilution.
+- Integrate `price_dilution_factors.split_multiplier` into the $T-180$ base price lookup:
+  $$\text{Adjusted Price}_{T-180} = \text{Closing Price}_{T-180} \times \text{split\_multiplier}$$
+- Ensures Price Rise % accurately accounts for corporate action dilution.
 
 ---
 
@@ -42,12 +42,13 @@ The current framework operates on EOD (End-Of-Day) market feeds.
 
 ---
 
-## 4. Automated Same-Broker Wash Trade Risk Badging (`Acsd_Wash_Trd_Qty`)
+## 4. Automated Same-Broker Wash Trade Risk Badging (`same_broker_wash_quantity`)
 
 ### Overview
-`AGG_CLNT_SEC_DAY` (`ACSD`) contains pre-calculated daily same-broker wash trade quantities (`Acsd_Wash_Trd_Qty`).
+`participant_daily_trades` contains pre-calculated daily same-broker wash trade quantities (`same_broker_wash_quantity`).
 
 ### Future Scope Specification
 - Automatically calculate Wash Trade Ratio per client:
-  $$\text{Wash Trade Ratio \%} = \frac{\text{Acsd\_Wash\_Trd\_Qty}}{\text{Acsd\_Buy\_Tot\_Qty} + \text{Acsd\_Sell\_Tot\_Qty}} \times 100$$
+  $$\text{Wash Trade Ratio \%} = \frac{\text{same\_broker\_wash\_quantity}}{\text{buy\_quantity} + \text{sell\_quantity}} \times 100$$
 - Attach an automated **"High Wash Trade Risk"** alert badge to the Participant Audit view when the ratio exceeds 10%.
+

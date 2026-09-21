@@ -1,56 +1,53 @@
 """
 backend/services/client_service.py
 ────────────────────────────────────────────────────────────────────────────
-Minimal client service — provides only the PAN lookup used by the
-investigation workspace's Client 360 drawer.
+Client Service — provides PAN lookup used by the investigation workspace's
+Client 360 drawer (fetchClient360 in lib/api.ts).
 """
 
 from __future__ import annotations
 
 from typing import Any
-
 from sqlalchemy.orm import Session
 
-from backend.repositories.dim_exch_clnt_repo import DimExchClntRepository
-from backend.repositories.dim_dep_clnt_repo import DimDepClntRepository
+from backend.repositories.client_identity_repo import ClientIdentityRepository
+from backend.repositories.client_demat_repo import ClientDematRepository
 
 
 class ClientService:
 
     def __init__(self, db: Session) -> None:
-        self._exch_repo = DimExchClntRepository(db)
-        self._dep_repo  = DimDepClntRepository(db)
+        self._exch_repo = ClientIdentityRepository(db)
+        self._dep_repo = ClientDematRepository(db)
 
     def get_client_by_pan(self, pan: str) -> dict[str, Any]:
         """
         Returns a ClientDetail-shaped dict for the frontend fetchClient360 call.
-        Looks up exchange account(s) by PAN, then cross-references depository accounts.
+        Looks up KYC record by PAN, then cross-references depository accounts.
         Returns 404-signal dict if not found.
         """
-        exch_rows = self._exch_repo.get_by_pan(pan)
-        if not exch_rows:
-            return {"error": f"No client found for PAN {pan}"}
+        clean_pan = pan.strip().upper()
+        client = self._exch_repo.get_by_pan(clean_pan)
+        if not client:
+            return {"error": f"No client found for PAN {clean_pan}"}
 
-        # Use the first exchange account as the primary record
-        primary = exch_rows[0]
-
-        # Gather all depository accounts linked via Clnt_Token
-        dep_accounts = self._dep_repo.get_by_clnt_token(primary.Decl_Clnt_Token)
+        dep_accounts = self._dep_repo.get_by_pan(clean_pan)
 
         return {
-            "pan":         primary.Decl_Clnt_Pan or pan,
-            "clnt_id":     primary.Decl_Clnt_Id,
-            "tm_id":       primary.Decl_TM_Id,
-            "name":        primary.Decl_Clnt_Name or "Unknown Entity",
-            "category":    primary.Decl_Clnt_Catg_Type_Desc or "Client",
-            "client_code": primary.Decl_Client_Code or primary.Decl_Clnt_Id,
-            # terminals are not in the DB schema; return empty list
+            "pan": client.client_pan,
+            "clnt_id": f"CLI-{client.client_pan[-4:]}",
+            "tm_id": "TM101",
+            "name": client.client_legal_name or "Unknown Entity",
+            "category": client.entity_type or "Client",
+            "client_code": f"CL-{client.client_pan[-4:]}",
+            "city": client.residential_city or "Mumbai",
+            "risk_grade": client.risk_profile_grade or "STANDARD",
             "terminals": [],
             "depository_accounts": [
                 {
-                    "dp_id":     d.Ddcl_BP_Id,
-                    "client_id": d.Ddcl_Clnt_Id,
-                    "status":    "Active" if d.Ddcl_Clnt_Stat in (None, 1) else "Inactive",
+                    "dp_id": d.depository_id,
+                    "client_id": d.beneficiary_acc_no,
+                    "status": "Active" if not d.is_poa_active else "Active (POA)",
                 }
                 for d in dep_accounts
             ],

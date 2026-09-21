@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 T = TypeVar("T")
 
 
-# ── Enumerations mirroring Teradata domain codes ──────────────────────────────
+# ── Enumerations for market session and participant domain codes ──────────────
 
 class SessionType(IntEnum):
     PRE_OPEN    = 1

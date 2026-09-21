@@ -20,7 +20,7 @@ def health_check():
     return {
         "status": "ONLINE",
         "system": "Price-Volume (PV) Alert Surveillance Framework",
-        "spec": "PVASF_CORE_SPEC.md (5 Core Statistical Metrics & Teradata Integration)"
+        "spec": "PVASF_CORE_SPEC.md (5 Core Statistical Metrics & Surveillance Engine)"
     }
 
 

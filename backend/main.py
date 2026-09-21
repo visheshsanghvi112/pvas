@@ -43,7 +43,7 @@ app = FastAPI(
     title="Institutional Market Surveillance API",
     description=(
         "Price-Volume Alert Surveillance Framework (PVASF) API. "
-        "Backed by Regulatory DWBIS Teradata schema (SQLite dev mode). "
+        "Backed by Institutional Relational Surveillance Database. "
         "Endpoints: /api/v1/surveillance/* | /api/v1/trades/* | /api/v1/clients/pan/*"
     ),
     version="2.5.0",

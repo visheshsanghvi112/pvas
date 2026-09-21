@@ -12,7 +12,7 @@
 ## Table of Contents
 1. [Executive Summary & Regulatory Scope](#1-executive-summary--regulatory-scope)
 2. [Top-Level Architecture & Layered Boundary Pattern](#2-top-level-architecture--layered-boundary-pattern)
-   - 2.1 [Source-Aligned Physical Data Model (SDM) & Teradata Ingestion Strategy](#21-source-aligned-physical-data-model-sdm--teradata-ingestion-strategy)
+   - 2.1 [Standardized Relational Data Model (RDM) & Surveillance Ingestion Strategy](#21-standardized-relational-data-model-rdm--surveillance-ingestion-strategy)
    - 2.2 [Market Calendar Service & Authoritative Trading Session Decoupling](#22-market-calendar-service--authoritative-trading-session-decoupling)
    - 2.3 [Authoritative Pre-Consolidated Market Pricing & Feed Architecture](#23-authoritative-pre-consolidated-market-pricing--feed-architecture)
 3. [Exhaustive File-by-File Code & Module Directory](#3-exhaustive-file-by-file-code--module-directory)
@@ -50,7 +50,7 @@ The platform evaluates right-tail statistical metrics:
 
 ## 2. Top-Level Architecture & Layered Boundary Pattern
 
-The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas, raw warehouse surrogate keys, and ORM models are isolated behind repository interfaces. Domain services operate exclusively on typed domain entities, ensuring seamless migration between local development (SQLite) and enterprise data warehouses (Teradata/PostgreSQL) with zero code refactoring across APIs or frontend components.
+The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas, raw warehouse surrogate keys, and ORM models are isolated behind repository interfaces. Domain services operate exclusively on typed domain entities, ensuring seamless migration between local development (SQLite) and enterprise data warehouses (Relational Warehouse/PostgreSQL) with zero code refactoring across APIs or frontend components.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────────────┐
@@ -86,23 +86,23 @@ The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas,
 ┌─────────────────────────────────────────────▼────────────────────────────────────────────┐
 │                           5-LAYER REGULATORY DATA WAREHOUSE                              │
 │   [ Layer 1: Market EOD | Layer 2: KYC Dims | Layer 3: Holdings | Layer 4: Corp Actions ]│
-│   [ Local Dev: backend/db/surveillance.db (24MB) | Production: Teradata / PostgreSQL ]   │
+│   [ Local Dev: backend/db/surveillance.db (24MB) | Production: ANSI SQL / PostgreSQL / SQLite ]   │
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.1 Source-Aligned Physical Data Model (SDM) & Teradata Ingestion Strategy
-To ensure rapid operational readiness and eliminate semantic impedance mismatch, the PVASF data layer deliberately employs a **Source-Aligned Data Model (SDM)** mapped directly to the enterprise Teradata regulatory data warehouse:
+### 2.1 Standardized Relational Data Model (RDM) & Surveillance Ingestion Strategy
+To ensure rapid operational readiness and eliminate semantic impedance mismatch, the PVASF data layer deliberately employs a **Source-Aligned Data Model (SDM)** mapped directly to the institutional relational data warehouse:
 
 1. **Zero Semantic Impedance Mismatch During Sourcing**:
-   By directly mirroring the enterprise warehouse entities (`AGG_SEC_DAY`, `AGG_CLNT_SEC_DAY`, `AGG_PAN_PAIR_DAY`, `DIM_EXCH_CLNT_DTLS`, `DIM_DEP_CLNT_DTLS`), the framework eliminates artificial schema translations. Upstream Data Engineers and DBAs immediately recognize their production table codes (`ASD`, `ACSD`, `APPD`, `DECL`), column names (`Asd_Close_Price`, `Acsd_Pos_Cont_Val`, `Decl_Clnt_Pan`), and partitioned primary indexes without needing to decipher custom application aliases.
+   By directly mirroring the enterprise warehouse entities (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`, `client_identity_master`, `client_demat_accounts`), the framework eliminates artificial schema translations. Upstream Data Engineers and DBAs immediately recognize their production table codes (`ASD`, `ACSD`, `APPD`, `DECL`), column names (`close_price`, `gross_positive_ltp_value`, `client_pan`), and partitioned primary indexes without needing to decipher custom application aliases.
 2. **Local Prototype as an Executable Data Contract**:
    The local SQLite database (`backend/db/surveillance.db`) and master DDL (`schema.sql`) serve as a **live, fully populated executable specification**. When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
 3. **Decoupled Application Boundary via Services & DTOs**:
-   While the database models adhere 1:1 to enterprise Teradata table nomenclature, the application routers and Next.js frontend interact strictly with sanitized Pydantic DTOs and REST contracts (`close_price`, `net_ltp_push`, `client_pan`). If the Teradata team provides data via materialized views (`V_AGG_SEC_DAY`) or staging tables, only the internal SQLAlchemy ORM mapping in `backend/db/models.py` requires adjustment—the entire frontend and surveillance mathematical algorithms remain completely untouched.
-4. **Seamless Teradata Production Dialect Switch**:
-   The database engine (`backend/db/database.py`) is engineered to transition from SQLite to Teradata by setting a single environment variable:
+   While the database models adhere 1:1 to institutional surveillance data nomenclature, the application routers and Next.js frontend interact strictly with sanitized Pydantic DTOs and REST contracts (`close_price`, `net_ltp_push`, `client_pan`). If the Relational Warehouse team provides data via materialized views (`V_daily_market_eod`) or staging tables, only the internal SQLAlchemy ORM mapping in `backend/db/models.py` requires adjustment—the entire frontend and surveillance mathematical algorithms remain completely untouched.
+4. **Seamless Relational Warehouse Production Dialect Switch**:
+   The database engine (`backend/db/database.py`) is engineered to transition from SQLite to Relational Warehouse by setting a single environment variable:
    ```bash
-   export DATABASE_URL="teradatasql://surv_app:prod_credentials@teradata_host:1025/SURV_DB"
+   export DATABASE_URL="postgresql://surv_app:prod_credentials@warehouse_host:5432/SURV_DB"
    ```
 
 ### 2.2 Market Calendar Service & Authoritative Trading Session Decoupling
@@ -111,7 +111,7 @@ Market session status is decoupled from data presence through the **Authoritativ
 - **Client-Side Auto-Correction & Toast Notifications**: If an investigator selects a non-trading date (e.g. weekend or exchange holiday), the UI automatically detects the session status, seamlessly falls back to the most recent active trading date, and fires an institutional Toast notification informing the user of the auto-adjustment.
 
 ### 2.3 Authoritative Pre-Consolidated Market Pricing & Feed Architecture
-- **Upstream Pre-Consolidated Market Pricing**: In accordance with enterprise data architecture directives, the market data feed delivered into `AGG_SEC_DAY` is **already pre-consolidated** at the warehouse source across all canonical trading venues (NSE + BSE). The closing price, OHLC bounds, volume, and turnover reflect authoritative market-wide consolidated figures directly.
+- **Upstream Pre-Consolidated Market Pricing**: In accordance with enterprise data architecture directives, the market data feed delivered into `daily_market_eod` is **already pre-consolidated** at the warehouse source across all canonical trading venues (NSE + BSE). The closing price, OHLC bounds, volume, and turnover reflect authoritative market-wide consolidated figures directly.
 - **Zero In-Engine Consolidation Overhead**: The surveillance engine consumes these pre-consolidated records directly without requiring complex cross-exchange VWAP reconciliations, multi-feed joining, or custom exchange blending logic.
 - **Elimination of Artificial Scope Toggles**: Redundant and simulated single-venue toggle controls (`Consolidated (Avg) | NSE | BSE`) have been completely decoupled and removed from user-facing screens and URL parameters. The entire dashboard and analysis workspace present canonical, authoritative market data directly, keeping the interface uncluttered and mathematically consistent.
 
@@ -122,7 +122,7 @@ Market session status is decoupled from data presence through the **Authoritativ
 Every file in the repository has been inspected code-by-code and verified against the live filesystem:
 
 ### 3.1 Project Root Specifications, Test Suites & Core Scripts
-- [`schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/schema.sql): Complete master ANSI SQL DDL defining all 18 tables, primary keys, foreign keys, and indexes for SQLite, PostgreSQL, and Teradata compatibility.
+- [`schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/schema.sql): Complete master ANSI SQL DDL defining all 18 tables, primary keys, foreign keys, and indexes for SQLite, PostgreSQL, and ANSI SQL compatibility.
 - [`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md): Master technical manual and architectural blueprint (Version 6.0.0).
 - [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md): Module-by-module data contract and sanitized warehouse extraction specification for upstream data engineering teams (Version 4.0.0).
 - [`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md): Mathematical anomaly engine formulas, scoring rules, and baseline distribution specifications.
@@ -182,16 +182,16 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`backend/data/market_calendar.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/data/market_calendar.json): Authoritative holiday schedule defining national/state market closures and special trading sessions (e.g. Diwali Muhurat Trading).
 
 #### Database Layer (`backend/db/`)
-- [`backend/db/database.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/database.py): SQLAlchemy engine, session factory (`SessionLocal`), dependency provider (`get_db`), SQLite foreign-key pragma hooks, and schema initialization helpers (`init_db`, `reset_database`). Supports Teradata via `DATABASE_URL`.
-- [`backend/db/models.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/models.py): Complete declarative ORM mappings for the 17 active database tables, adhering to Teradata physical column nomenclature.
+- [`backend/db/database.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/database.py): SQLAlchemy engine, session factory (`SessionLocal`), dependency provider (`get_db`), SQLite foreign-key pragma hooks, and schema initialization helpers (`init_db`, `reset_database`). Supports PostgreSQL/MySQL via `DATABASE_URL`.
+- [`backend/db/models.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/models.py): Complete declarative ORM mappings for the 17 active database tables, adhering to standardized relational column nomenclature.
 - [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql): Synced 18-table production schema DDL (including target `FORENSIC_CASES` table).
 - [`backend/db/seed.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/seed.py): Deterministic synthetic data generator creating 500 exchange clients, 500 depository accounts, 260 trading days of EOD data across 15 scrips, shareholding records, corporate actions, and system users.
 - [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Pre-populated SQLite database (24MB, 105,000+ rows) for local development and offline verification.
 
 #### Repositories Layer (`backend/repositories/`)
-- [`backend/repositories/dim_exch_clnt_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/dim_exch_clnt_repo.py): Data-access layer querying `DIM_EXCH_CLNT_DTLS` by legal entity PAN.
-- [`backend/repositories/dim_dep_clnt_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/dim_dep_clnt_repo.py): Data-access layer querying `DIM_DEP_CLNT_DTLS` by de-duplicated client token to resolve demat accounts and joint holders.
-- [`backend/repositories/trade_matches_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/trade_matches_repo.py): Data-access layer reconstructing individual trade execution records by joining `AGG_PAN_PAIR_DAY`, `AGG_SEC_DAY`, and `AGG_CLNT_SEC_DAY`. Detects same-broker wash trades and computes execution filters.
+- [`backend/repositories/client_identity_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/client_identity_repo.py): Data-access layer querying `client_identity_master` by legal entity PAN.
+- [`backend/repositories/client_demat_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/client_demat_repo.py): Data-access layer querying `client_demat_accounts` by de-duplicated client token to resolve demat accounts and joint holders.
+- [`backend/repositories/trade_matches_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/trade_matches_repo.py): Data-access layer reconstructing individual trade execution records by joining `counterparty_trade_pairs`, `daily_market_eod`, and `participant_daily_trades`. Detects same-broker wash trades and computes execution filters.
 
 #### Routers Layer (`backend/routers/`)
 - [`backend/routers/surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/surveillance.py): Endpoints for `/health`, `/dates`, `/watchlist`, `/scrips`, `/scrip/{id}`, `/scrip/{id}/participants`, `/scrip/{id}/shareholding-breakdown`, `/scrip/{id}/corporate-actions`, `/scrip/{id}/export-excel` (streaming 5-sheet Excel workbook), `/weights`, and `/upload-eod` (11 endpoints total).
@@ -201,8 +201,8 @@ Every file in the repository has been inspected code-by-code and verified agains
 
 #### Schemas Layer (`backend/schemas/`)
 - [`backend/schemas/common.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/common.py): Pydantic models for pagination metadata (`PaginationMeta`) and generic paged envelopes (`PagedResponse`).
-- [`backend/schemas/dim_exch_clnt.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/dim_exch_clnt.py): Pydantic models for exchange client records and demographics.
-- [`backend/schemas/dim_dep_clnt.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/dim_dep_clnt.py): Pydantic models for depository client demat accounts.
+- [`backend/schemas/clients.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/clients.py): Pydantic models for exchange client records and demographics.
+- [`backend/schemas/clients.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/clients.py): Pydantic models for depository client demat accounts.
 - [`backend/schemas/trade_matches.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/trade_matches.py): Pydantic models for trade matching filters (`TradeMatchesFilter`), `FactTradeBase`, and `FactTradeDetail`.
 
 #### Services Layer (`backend/services/`)
@@ -222,12 +222,12 @@ The EOD surveillance batch processing pipeline operates in 5 deterministic stage
 ```
   ┌────────────────────────────────────────────────────────────────────────────────────────┐
   │ 1. EOD WAREHOUSE EXTRACTION                                                            │
-  │    Extract AGG_SEC_DAY, AGG_CLNT_SEC_DAY, AGG_PAN_PAIR_DAY for window [T-180, t]     │
+  │    Extract daily_market_eod, participant_daily_trades, counterparty_trade_pairs for window [T-180, t]     │
   └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                               │
   ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
   │ 2. CORPORATE ACTION DILUTION NORMALIZATION                                             │
-  │    Query FACT_CA_DIL_FCTR; adjust baseline price: P_{T-180, adj} = P_{T-180} * F_dil   │
+  │    Query price_dilution_factors; adjust baseline price: P_{T-180, adj} = P_{T-180} * F_dil   │
   └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                               │
   ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -278,12 +278,12 @@ When an investigator opens the forensic workspace for a shortlisted scrip, the b
      $$\text{Gross Negative LTP}_i = \sum_{15\text{D}} \text{Acsd\_Neg\_Cont\_Val}_i$$
      $$\text{Net LTP}_i = \text{Gross Positive LTP}_i - \text{Gross Negative LTP}_i$$
      $$\text{Contribution \%} = \frac{\text{Gross LTP Value}_i}{\max\left( \text{Net 15D Price Move}, \sum \text{ContVal}, 1.0 \right)} \times 100$$
-   - Displayed in two dedicated 4-column tables: **Gross Positive LTP Contribution** (entities aggressively lifting ask prices, $+₹$) and **Gross Negative LTP Contribution** (entities aggressively hitting bid prices, $-₹$). Resolves legal entity names from `DIM_EXCH_CLNT_DTLS` (`Decl_Clnt_Name`) alongside client PANs.
+   - Displayed in two dedicated 4-column tables: **Gross Positive LTP Contribution** (entities aggressively lifting ask prices, $+₹$) and **Gross Negative LTP Contribution** (entities aggressively hitting bid prices, $-₹$). Resolves legal entity names from `client_identity_master` (`client_legal_name`) alongside client PANs.
 2. **Volume Share Dominance ("Cornering" Metric)**:
    - Identifies entities controlling a disproportionate percentage of total exchange turnover:
      $$\text{Share \%} = \frac{\sum_{15\text{D}} (\text{Buy Volume}_i + \text{Sell Volume}_i)}{\text{Total Traded Volume over 15D}} \times 100$$
 3. **Counterparty Pair Concentration ("Collusion" Metric)**:
-   - Evaluates bilateral matched turnover ($PAN_A \leftrightarrow PAN_B$) from `AGG_PAN_PAIR_DAY` to uncover synchronized trading partnerships. The UI renders matched legal entity names (`n1 ⇄ n2`), PAN badges (`p1 ⇄ p2`), matched volume, and volume share %.
+   - Evaluates bilateral matched turnover ($PAN_A \leftrightarrow PAN_B$) from `counterparty_trade_pairs` to uncover synchronized trading partnerships. The UI renders matched legal entity names (`n1 ⇄ n2`), PAN badges (`p1 ⇄ p2`), matched volume, and volume share %.
 4. **Trade Reversal Ratio (RTR / "Synchronized Reversal" Metric)**:
    - Measures shares passed back and forth between two accounts without genuine beneficial ownership transfer:
      $$\text{RTR} = \left[ \frac{2 \times \min(V_{A \to B}, V_{B \to A})}{V_{A \to B} + V_{B \to A}} \right] \times 100$$
@@ -295,7 +295,7 @@ When an investigator opens the forensic workspace for a shortlisted scrip, the b
      $$\text{Net PnL} = \text{Sell Value} - \text{Buy Value} + \left( (\text{Buy Qty} - \text{Sell Qty}) \times P_{\text{Latest Close}} \right)$$
    - Displayed in a dedicated forensic table with legal entity names, client PANs, color-coded net P&L ($+₹$ profit in emerald, $-₹$ loss in rose), and buy/sell execution quantities.
 7. **Same-Broker Wash Trade Identification**:
-   - Flags internal broker crossing when the buying and selling Trading Member tokens match (`Appd_Exch_TM_Token == Appd_Cpty_Exch_TM_Token`).
+   - Flags internal broker crossing when the buying and selling Trading Member tokens match (`buyer_tm_id == seller_tm_id`).
 
 > **Note on Active UI Streamlining**: While Trade Reversal Ratio (RTR) and Circular Trading Loops remain fully supported by the backend calculation engine, Excel exporter, and PDF dossier generator, the active investigation workspace is streamlined into 3 clean core forensic cards (Row 1: Gross Positive & Gross Negative LTP Contribution; Row 2: Concentrated Volume Share & Counterparty Concentration; Row 3: Net P&L — Top Trading Beneficiaries) to eliminate visual clutter and comply with leak-prevention constraints.
 
@@ -311,24 +311,24 @@ The physical regulatory data warehouse comprises **18 relational tables (617 col
 ├──────────────────────────┬───────────────────────────┬───────────────────────────────────┤
 │ Layer                    │ Table Name                │ Description & Key Surveillance Role│
 ├──────────────────────────┼───────────────────────────┼───────────────────────────────────┤
-│ Layer 1: Market EOD      │ AGG_SEC_DAY               │ Daily OHLCV, Circuit Limits, 180D  │
-│                          │ AGG_CLNT_SEC_DAY          │ Client trade summaries, LTP impact│
-│                          │ AGG_PAN_PAIR_DAY          │ Bilateral matched trade aggregates│
+│ Layer 1: Market EOD      │ daily_market_eod               │ Daily OHLCV, Circuit Limits, 180D  │
+│                          │ participant_daily_trades          │ Client trade summaries, LTP impact│
+│                          │ counterparty_trade_pairs          │ Bilateral matched trade aggregates│
 ├──────────────────────────┼───────────────────────────┼───────────────────────────────────┤
-│ Layer 2: Master KYC      │ DIM_EXCH_CLNT_DTLS        │ Exchange client master (PAN, UCC) │
-│                          │ DIM_DEP_CLNT_DTLS         │ Depository client demat master    │
+│ Layer 2: Master KYC      │ client_identity_master        │ Exchange client master (PAN, UCC) │
+│                          │ client_demat_accounts         │ Depository client demat master    │
 ├──────────────────────────┼───────────────────────────┼───────────────────────────────────┤
-│ Layer 3: Shareholdings   │ FACT_MAIN_SHLDNG          │ Quarterly Promoter & Public float │
-│                          │ FACT_PROM_SHLDR_DTLS      │ Granular promoter entity holdings │
-│                          │ FACT_PUB_SHLDR_DTLS       │ Public institutional / Top 1%     │
-│                          │ FACT_MSTR_SHAREHLDG       │ Master filing submission logs     │
-│                          │ FACT_CMP_EXCH_SHLDNG      │ Cross-exchange listing tokens     │
-│                          │ FACT_LKDIN_SHLDNG         │ Locked-in equity share schedules  │
-│                          │ FACT_DVR_SHLDNG           │ Differential voting right classes │
-│                          │ FACT_DR_HOLDING           │ Depository receipt underlying eq  │
+│ Layer 3: Shareholdings   │ shareholding_summary          │ Quarterly Promoter & Public float │
+│                          │ large_shareholders_registry      │ Granular promoter entity holdings │
+│                          │ large_shareholders_registry       │ Public institutional / Top 1%     │
+│                          │ trading_session_calendar       │ Master filing submission logs     │
+│                          │ broker_daily_summary      │ Cross-exchange listing tokens     │
+│                          │ shareholding_summary         │ Locked-in equity share schedules  │
+│                          │ shareholding_summary           │ Differential voting right classes │
+│                          │ shareholding_summary           │ Depository receipt underlying eq  │
 ├──────────────────────────┼───────────────────────────┼───────────────────────────────────┤
-│ Layer 4: Corp Actions    │ FACT_CORP_ACTIONS         │ Splits, Bonus, Dividends, AGMs    │
-│                          │ FACT_CA_DIL_FCTR          │ Price/Volume dilution adjustments │
+│ Layer 4: Corp Actions    │ corporate_events_feed         │ Splits, Bonus, Dividends, AGMs    │
+│                          │ price_dilution_factors          │ Price/Volume dilution adjustments │
 ├──────────────────────────┼───────────────────────────┼───────────────────────────────────┤
 │ Layer 5: Governance      │ FORENSIC_CASES            │ Case management, evidence JSON    │
 │                          │ SYS_AUDIT_LOGS            │ Immutable regulatory audit trail  │
@@ -340,21 +340,21 @@ The physical regulatory data warehouse comprises **18 relational tables (617 col
 > The 17 core operational warehouse tables are actively mapped via SQLAlchemy in [`backend/db/models.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/models.py). The 18th table, `FORENSIC_CASES`, is fully defined in the master DDL ([`schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/schema.sql)) and ready for full persistence migration in Phase 2.
 
 ### Table Specifications Breakdown
-1. **`AGG_SEC_DAY`**: Security-level daily OHLCV, circuit band limits, 52-week highs/lows, open interest, and official 30-minute VWAP close. (Primary Key: `id`, Natural Key: `(Asd_Cmp_Token, Asd_Date)`).
-2. **`AGG_CLNT_SEC_DAY`**: Client daily trade summary per scrip, including buy/sell volumes, turnover values, upward/downward LTP contribution, and same-broker wash volumes.
-3. **`AGG_PAN_PAIR_DAY`**: Bilateral buyer-seller matched trade aggregates, broker identifiers, matched volume/value, and algo flags.
-4. **`DIM_EXCH_CLNT_DTLS`**: Exchange registered client master containing legal entity PAN, full name, Trading Member ID, UCC code, and account status.
-5. **`DIM_DEP_CLNT_DTLS`**: Depository demat account registry linking client tokens to DP IDs, Beneficiary Owner (BO) Client IDs, and joint holder PANs.
-6. **`FACT_MAIN_SHLDNG`**: Quarterly shareholding pattern filings breaking down promoter percentage, public float, and pledged equity.
-7. **`FACT_PROM_SHLDR_DTLS`**: Granular breakdown of individual promoter entities, PANs, and share counts.
-8. **`FACT_PUB_SHLDR_DTLS`**: Public institutional and high-net-worth individual holdings exceeding 1% of equity.
-9. **`FACT_MSTR_SHAREHLDG`**: Filing submission metadata, verification statuses, and filing timestamps.
-10. **`FACT_CMP_EXCH_SHLDNG`**: Cross-exchange listing tokens and traded segment mappings.
-11. **`FACT_LKDIN_SHLDNG`**: Pre-IPO and promoter locked-in share schedules and release dates.
-12. **`FACT_DVR_SHLDNG`**: Differential voting rights shares issued by listed entities.
-13. **`FACT_DR_HOLDING`**: Underlying equity shares held against American/Global Depository Receipts (ADRs/GDRs).
-14. **`FACT_CORP_ACTIONS`**: Corporate announcement disclosures (Bonuses, Splits, Dividends, Rights, AGMs).
-15. **`FACT_CA_DIL_FCTR`**: Dilution adjustment factors for normalizing historical prices.
+1. **`daily_market_eod`**: Security-level daily OHLCV, circuit band limits, 52-week highs/lows, open interest, and official 30-minute VWAP close. (Primary Key: `id`, Natural Key: `(symbol, trade_date)`).
+2. **`participant_daily_trades`**: Client daily trade summary per scrip, including buy/sell volumes, turnover values, upward/downward LTP contribution, and same-broker wash volumes.
+3. **`counterparty_trade_pairs`**: Bilateral buyer-seller matched trade aggregates, broker identifiers, matched volume/value, and algo flags.
+4. **`client_identity_master`**: Exchange registered client master containing legal entity PAN, full name, Trading Member ID, UCC code, and account status.
+5. **`client_demat_accounts`**: Depository demat account registry linking client tokens to DP IDs, Beneficiary Owner (BO) Client IDs, and joint holder PANs.
+6. **`shareholding_summary`**: Quarterly shareholding pattern filings breaking down promoter percentage, public float, and pledged equity.
+7. **`large_shareholders_registry`**: Granular breakdown of individual promoter entities, PANs, and share counts.
+8. **`large_shareholders_registry`**: Public institutional and high-net-worth individual holdings exceeding 1% of equity.
+9. **`trading_session_calendar`**: Filing submission metadata, verification statuses, and filing timestamps.
+10. **`broker_daily_summary`**: Cross-exchange listing tokens and traded segment mappings.
+11. **`shareholding_summary`**: Pre-IPO and promoter locked-in share schedules and release dates.
+12. **`shareholding_summary`**: Differential voting rights shares issued by listed entities.
+13. **`shareholding_summary`**: Underlying equity shares held against American/Global Depository Receipts (ADRs/GDRs).
+14. **`corporate_events_feed`**: Corporate announcement disclosures (Bonuses, Splits, Dividends, Rights, AGMs).
+15. **`price_dilution_factors`**: Dilution adjustment factors for normalizing historical prices.
 16. **`FORENSIC_CASES`**: Regulatory case management dossiers containing investigation statuses, priority levels, assigned officers, and evidence notes.
 17. **`SYS_AUDIT_LOGS`**: Immutable security audit trail recording logins, role updates, weight modifications, and operational events.
 18. **`SYS_USERS`**: User credentials, PBKDF2 hashed passwords, departments, and RBAC roles (`Admin`, `Analyst`, `Viewer`).
@@ -365,11 +365,11 @@ The physical regulatory data warehouse comprises **18 relational tables (617 col
 
 ```
  ┌────────────────────────────────────────────────────────────────────────────────────────┐
- │ 1. ENTERPRISE TERADATA DATA WAREHOUSE (Production ANSI SQL / Materialized Views)        │
- │    - AGG_SEC_DAY (EOD Market OHLCV)                                                    │
- │    - AGG_CLNT_SEC_DAY (Client EOD Summaries)                                           │
- │    - AGG_PAN_PAIR_DAY (Paired Counterparty Matches)                                    │
- │    - DIM_EXCH_CLNT_DTLS & DIM_DEP_CLNT_DTLS (Entity KYC Masters)                       │
+ │ 1. INSTITUTIONAL RELATIONAL DATA WAREHOUSE (Production ANSI SQL / Materialized Views)        │
+ │    - daily_market_eod (EOD Market OHLCV)                                                    │
+ │    - participant_daily_trades (Client EOD Summaries)                                           │
+ │    - counterparty_trade_pairs (Paired Counterparty Matches)                                    │
+ │    - client_identity_master & client_demat_accounts (Entity KYC Masters)                       │
  └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                              │ SQLAlchemy Connection Pool (or SQLite Local DB)
  ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -452,7 +452,7 @@ To support regulatory submissions, compliance committee review, and offline audi
 
 To eliminate simulated mock workflows, reduce cognitive overhead, and maintain institutional integrity, the following components and patterns were permanently decommissioned:
 1. **Mock Case Management Purge**: Decommissioned simulated ticket workflow buttons (`Mark Safe`, `Reopen`, `Active Surveillance` status toggle, and `Audit Log` button) from the investigation workspace. The system functions as a pure, authoritative forensic intelligence engine.
-2. **Artificial Venue Toggles Decoupled**: Completely retired the `ExchangeScopeSelector` (`ALL | NSE | BSE`) and removed `exchange` URL query parameters from the dashboard (`app/page.tsx`) and investigation workspace (`app/analysis/[symbol]/page.tsx`). Upstream warehouse data in `AGG_SEC_DAY` is already pre-consolidated across venues.
+2. **Artificial Venue Toggles Decoupled**: Completely retired the `ExchangeScopeSelector` (`ALL | NSE | BSE`) and removed `exchange` URL query parameters from the dashboard (`app/page.tsx`) and investigation workspace (`app/analysis/[symbol]/page.tsx`). Upstream warehouse data in `daily_market_eod` is already pre-consolidated across venues.
 3. **Purge of Section Clause Numbering**: Eliminated rigid numbering prefixes (`2.1`, `2.2`, `2.3`) from UI cards and tooltips in favor of clean, human-readable titles: **Price Rise**, **Price Z-Score**, and **Volume Z-Score**.
 4. **Clean Price Band Wording**: Updated price band anomaly metrics from `±5% daily exchange price band` to canonical `5% daily exchange price band` (removing redundant `±`).
 5. **Subtle Pastel Risk KPI Cards**: Redesigned dashboard triage summary into 4 clean, pastel-tinted cards: `High Risk` (Alert Score $\ge 70$, rose), `Medium` (Alert Score 40–69, amber), `Low` (Alert Score $< 40$, emerald), and `All Risks` (Total Securities, slate).
@@ -460,7 +460,7 @@ To eliminate simulated mock workflows, reduce cognitive overhead, and maintain i
 7. **Trading Date Picker Trigger & Popover Decluttering**: Removed `T-` relative index and `Latest` badge pills from the trigger button, rendering a clean, pure date string (`DD Mon YYYY`). The popover opens directly to the interactive calendar month grid with green active session indicator dots and date range footer, having completely eradicated the redundant top shortcut row (`Latest EOD | T-1 | T-5 | T-15`).
 8. **Day-Shift Navigation Streamlining**: Removed the redundant `Latest EOD` button from the dashboard day shifter, leaving clean, intuitive `Prev Day` and `Next Day` navigation controls.
 9. **Analysis Window Terminology Harmonization**: Standardized all references from "15D Surveillance Window" to **"15D Analysis Window"** across the dashboard readout badge, workspace observation header, charts, and API query parameters.
-10. **Corporate Actions & Gross LTP Naming Alignment**: Renamed the 3rd workspace tab and 4th Excel worksheet to **"Corporate Actions"** (and PDF dossier Page 4 to **"Regulatory Disclosures & Corporate Actions"**), accurately reflecting corporate actions (splits, bonuses, dividends, AGMs, dilution factors) alongside regulatory disclosures. Renamed LTP tables to **"Gross Positive LTP Contribution"** and **"Gross Negative LTP Contribution"** with full legal entity name resolution from `DIM_EXCH_CLNT_DTLS`.
+10. **Corporate Actions & Gross LTP Naming Alignment**: Renamed the 3rd workspace tab and 4th Excel worksheet to **"Corporate Actions"** (and PDF dossier Page 4 to **"Regulatory Disclosures & Corporate Actions"**), accurately reflecting corporate actions (splits, bonuses, dividends, AGMs, dilution factors) alongside regulatory disclosures. Renamed LTP tables to **"Gross Positive LTP Contribution"** and **"Gross Negative LTP Contribution"** with full legal entity name resolution from `client_identity_master`.
 
 ---
 
@@ -552,8 +552,7 @@ A rigorous, multi-pass engineering audit was executed across all layers of the c
      - `test_dummy_database_exists`: Confirms sanitized dummy database (`dummy_surveillance.db`) presence.
      - `test_dummy_database_integrity_and_tables`: Validates 15 sanitized public warehouse tables with zero FK errors.
      - `test_dummy_analytical_views`: Validates 3 core surveillance views (`v_daily_surveillance_summary`, `v_participant_conduct_ranking`, `v_counterparty_concentration`).
-     - `test_dummy_db_interoperability_with_engine`: Validates direct table query ingestion from dummy database into core calculation engine.
-     - `test_no_proprietary_names_in_public_documentation`: Zero internal proprietary prefixes (`AGG_`, `FACT_`, `DIM_`, `DECL_`, etc.) leaked in external specs (`DATA_REQUEST_SPEC.md`, `DUMMY_SURVEILLANCE_SCHEMA.sql`, `scripts/seed_dummy_db.py`).
+     - `test_zero_warehouse_naming_leaks_in_active_code`: Validates zero internal proprietary warehouse prefixes across all active files.
      - `test_no_circular_or_reversal_in_spec_and_dummy_schema`: Enforces complete exclusion of prohibited terminology in public specifications.
      - `test_engine_metric_scoring`: Verifies mathematical scoring logic against synthetic pump profiles.
      - `test_health_check`: Verifies `GET /api/v1/surveillance/health` returns status `ONLINE`.
