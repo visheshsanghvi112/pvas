@@ -222,7 +222,7 @@ class TestSurveillanceEngineMath:
 # ══════════════════════════════════════════════════════════════════════════════
 class TestProprietaryLeakPrevention:
     LEAK_PATTERN = re.compile(
-        r"\b(AGG_|FACT_|DIM_|DECL_|ASD_|ACSD_|APPD_|DDCL_|FMSH_|FSHG_|FPRH_|FPUH_|FCAC_|FCDF_)\w*",
+        r"\b(AGG_|FACT_|DIM_|DECL_|ASD_|ACSD_|APPD_|DDCL_|FMSH_|FSHG_|FPRH_|FPUH_|FCAC_|FCDF_|FTRD_)\w*",
         re.IGNORECASE
     )
     EXCLUDE_DIRS = {".git", "node_modules", ".next", "agent_reference", "__pycache__"}
@@ -350,3 +350,18 @@ class TestFastAPIEndpoints:
         t_data = trades_resp.json()
         assert "data" in t_data
         assert "pagination" in t_data
+        if len(t_data["data"]) > 0:
+            first_trade = t_data["data"][0]
+            assert "trade_number" in first_trade
+            assert "trade_date" in first_trade
+            assert "trade_price" in first_trade
+            assert "trade_quantity" in first_trade
+            assert "symbol" in first_trade
+            assert first_trade["symbol"] == "NOVAENERGY"
+
+        # 12. Trade Analytics: Wash trade summary & stats
+        wash_resp = self.client.get("/api/v1/trades/analysis/wash-trades", headers=admin_headers)
+        assert wash_resp.status_code == 200
+
+        stats_resp = self.client.get("/api/v1/trades/stats/daily", headers=admin_headers)
+        assert stats_resp.status_code == 200

@@ -1,49 +1,21 @@
 """
 backend/repositories/trade_matches_repo.py
 ────────────────────────────────────────────────────────────────────────────
-Data-access layer for trade execution matches and counterparty pairs.
+Data-access layer for trade surveillance matches and counterparty pairs.
 Queries clean CounterpartyTradePair and DailyMarketEod models.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any, Optional, List, Tuple
+from decimal import Decimal
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from backend.db.models import CounterpartyTradePair, DailyMarketEod
-from backend.schemas.trade_matches import TradeMatchesFilter
-
-
-@dataclass
-class AggTradeRecord:
-    """Domain object representing a trade match constructed for the frontend."""
-    Ftrd_Trd_Date: date
-    Ftrd_Trd_Num: int
-    Ftrd_Trd_Tmst: datetime
-    Ftrd_Symbol: str
-    Ftrd_Series: str
-    Ftrd_Trd_Price: float
-    Ftrd_Trd_Qty: float
-    Ftrd_Trd_Val: float
-    Ftrd_Same_Broker_Wash_Flag: int
-    Ftrd_Buy_CTCL_Algo_Flag: int
-    Ftrd_Buy_Exch_TM_Token: int
-    Ftrd_Sell_Exch_TM_Token: int
-    Ftrd_Buy_Exch_Clnt_Token: int
-    Ftrd_Sell_Exch_Clnt_Token: int
-    Ftrd_Sess_Type: int
-    Ftrd_Sub_Seg_Code: int
-    Ftrd_Cmp_Token: int
-    Ftrd_Trd_Prd_Token: int
-    Ftrd_Exch_Token: int
-    Ftrd_Seg_Token: int
-    Ftrd_Buy_Acct_Type: int
-    Ftrd_Bid_Pdg_Ord_Qty: float = 0.0
-    Ftrd_Ask_Pdg_Ord_Qty: float = 0.0
+from backend.schemas.trade_matches import TradeMatchesFilter, TradeMatchRecord
 
 
 class TradeMatchesRepository:
@@ -51,10 +23,10 @@ class TradeMatchesRepository:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def _to_record(self, row: CounterpartyTradePair) -> AggTradeRecord:
-        qty = float(row.matched_quantity or 1.0)
-        val = float(row.matched_turnover_value or 0.0)
-        price = round(val / qty, 2) if qty > 0 else 0.0
+    def _to_record(self, row: CounterpartyTradePair) -> TradeMatchRecord:
+        qty = Decimal(str(row.matched_quantity or 1.0))
+        val = Decimal(str(row.matched_turnover_value or 0.0))
+        price = round(val / qty, 2) if qty > 0 else Decimal("0.0")
         is_wash = 1 if row.is_same_broker_wash else 0
         tmst = datetime.combine(row.trade_date, datetime.min.time())
 
@@ -62,28 +34,24 @@ class TradeMatchesRepository:
         b_tok = abs(hash(row.buyer_pan)) % 1000000
         s_tok = abs(hash(row.seller_pan)) % 1000000
 
-        return AggTradeRecord(
-            Ftrd_Trd_Date=row.trade_date,
-            Ftrd_Trd_Num=row.pair_match_id,
-            Ftrd_Trd_Tmst=tmst,
-            Ftrd_Symbol=row.symbol,
-            Ftrd_Series="EQ",
-            Ftrd_Trd_Price=price,
-            Ftrd_Trd_Qty=qty,
-            Ftrd_Trd_Val=val,
-            Ftrd_Same_Broker_Wash_Flag=is_wash,
-            Ftrd_Buy_CTCL_Algo_Flag=row.algo_execution_flag or 0,
-            Ftrd_Buy_Exch_TM_Token=101,
-            Ftrd_Sell_Exch_TM_Token=101 if is_wash else 102,
-            Ftrd_Buy_Exch_Clnt_Token=b_tok,
-            Ftrd_Sell_Exch_Clnt_Token=s_tok,
-            Ftrd_Sess_Type=2,
-            Ftrd_Sub_Seg_Code=1,
-            Ftrd_Cmp_Token=1,
-            Ftrd_Trd_Prd_Token=1,
-            Ftrd_Exch_Token=1,
-            Ftrd_Seg_Token=1,
-            Ftrd_Buy_Acct_Type=1,
+        return TradeMatchRecord(
+            trade_date=row.trade_date,
+            trade_number=row.pair_match_id,
+            trade_timestamp=tmst,
+            symbol=row.symbol,
+            series="EQ",
+            trade_price=price,
+            trade_quantity=qty,
+            trade_value=val,
+            is_same_broker_wash=is_wash,
+            is_algo_trade=row.algo_execution_flag or 0,
+            buyer_broker_id=101,
+            seller_broker_id=101 if is_wash else 102,
+            buyer_client_token=b_tok,
+            seller_client_token=s_tok,
+            session_type=2,
+            segment_code=1,
+            exchange="NSE",
         )
 
     def list_trades(
@@ -91,7 +59,7 @@ class TradeMatchesRepository:
         filters: TradeMatchesFilter,
         page: int = 1,
         page_size: int = 50,
-    ) -> Tuple[List[AggTradeRecord], int]:
+    ) -> Tuple[List[TradeMatchRecord], int]:
         q = self._db.query(CounterpartyTradePair)
 
         if filters.symbol:
@@ -117,11 +85,8 @@ class TradeMatchesRepository:
         self,
         trd_date: date,
         trd_num: int,
-        cmp_token: Optional[int] = None,
-        prd_token: Optional[int] = None,
-        exch_token: Optional[int] = None,
-        seg_token: Optional[int] = None,
-    ) -> Optional[AggTradeRecord]:
+        **kwargs
+    ) -> Optional[TradeMatchRecord]:
         row = self._db.query(CounterpartyTradePair).filter(
             CounterpartyTradePair.trade_date == trd_date,
             CounterpartyTradePair.pair_match_id == trd_num,
@@ -135,7 +100,7 @@ class TradeMatchesRepository:
         symbol: str,
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
-    ) -> List[AggTradeRecord]:
+    ) -> List[TradeMatchRecord]:
         q = self._db.query(CounterpartyTradePair).filter(
             CounterpartyTradePair.symbol == symbol.upper()
         )
@@ -205,6 +170,31 @@ class TradeMatchesRepository:
             }
             for r in rows
         ]
+
+    def get_participant_trades(
+        self,
+        clnt_token: int,
+        date_from: Optional[date] = None,
+        date_to: Optional[date] = None,
+        page: int = 1,
+        page_size: int = 50,
+    ) -> Tuple[List[TradeMatchRecord], int]:
+        q = self._db.query(CounterpartyTradePair)
+        if date_from:
+            q = q.filter(CounterpartyTradePair.trade_date >= date_from)
+        if date_to:
+            q = q.filter(CounterpartyTradePair.trade_date <= date_to)
+
+        rows = q.order_by(CounterpartyTradePair.trade_date.desc()).all()
+        matched = [
+            r for r in rows
+            if (abs(hash(r.buyer_pan)) % 1000000 == clnt_token or abs(hash(r.seller_pan)) % 1000000 == clnt_token)
+        ]
+        total = len(matched)
+        offset = (page - 1) * page_size
+        paged = matched[offset:offset + page_size]
+        records = [self._to_record(r) for r in paged]
+        return records, total
 
     def count_by_symbol_date(self) -> List[dict[str, Any]]:
         rows = (

@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.schemas.trade_matches import (
-    FactTradeBase,
-    FactTradeDetail,
+    TradeMatchRecord,
+    TradeMatchDetail,
     TradeMatchesFilter,
 )
 from backend.services.trade_matches_service import TradeMatchesService
@@ -43,36 +43,36 @@ def _get_service(db: Session = Depends(get_db)) -> TradeMatchesService:
     response_description="Paginated trade records",
 )
 def list_trades(
-    symbol:          Optional[str]  = Query(None, description="NSE symbol e.g. ALPHATECH"),
-    date_from:       Optional[date] = Query(None, description="Start date YYYY-MM-DD"),
-    date_to:         Optional[date] = Query(None, description="End date YYYY-MM-DD"),
-    sess_type:       Optional[int]  = Query(None, description="1=Pre-Open 2=Market 3=Close"),
-    sub_seg_code:    Optional[int]  = Query(None, description="1=EQ 2=Futures 3=Call 4=Put"),
-    acct_type:       Optional[int]  = Query(None, description="1=Client 2=Own 3=Inst"),
-    wash_flag:       Optional[int]  = Query(None, description="1=wash trades only"),
-    algo_flag:       Optional[int]  = Query(None, description="0=algo 1=manual"),
-    buy_tm_token:    Optional[int]  = Query(None),
-    sell_tm_token:   Optional[int]  = Query(None),
-    buy_clnt_token:  Optional[int]  = Query(None),
-    sell_clnt_token: Optional[int]  = Query(None),
-    series:          Optional[str]  = Query(None, description="Series e.g. EQ"),
-    sort_by:         str            = Query("Ftrd_Trd_Tmst"),
-    sort_dir:        Literal["asc", "desc"] = Query("desc"),
-    page:            int            = Query(1, ge=1),
-    page_size:       int            = Query(50, ge=1, le=500),
+    symbol:              Optional[str]  = Query(None, description="Symbol e.g. NOVAENERGY"),
+    date_from:           Optional[date] = Query(None, description="Start date YYYY-MM-DD"),
+    date_to:             Optional[date] = Query(None, description="End date YYYY-MM-DD"),
+    session_type:        Optional[int]  = Query(None, description="1=Pre-Open 2=Market 3=Close"),
+    segment_code:        Optional[int]  = Query(None, description="1=EQ 2=Futures 3=Call 4=Put"),
+    account_type:        Optional[int]  = Query(None, description="1=Client 2=Own 3=Inst"),
+    wash_flag:           Optional[int]  = Query(None, description="1=wash trades only"),
+    algo_flag:           Optional[int]  = Query(None, description="0=algo 1=manual"),
+    buyer_broker_id:     Optional[int]  = Query(None),
+    seller_broker_id:    Optional[int]  = Query(None),
+    buyer_client_token:  Optional[int]  = Query(None),
+    seller_client_token: Optional[int]  = Query(None),
+    series:              Optional[str]  = Query(None, description="Series e.g. EQ"),
+    sort_by:             str            = Query("trade_timestamp"),
+    sort_dir:            Literal["asc", "desc"] = Query("desc"),
+    page:                int            = Query(1, ge=1),
+    page_size:           int            = Query(50, ge=1, le=500),
     svc: TradeMatchesService = Depends(_get_service),
 ):
     filters = TradeMatchesFilter(
         symbol=symbol, date_from=date_from, date_to=date_to,
-        sess_type=sess_type, sub_seg_code=sub_seg_code,
-        acct_type=acct_type, wash_flag=wash_flag, algo_flag=algo_flag,
-        buy_tm_token=buy_tm_token, sell_tm_token=sell_tm_token,
-        buy_clnt_token=buy_clnt_token, sell_clnt_token=sell_clnt_token,
+        session_type=session_type, segment_code=segment_code,
+        account_type=account_type, wash_flag=wash_flag, algo_flag=algo_flag,
+        buyer_broker_id=buyer_broker_id, seller_broker_id=seller_broker_id,
+        buyer_client_token=buyer_client_token, seller_client_token=seller_client_token,
         series=series, sort_by=sort_by, sort_dir=sort_dir,
     )
     result = svc.list_trades(filters, page, page_size)
     return {
-        "data":       [FactTradeBase.model_validate(r) for r in result["data"]],
+        "data":       [TradeMatchRecord.model_validate(r) for r in result["data"]],
         "pagination": result["pagination"],
     }
 
@@ -119,7 +119,7 @@ def algo_breakdown(
 
 @router.get(
     "/participant/{clnt_token}",
-    summary="All trades (buy + sell) for a given exchange client token",
+    summary="All trades (buy + sell) for a given client token",
 )
 def participant_trades(
     clnt_token:  int,
@@ -132,7 +132,7 @@ def participant_trades(
     result = svc.get_participant_trades(clnt_token, date_from, date_to, page, page_size)
     return {
         "client_token": result["client_token"],
-        "data":         [FactTradeBase.model_validate(r) for r in result["data"]],
+        "data":         [TradeMatchRecord.model_validate(r) for r in result["data"]],
         "pagination":   result["pagination"],
     }
 
@@ -141,20 +141,14 @@ def participant_trades(
 
 @router.get(
     "/{trd_date}/{trd_num}",
-    summary="Full detail for a single trade (composite PK lookup)",
+    summary="Full detail for a single trade",
 )
 def get_trade_detail(
     trd_date:   date,
     trd_num:    int,
-    cmp_token:  Optional[int] = Query(None, description="Company token"),
-    prd_token:  Optional[int] = Query(None, description="Product token"),
-    exch_token: Optional[int] = Query(None, description="Exchange token"),
-    seg_token:  Optional[int] = Query(None, description="Segment token"),
     svc: TradeMatchesService = Depends(_get_service),
 ):
-    trade = svc.get_trade_detail(
-        trd_date, trd_num, cmp_token, prd_token, exch_token, seg_token
-    )
+    trade = svc.get_trade_detail(trd_date, trd_num)
     if trade is None:
         raise HTTPException(status_code=404, detail="Trade not found")
-    return FactTradeDetail.model_validate(trade)
+    return TradeMatchDetail.model_validate(trade)

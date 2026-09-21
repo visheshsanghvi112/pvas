@@ -130,16 +130,17 @@ export interface ParticipantAudit {
 }
 
 export interface TradeRow {
-  Ftrd_Trd_Num: number;
-  Ftrd_Trd_Date: string;
-  Ftrd_Trd_Time: string;
-  Ftrd_Trd_Qty: number;
-  Ftrd_Trd_Price: number;
-  Ftrd_Buy_Exch_Clnt_Token: number;
-  Ftrd_Sell_Exch_Clnt_Token: number;
-  Ftrd_Same_Broker_Wash_Flag?: number;
-  Ftrd_Exch_Id?: string;
+  trade_number: number;
+  trade_date: string;
+  trade_time?: string;
+  trade_quantity: number;
+  trade_price: number;
+  buyer_client_token: number;
+  seller_client_token: number;
+  is_same_broker_wash?: number;
+  exchange?: string;
 }
+
 
 export interface ClientDetail {
   pan: string;
@@ -384,7 +385,7 @@ export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): P
   const rows: TradeRow[] = result.data || [];
   return rows.map((r, i) => ({
     ...r,
-    Ftrd_Exch_Id: r.Ftrd_Exch_Id || (i % 5 === 0 ? "BSE" : "NSE")
+    exchange: r.exchange || (i % 5 === 0 ? "BSE" : "NSE")
   }));
 }
 
