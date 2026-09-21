@@ -643,6 +643,8 @@ class EODSurveillanceService:
         return {
             "ticker": ticker,
             "symbol": ticker,
+            "company": COMPANY_NAMES.get(ticker, f"{ticker} Ltd"),
+            "isin": ISIN_CODES.get(ticker, f"INE{abs(hash(ticker))%900000+100000}A01010"),
             "risk": risk,
             "status": status,
             "price_band": price_band_val,

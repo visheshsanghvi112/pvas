@@ -1028,13 +1028,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
                             return [
                               <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
-                              <span
+                              <button
+                                type="button"
                                 key={p.participant}
-                                className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                                onClick={() => setSelectedPan(p.participant)}
+                                className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                                title="Click to view Client 360 profile"
                               >
                                 <UserCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 {p.participant}
-                              </span>,
+                              </button>,
                               <span key="pos" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
                                 +₹{posVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
@@ -1082,13 +1085,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
                             return [
                               <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
-                              <span
+                              <button
+                                type="button"
                                 key={p.participant}
-                                className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                                onClick={() => setSelectedPan(p.participant)}
+                                className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                                title="Click to view Client 360 profile"
                               >
                                 <UserCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                                 {p.participant}
-                              </span>,
+                              </button>,
                               <span key="neg" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
                                 -₹{negVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
@@ -1129,13 +1135,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         ]}
                         rows={participants.volume_share.map((p) => [
                           <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
-                          <span
+                          <button
+                            type="button"
                             key={p.participant}
-                            className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                            onClick={() => setSelectedPan(p.participant)}
+                            className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                            title="Click to view Client 360 profile"
                           >
                             <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                             {p.participant}
-                          </span>,
+                          </button>,
                           <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
                             {Number(p.volume || 0).toLocaleString("en-IN")}
                           </span>,
@@ -1182,15 +1191,25 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                               </div>
                               {/* PAN Badges */}
                               <div className="inline-flex items-center gap-1 font-mono text-[11px]">
-                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPan(p1)}
+                                  className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                  title={`Click to view Client 360 profile for ${p1}`}
+                                >
                                   <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
                                   {p1}
-                                </span>
+                                </button>
                                 <span className="text-slate-300 font-bold">⇄</span>
-                                <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 inline-flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedPan(p2)}
+                                  className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                  title={`Click to view Client 360 profile for ${p2}`}
+                                >
                                   <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
                                   {p2}
-                                </span>
+                                </button>
                               </div>
                             </div>,
                             <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
@@ -1223,13 +1242,16 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       ]}
                       rows={participants.profit_makers.map((p) => [
                         <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
-                        <span
+                        <button
+                          type="button"
                           key={p.participant}
-                          className="text-slate-800 inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap"
+                          onClick={() => setSelectedPan(p.participant)}
+                          className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                          title="Click to view Client 360 profile"
                         >
                           <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                           {p.participant}
-                        </span>,
+                        </button>,
                         <span key="pnl" className={cn(
                           "font-mono text-xs font-semibold whitespace-nowrap tabular-nums",
                           Number(p.net_pnl || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
@@ -1250,78 +1272,64 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         )}
       </div>
 
-      {/* ── CLIENT 360° DRAWER (Omitted per user request; preserved in codebase) ── */}
-      {/*
+      {/* ── CLIENT 360° INTELLIGENCE DRAWER ── */}
       {selectedPan && (
         <>
           <div
             className="fixed inset-0 z-50 bg-slate-900/30 backdrop-blur-[2px]"
             onClick={() => setSelectedPan(null)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col">
+          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white border-l border-slate-200 shadow-2xl flex flex-col animate-in slide-in-from-right duration-200">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200">
-              <div className="flex items-center gap-2 font-semibold text-slate-900">
+              <div className="flex items-center gap-2 font-bold text-slate-900">
                 <UserCircle className="w-5 h-5 text-blue-600" />
-                Client 360 Intelligence
+                Client 360 Intelligence Profile
               </div>
-              <button onClick={() => setSelectedPan(null)} className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+              <button
+                onClick={() => setSelectedPan(null)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 transition-colors cursor-pointer"
+                title="Close drawer"
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {!client360 ? (
-              <div className="p-4 text-sm text-slate-500 flex items-center gap-2">
-                <div className="h-3 w-3 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
-                Loading client details…
+              <div className="p-6 text-sm text-slate-500 flex items-center gap-2">
+                <div className="h-4 w-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                Loading verified client KYC details…
               </div>
             ) : (
               <div className="p-4 space-y-4 overflow-y-auto flex-1">
-                <div className="border border-slate-200 rounded p-3 bg-slate-50">
-                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Entity Details</div>
+                <div className="border border-slate-200 rounded-xl p-3.5 bg-slate-50">
+                  <div className="text-[10px] text-slate-500 font-bold uppercase mb-1">Legal Entity KYC</div>
                   {client360.name && (
-                    <div className="text-sm font-bold text-slate-900 mb-1">{client360.name}</div>
+                    <div className="text-base font-extrabold text-slate-900 mb-1">{client360.name}</div>
                   )}
                   <div className="flex items-center gap-2">
-                    <div className="text-xs font-black text-slate-800 font-mono">{client360.pan}</div>
+                    <div className="text-xs font-black text-slate-800 font-mono bg-white px-2 py-0.5 rounded border border-slate-200">{client360.pan}</div>
                     {client360.category && (
                       <span className="text-[10px] bg-blue-100 text-blue-800 font-semibold px-1.5 py-0.5 rounded border border-blue-200">
                         {client360.category}
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500 font-mono mt-1">Client ID: {client360.clnt_id} · TM: {client360.tm_id}</div>
+                  <div className="text-xs text-slate-500 font-mono mt-2">Client ID: {client360.clnt_id} · Trading Member: {client360.tm_id}</div>
                 </div>
 
-                <div className="border border-slate-200 rounded p-3">
+                <div className="border border-slate-200 rounded-xl p-3.5">
                   <div className="text-xs text-slate-700 font-bold mb-2 border-b border-slate-100 pb-1">
-                    Terminals (DECL) — {client360.terminals.length} registered
-                  </div>
-                  <div className="text-xs space-y-1 font-mono">
-                    {client360.terminals.length === 0
-                      ? <div className="text-slate-400">No terminals registered.</div>
-                      : client360.terminals.map((t, i) => (
-                          <div key={i} className="flex justify-between">
-                            <span className="font-bold">{t.terminal_id}</span>
-                            <span className="text-slate-500">{t.location}</span>
-                          </div>
-                        ))
-                    }
-                  </div>
-                </div>
-
-                <div className="border border-slate-200 rounded p-3">
-                  <div className="text-xs text-slate-700 font-bold mb-2 border-b border-slate-100 pb-1">
-                    Depository Accounts (DDCL) — {client360.depository_accounts.length}
+                    Beneficiary Owner (BO) Depository Accounts ({client360.depository_accounts.length})
                   </div>
                   <div className="text-xs space-y-1.5 font-mono">
                     {client360.depository_accounts.length === 0
-                      ? <div className="text-slate-400">No depository accounts.</div>
+                      ? <div className="text-slate-400">No depository accounts linked.</div>
                       : client360.depository_accounts.map((da, i) => (
-                          <div key={i} className="flex justify-between items-center">
-                            <span className="font-bold">{da.dp_id} / {da.client_id}</span>
+                          <div key={i} className="flex justify-between items-center bg-slate-50 p-2 rounded border border-slate-100">
+                            <span className="font-bold text-slate-800">{da.dp_id} / {da.client_id}</span>
                             <span className={cn(
-                              "text-[9px] font-bold px-1.5 py-0.5 rounded",
-                              da.status?.toUpperCase() === "ACTIVE" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                              "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                              da.status?.toUpperCase().includes("ACTIVE") ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
                             )}>
                               {da.status}
                             </span>
@@ -1335,7 +1343,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           </div>
         </>
       )}
-      */}
 
       {/* Fullscreen High-Definition Chart Modal */}
       {/* HIGH-RES FULLSCREEN CHART MODAL */}

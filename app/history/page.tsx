@@ -94,7 +94,7 @@ function HistoryPageContent() {
             Immutable Security & System Audit Trail
           </h1>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cryptographically sealed system audit trail logging calibration updates, model weight changes, and authentication actions (SYS_AUDIT_LOGS).
+            Cryptographically sealed system audit trail logging calibration updates, model weight changes, and surveillance actions (compliance_audit_logs).
           </p>
         </div>
         <div className="flex items-center gap-2">
