@@ -89,6 +89,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => {
     setAuthToken(null);
     localStorage.removeItem("pvasf_auth_token");
+    localStorage.setItem("pvasf_logged_out", "true");
     setCurrentUser(defaultGuestUser);
   }, []);
 
@@ -122,9 +123,13 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Check saved token on mount
     const savedToken = localStorage.getItem("pvasf_auth_token");
+    const wasLoggedOut = localStorage.getItem("pvasf_logged_out") === "true";
     if (savedToken) {
       setAuthToken(savedToken);
       fetchMe(savedToken);
+    } else if (!wasLoggedOut) {
+      // Auto-provision analyst session on initial visit
+      login("arao_analyst", "arao123");
     }
   }, [fetchMe]);
 
@@ -180,6 +185,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         const token = data.access_token;
         setAuthToken(token);
         localStorage.setItem("pvasf_auth_token", token);
+        localStorage.removeItem("pvasf_logged_out");
         const userObj: UserProfile = {
           id: data.user.id,
           username: data.user.username,
