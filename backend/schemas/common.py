@@ -5,7 +5,7 @@ Shared Pydantic v2 schemas, enums, and pagination helpers used across
 all API modules.
 """
 
-from enum import IntEnum
+from enum import Enum, IntEnum
 from typing import Generic, TypeVar
 
 from pydantic import BaseModel
@@ -72,7 +72,7 @@ class OrdType(IntEnum):
     NONE            = 4
 
 
-class LTPChangeIndc(str):
+class LTPChangeIndc(str, Enum):
     UP     = "U"
     DOWN   = "D"
     NO_CHG = "N"
@@ -117,6 +117,7 @@ class PagedResponse(BaseModel, Generic[T]):
 
 # ── Sort helpers ───────────────────────────────────────────────────────────────
 
-class SortDirection(str):
+class SortDirection(str, Enum):
     ASC  = "asc"
     DESC = "desc"
+

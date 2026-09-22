@@ -172,10 +172,15 @@ export default function SettingsPage() {
   };
 
   const filteredAuditLogs = auditLogs.filter(
-    (l) =>
-      l.username.toLowerCase().includes(auditSearch.toLowerCase()) ||
-      l.action.toLowerCase().includes(auditSearch.toLowerCase()) ||
-      l.details.toLowerCase().includes(auditSearch.toLowerCase())
+    (l) => {
+      const q = (auditSearch || "").toLowerCase();
+      return (
+        (l.username || "").toLowerCase().includes(q) ||
+        (l.action || "").toLowerCase().includes(q) ||
+        (l.details || "").toLowerCase().includes(q) ||
+        (l.target || "").toLowerCase().includes(q)
+      );
+    }
   );
 
   return (

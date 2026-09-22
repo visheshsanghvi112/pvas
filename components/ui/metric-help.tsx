@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useRef } from "react";
 import { Info, X } from "lucide-react";
 import { metricHelp, type MetricHelpKey } from "@/lib/metric-help";

@@ -83,7 +83,11 @@ def get_scrip_participants(
     current_user: SysUser = Depends(get_current_user)
 ):
     try:
-        return service.get_scrip_participants(scrip_id.upper())
+        return service.get_scrip_participants(
+            scrip_id.upper(),
+            as_of_date=as_of_date,
+            window_days=window_days
+        )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -116,7 +120,11 @@ def export_scrip_excel(
         sym = scrip_id.upper()
         detail = service.get_scrip_detail(sym, as_of_date=as_of_date, window_days=window_days, exchange=exchange)
         try:
-            participants = service.get_scrip_participants(sym)
+            participants = service.get_scrip_participants(
+                sym,
+                as_of_date=as_of_date,
+                window_days=window_days
+            )
         except Exception:
             participants = None
         try:
@@ -186,7 +194,8 @@ async def upload_eod(
     db: Session = Depends(get_db)
 ):
     contents = await file.read()
-    res = service.load_eod_csv(contents, file.filename)
+    filename = file.filename or "upload.csv"
+    res = service.load_eod_csv(contents, filename)
     if "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])
     
@@ -196,7 +205,7 @@ async def upload_eod(
         username=admin_user.username,
         role=admin_user.role,
         action="UPLOAD_EOD_DATA",
-        target=file.filename,
+        target=filename,
         details=f"Uploaded EOD trade file containing {res.get('processed_records', 0)} records"
     )
 

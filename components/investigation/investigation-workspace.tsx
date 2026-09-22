@@ -320,6 +320,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     async function load() {
       setLoading(true);
       setError(null);
+      setParticipants(null);
+      setShBreakdown(null);
+      setCorpActions([]);
       try {
         const [d, p, sh, ca] = await Promise.all([
           fetchScripDetail(symbol, selectedDate || undefined, windowDays, exchange),
@@ -328,9 +331,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           fetchCorporateActions(symbol).catch(() => [])
         ]);
         setDetail(d);
-        if (p) setParticipants(p);
-        if (sh) setShBreakdown(sh);
-        if (ca) setCorpActions(ca);
+        setParticipants(p ?? null);
+        setShBreakdown(sh ?? null);
+        setCorpActions(ca ?? []);
       } catch (e: any) {
         console.error("Failed to load investigation workspace data", e);
         setError(e?.message || "Failed to load. Ensure backend is running.");
@@ -1039,7 +1042,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                                 {p.participant}
                               </button>,
                               <span key="pos" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
-                                +₹{posVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                +₹{Number(posVal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
                               <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
                                 <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
@@ -1096,7 +1099,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                                 {p.participant}
                               </button>,
                               <span key="neg" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
-                                -₹{negVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                -₹{Number(negVal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
                               <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
                                 <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">

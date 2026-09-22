@@ -52,7 +52,12 @@ class TradeMatchesService:
         seg_token: int | None = None,
     ):
         return self._repo.get_by_pk(
-            trd_date, trd_num, cmp_token, prd_token, exch_token, seg_token
+            trd_date,
+            trd_num,
+            cmp_token=cmp_token,
+            prd_token=prd_token,
+            exch_token=exch_token,
+            seg_token=seg_token,
         )
 
     def get_wash_trade_summary(

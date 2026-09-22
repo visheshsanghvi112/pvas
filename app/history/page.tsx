@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { getAuthHeaders } from "@/lib/api";
 
-const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : "http://127.0.0.1:8000";
+const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 
 interface AuditLogItem {
   id: number;
@@ -17,9 +17,9 @@ interface AuditLogItem {
   username: string;
   role: string;
   action: string;
-  target: string;
-  details: string;
-  ip_address: string;
+  target?: string | null;
+  details?: string | null;
+  ip_address?: string | null;
 }
 
 function HistoryPageContent() {
@@ -58,11 +58,12 @@ function HistoryPageContent() {
 
   // Filtered Audit Logs
   const filteredLogs = auditLogs.filter((log) => {
+    const q = (searchTerm || "").toLowerCase();
     const matchesSearch =
-      log.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.action.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.details.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      log.target.toLowerCase().includes(searchTerm.toLowerCase());
+      (log.username || "").toLowerCase().includes(q) ||
+      (log.action || "").toLowerCase().includes(q) ||
+      (log.details || "").toLowerCase().includes(q) ||
+      (log.target || "").toLowerCase().includes(q);
     const matchesAction = actionFilter === "All" || log.action === actionFilter;
     return matchesSearch && matchesAction;
   });
@@ -70,7 +71,7 @@ function HistoryPageContent() {
   // Export CSV
   const handleExportCSV = () => {
     const csvContent = "Timestamp,Username,Role,Action,Target,Details,IP Address\n" +
-      filteredLogs.map(l => `"${l.timestamp}","${l.username}","${l.role}","${l.action}","${l.target}","${l.details.replace(/"/g, '""')}","${l.ip_address}"`).join("\n");
+      filteredLogs.map(l => `"${l.timestamp || ""}","${l.username || ""}","${l.role || ""}","${l.action || ""}","${(l.target || "").replace(/"/g, '""')}","${(l.details || "").replace(/"/g, '""')}","${l.ip_address || ""}"`).join("\n");
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");

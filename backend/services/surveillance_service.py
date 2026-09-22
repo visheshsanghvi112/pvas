@@ -1,7 +1,8 @@
+import io
 import os
 import sys
 from datetime import datetime, timedelta
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, cast
 import numpy as np
 import pandas as pd
 import zlib
@@ -70,6 +71,8 @@ class EODSurveillanceService:
       4. Shareholder & Governance Analytics: Queries shareholding_summary, large_shareholders_registry,
          and corporate_events_feed for ownership concentration and corporate announcements.
     """
+    current_df: pd.DataFrame
+    current_trades_df: pd.DataFrame
 
     def __init__(self):
         self.config = SurveillanceConfig()
@@ -483,7 +486,7 @@ class EODSurveillanceService:
         results = []
         
         for ticker in tickers:
-            df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
+            df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
             
             # 1. Resolve to the nearest OPEN session if a closed day is requested
             resolved_date = as_of_date
@@ -493,7 +496,7 @@ class EODSurveillanceService:
                     resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
 
                 df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
-                df_t = df_t[df_t["DateStr"] <= resolved_date].sort_values("Date").reset_index(drop=True)
+                df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= resolved_date]).sort_values(by="Date").reset_index(drop=True)
                 
             if len(df_t) < 181:
                 # Minimum 181 days for full 180-day lookback + baseline T-180
@@ -598,13 +601,13 @@ class EODSurveillanceService:
         db_df = self._load_db_eod()
         if db_df is not None and not db_df.empty:
             self.current_df = db_df
-        df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
+        df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
         if df_t.empty:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
             
         if as_of_date:
             df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
-            df_t = df_t[df_t["DateStr"] <= as_of_date].sort_values("Date").reset_index(drop=True)
+            df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
             if df_t.empty:
                 raise ValueError(f"No price data for {ticker} on or before {as_of_date}")
 
@@ -617,15 +620,16 @@ class EODSurveillanceService:
         history = []
         # Include 181 trading days so item 0 is the exact T-180 baseline price
         for _, row in df_t.tail(181).iterrows():
+            d_val: Any = row["Date"]
             history.append({
-                "date": row["Date"].strftime("%Y-%m-%d") if isinstance(row["Date"], (datetime, pd.Timestamp)) else str(row["Date"]),
+                "date": d_val.strftime("%Y-%m-%d") if hasattr(d_val, "strftime") else str(d_val)[:10],
                 "open": round(float(row["Open"]), 2),
                 "high": round(float(row["High"]), 2),
                 "low": round(float(row["Low"]), 2),
                 "close": round(float(row["Close"]), 2),
                 "volume": int(row["Volume"]),
-                "ma20": float(row["MA20"]) if pd.notna(row["MA20"]) else None,
-                "ma50": float(row["MA50"]) if pd.notna(row["MA50"]) else None
+                "ma20": float(row["MA20"]) if bool(pd.notna(row["MA20"])) else None,
+                "ma50": float(row["MA50"]) if bool(pd.notna(row["MA50"])) else None
             })
             
         risk, status = self._risk_and_status(metrics.final_score)
@@ -773,27 +777,35 @@ class EODSurveillanceService:
 
         return []
 
-    def get_scrip_participants(self, ticker: str) -> Dict[str, Any]:
+    def get_scrip_participants(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15) -> Dict[str, Any]:
         """Serves participant-level analytical breakdown per Section 4 of PVASF_CORE_SPEC."""
-        df_t = self.current_df[self.current_df["Ticker"] == ticker].sort_values("Date").reset_index(drop=True)
+        df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
+        if as_of_date:
+            df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
+            df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
+
         final_close = float(df_t["Close"].iloc[-1]) if not df_t.empty else 100.0
-        total_vol = float(df_t["Volume"].tail(15).sum()) if not df_t.empty else 1000000.0
+        total_vol = float(df_t["Volume"].tail(window_days).sum()) if not df_t.empty else 1000000.0
         
-        # Actual 15-day Net Stock Price Movement (Close_T - Close_{T-15}) per PVASF_CORE_SPEC 4.1
-        if len(df_t) >= 16:
-            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-16]))
+        # Actual window Net Stock Price Movement (Close_T - Close_{T-window_days}) per PVASF_CORE_SPEC 4.1
+        if len(df_t) >= (window_days + 1):
+            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-(window_days + 1)]))
         elif len(df_t) >= 2:
             scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[0]))
         else:
             scrip_15d_price_change = 1.0
         scrip_15d_price_change = max(scrip_15d_price_change, 1e-4)
 
+        trades_slice = self.current_trades_df
+        if as_of_date and not trades_slice.empty and "Date" in trades_slice.columns:
+            trades_slice = cast(pd.DataFrame, trades_slice[trades_slice["Date"].astype(str).str[:10] <= as_of_date])
+
         part_res: ParticipantAuditResult = self.engine.analyze_participants(
-            ticker, self.current_trades_df, final_close, total_vol
+            ticker, trades_slice, final_close, total_vol
         )
         
-        # Total positive & negative LTP contributions across all participants or net 15-day price movement (PVASF Spec 4.1)
-        ticker_trades = self.current_trades_df[self.current_trades_df["Ticker"] == ticker] if not self.current_trades_df.empty else pd.DataFrame()
+        # Total positive & negative LTP contributions across all participants or net price movement (PVASF Spec 4.1)
+        ticker_trades = cast(pd.DataFrame, trades_slice[trades_slice["Ticker"] == ticker]) if not trades_slice.empty else pd.DataFrame()
         if not ticker_trades.empty and "PosContVal" in ticker_trades.columns and float(ticker_trades["PosContVal"].sum()) > 0:
             tot_pos_ltp = float(ticker_trades["PosContVal"].sum())
         elif not ticker_trades.empty and "LTPContribution" in ticker_trades.columns:
@@ -947,9 +959,9 @@ class EODSurveillanceService:
         """Ingests structured EOD CSV or Excel file into the surveillance engine."""
         try:
             if filename.endswith(".csv"):
-                df = pd.read_csv(pd.io.common.BytesIO(file_contents))
+                df = pd.read_csv(io.BytesIO(file_contents))
             elif filename.endswith((".xls", ".xlsx")):
-                df = pd.read_excel(pd.io.common.BytesIO(file_contents))
+                df = pd.read_excel(io.BytesIO(file_contents))
             else:
                 return {"error": "Unsupported file format. Please upload CSV or Excel EOD files."}
                 

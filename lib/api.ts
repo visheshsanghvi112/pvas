@@ -156,6 +156,17 @@ export interface ClientDetail {
 }
 
 // Base API URLs pointing to FastAPI backend endpoints
+export function getBaseHost(): string {
+  if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+  return typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
+}
+
+export function createApiUrl(path: string): URL {
+  return new URL(path, getBaseHost());
+}
+
 const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
   ? process.env.NEXT_PUBLIC_API_URL
   : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
@@ -216,6 +227,9 @@ export async function ensureAuthToken(): Promise<string | null> {
  * and retries once if the token expires (HTTP 401).
  */
 export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
+  const targetUrl = (url.startsWith("http://") || url.startsWith("https://"))
+    ? url
+    : `${getBaseHost()}${url.startsWith("/") ? "" : "/"}${url}`;
   let token = await ensureAuthToken();
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string> || {}),
@@ -224,7 +238,7 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  let res = await fetch(url, { ...init, headers });
+  let res = await fetch(targetUrl, { ...init, headers });
 
   if (res.status === 401 && typeof window !== "undefined") {
     // Stale or expired token; clear and re-authenticate once
@@ -232,7 +246,7 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
     token = await ensureAuthToken();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
-      res = await fetch(url, { ...init, headers });
+      res = await fetch(targetUrl, { ...init, headers });
     }
   }
 
@@ -257,7 +271,7 @@ export async function fetchWatchlist(
   windowDays?: number,
   exchange: ExchangeScope = "ALL"
 ): Promise<ScripSummary[]> {
-  const url = new URL(`${API_BASE}/scrips`);
+  const url = createApiUrl(`${API_BASE}/scrips`);
   if (search) url.searchParams.set("search", search);
   if (asOfDate) url.searchParams.set("as_of_date", asOfDate);
   if (windowDays) url.searchParams.set("window_days", String(windowDays));
@@ -307,7 +321,7 @@ export async function fetchScripDetail(
   exchange: ExchangeScope = "ALL"
 ): Promise<ScripDetail> {
   const cleanId = scripId.toUpperCase();
-  const url = new URL(`${API_BASE}/scrip/${cleanId}`);
+  const url = createApiUrl(`${API_BASE}/scrip/${cleanId}`);
   if (asOfDate) url.searchParams.set("as_of_date", asOfDate);
   if (windowDays) url.searchParams.set("window_days", String(windowDays));
   if (exchange) url.searchParams.set("exchange", exchange);
@@ -368,7 +382,7 @@ export async function fetchScripDetail(
 
 export async function fetchScripParticipants(scripId: string, asOfDate?: string, windowDays?: number): Promise<ParticipantAudit> {
   const cleanId = scripId.toUpperCase();
-  const url = new URL(`${API_BASE}/scrip/${cleanId}/participants`);
+  const url = createApiUrl(`${API_BASE}/scrip/${cleanId}/participants`);
   if (asOfDate) url.searchParams.set("as_of_date", asOfDate);
   if (windowDays) url.searchParams.set("window_days", String(windowDays));
 
@@ -379,7 +393,7 @@ export async function fetchScripParticipants(scripId: string, asOfDate?: string,
 
 export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): Promise<TradeRow[]> {
   const cleanId = symbol.toUpperCase();
-  const url = new URL(`${TRADES_API_BASE}/?symbol=${cleanId}&page_size=100`);
+  const url = createApiUrl(`${TRADES_API_BASE}/?symbol=${cleanId}&page_size=100`);
   if (exchange && exchange !== "ALL") {
     url.searchParams.set("exchange", exchange);
   }
