@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getAuthHeaders } from "@/lib/api";
+import { getAuthHeaders, fetchWithAuth } from "@/lib/api";
 
 const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 
@@ -44,7 +44,7 @@ function HistoryPageContent() {
   async function fetchAuditLogs() {
     setLoading(true);
     try {
-      const res = await fetch(`${BASE_HOST}/api/v1/auth/audit-logs?limit=200`, { headers: getAuthHeaders() });
+      const res = await fetchWithAuth(`${BASE_HOST}/api/v1/auth/audit-logs?limit=200`);
       if (res.ok) {
         const logs = await res.json();
         setAuditLogs(logs);

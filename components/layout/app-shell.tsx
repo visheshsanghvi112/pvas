@@ -513,7 +513,7 @@ function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
 
               <button
                 type="button"
-                onClick={() => handleQuickSwitch("audit_viewer", "audit123")}
+                onClick={() => handleQuickSwitch("guest_viewer", "guest123")}
                 className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-all group cursor-pointer shadow-2xs"
               >
                 <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between">

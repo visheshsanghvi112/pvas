@@ -78,8 +78,8 @@ export default function SettingsPage() {
 
   // Weights state
   const [wPriceRise, setWPriceRise] = useState(25);
-  const [wPriceZ, setWPriceZ] = useState(25);
-  const [wVolumeZ, setWVolumeZ] = useState(20);
+  const [wPriceZ, setWPriceZ] = useState(20);
+  const [wVolumeZ, setWVolumeZ] = useState(25);
   const [wBand, setWBand] = useState(15);
   const [wHigh, setWHigh] = useState(15);
 

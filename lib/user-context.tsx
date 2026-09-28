@@ -120,19 +120,6 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [logout]);
 
-  useEffect(() => {
-    // Check saved token on mount
-    const savedToken = localStorage.getItem("pvasf_auth_token");
-    const wasLoggedOut = localStorage.getItem("pvasf_logged_out") === "true";
-    if (savedToken) {
-      setAuthToken(savedToken);
-      fetchMe(savedToken);
-    } else if (!wasLoggedOut) {
-      // Auto-provision analyst session on initial visit
-      login("arao_analyst", "arao123");
-    }
-  }, [fetchMe]);
-
   const refreshUsers = useCallback(async (tokenOverride?: string | null) => {
     try {
       const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
@@ -173,7 +160,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     }
   }, [authToken]);
 
-  async function login(username: string, password: string): Promise<boolean> {
+  const login = useCallback(async (username: string, password: string): Promise<boolean> => {
     try {
       const res = await fetch(`${AUTH_API}/login`, {
         method: "POST",
@@ -204,7 +191,20 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       console.error("Login failed", e);
     }
     return false;
-  }
+  }, [refreshUsers, refreshAuditLogs]);
+
+  useEffect(() => {
+    // Check saved token on mount
+    const savedToken = localStorage.getItem("pvasf_auth_token");
+    const wasLoggedOut = localStorage.getItem("pvasf_logged_out") === "true";
+    if (savedToken) {
+      setAuthToken(savedToken);
+      fetchMe(savedToken);
+    } else if (!wasLoggedOut) {
+      // Auto-provision analyst session on initial visit
+      login("arao_analyst", "arao123");
+    }
+  }, [fetchMe, login]);
 
   const setUserRole = (role: UserRole) => {
     // Role state is managed via backend auth token claims

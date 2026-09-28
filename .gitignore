@@ -25,3 +25,11 @@ __pycache__/
 agent_reference/
 *.db-wal
 *.db-shm
+
+# Local DB Backups
+*.backup*
+
+
+# Large Raw Excel Data Feeds
+result_part*.xlsx
+
