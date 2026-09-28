@@ -127,6 +127,25 @@ export interface ParticipantAudit {
   volume_share: Array<{ participant: string; name?: string; volume: number; share_pct: number }>;
   counterparty_pairs: Array<{ pair: string; name1?: string; name2?: string; pan1?: string; pan2?: string; volume: number; share_pct: number }>;
   profit_makers: Array<{ participant: string; name?: string; net_pnl: number; buy_volume: number; sell_volume: number }>;
+  reversal_pairs?: Array<{
+    pair: string;
+    pan1?: string;
+    pan2?: string;
+    name1?: string;
+    name2?: string;
+    volume: number;
+    vol_a_to_b?: number;
+    vol_b_to_a?: number;
+    reversal_ratio: number;
+  }>;
+  circular_loops?: Array<{
+    loop: string;
+    nodes?: string[];
+    length?: number;
+    volume: number;
+    gross_volume: number;
+    efficiency_pct?: number;
+  }>;
 }
 
 export interface TradeRow {

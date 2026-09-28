@@ -1,126 +1,88 @@
 # PVASF — Enterprise Data Request Specification
+## Price-Volume Alert Surveillance Framework
 
-## 1. Purpose & Delivery Guidelines
-
-The Price-Volume Alert Surveillance Framework (PVASF) monitors price-volume anomalies, concentrated participant trading, and bilateral trade networks using End-of-Day (EOD) aggregate data. Feeds require official market values (30-minute Volume-Weighted Average Price close) across a rolling 180-trading-day baseline (~6 months, with 260 days optional for annual trends) and a 15-trading-day active analysis window. Daily batches must be delivered by 18:30 Indian Standard Time (IST).
-
----
-
-## Master Summary of Required Data Feeds
-
-The surveillance framework operates across six functional data categories:
-
-| # | Data Category / Domain | Delivery Frequency | Historical Horizon |
-| :---: | :--- | :---: | :---: |
-| 1 | **Daily Market OHLCV & Price Trends** | Daily (EOD) | 180 Trading Days |
-| 2 | **Participant Trading & Gross LTP Impact** | Daily (EOD) | 15 Trading Days |
-| 3 | **Bilateral Counterparty Trading & Matched Pairs** | Daily (EOD) | 15 Trading Days |
-| 4 | **Shareholding Structure & Demographics** | Quarterly | Past 4 Quarters |
-| 5 | **Corporate Actions & Material Disclosures** | Daily (EOD) | Rolling 180 Days |
-| 6 | **Market Trading Calendar** | Annual / Monthly | Rolling 3 Years |
-
----
-
-## 1. Daily Market OHLCV & Price Trends
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `symbol` | VARCHAR(20) | **Yes** | Composite Key; 1–20 uppercase alphanumeric | `'NOVAENERGY'` |
-| `trade_date` | DATE | **Yes** | Composite Key; ISO-8601 (`YYYY-MM-DD`) | `'2026-08-27'` |
-| `isin` | CHAR(12) | **Yes** | Exact 12 alphanumeric characters | `'INE752716A01'` |
-| `company_name` | VARCHAR(200) | **Yes** | Non-empty string | `'Nova Energy & Power Ltd'` |
-| `open_price` | DECIMAL(15,2) | **Yes** | `> 0.00` | `260.50` |
-| `day_high_price` | DECIMAL(15,2) | **Yes** | `>= open, close, low` | `278.40` |
-| `day_low_price` | DECIMAL(15,2) | **Yes** | `<= open, close, high; > 0` | `258.00` |
-| `close_price` | DECIMAL(15,2) | **Yes** | `> 0.00` | `276.85` |
-| `total_traded_quantity` | BIGINT | **Yes** | `>= 0` | `1850000` |
-| `total_traded_value` | DECIMAL(20,2) | **Yes** | `>= 0.00` | `505000000.00` |
-| `upper_circuit_limit` | DECIMAL(15,2) | **Yes** | `> close_price` | `282.50` |
-| `lower_circuit_limit` | DECIMAL(15,2) | **Yes** | `< close_price; > 0` | `235.50` |
-| `delivery_quantity` | BIGINT | **Yes** | `0 <= delivery <= total` | `925000` |
-| `base_price_180d` | DECIMAL(15,2) | Optional | `> 0.00` if provided | `112.50` |
-| `baseline_volume_mean` | DECIMAL(15,2) | Optional | `>= 0.00` if provided | `420000.00` |
-| `baseline_volume_std` | DECIMAL(15,2) | Optional | `>= 0.00` if provided | `115000.00` |
-
----
-
-## 2. Participant Trading & Gross Last Traded Price (LTP) Impact
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `symbol` | VARCHAR(20) | **Yes** | Composite Key; 1–20 uppercase alphanumeric | `'NOVAENERGY'` |
-| `trade_date` | DATE | **Yes** | Composite Key; ISO-8601 (`YYYY-MM-DD`) | `'2026-08-27'` |
-| `client_pan` | VARCHAR(10) | **Yes** | Composite Key; `[A-Z]{5}[0-9]{4}[A-Z]{1}` | `'HWFTM1488X'` |
-| `client_legal_name` | VARCHAR(250) | **Yes** | Non-empty string | `'Rahul Gupta'` |
-| `trading_member_id` | VARCHAR(20) | **Yes** | Alphanumeric identifier | `'TM101'` |
-| `buy_quantity` | BIGINT | **Yes** | `>= 0` | `85000` |
-| `sell_quantity` | BIGINT | **Yes** | `>= 0` | `12000` |
-| `buy_turnover_value` | DECIMAL(20,2) | **Yes** | `>= 0.00` | `23532250.00` |
-| `sell_turnover_value` | DECIMAL(20,2) | **Yes** | `>= 0.00` | `3322200.00` |
-| `gross_positive_ltp_value` | DECIMAL(20,2) | **Yes** | `>= 0.00` | `4808097.78` |
-| `gross_negative_ltp_value` | DECIMAL(20,2) | **Yes** | `>= 0.00` | `120500.00` |
-| `same_broker_wash_quantity` | BIGINT | **Yes** | `>= 0` | `0` |
-| `client_category` | VARCHAR(30) | Optional | `'INDIVIDUAL'`, `'CORPORATE'`, `'PROMOTER'`, `'HNI'`, `'FPI'` | `'INDIVIDUAL'` |
-
----
-
-## 3. Bilateral Counterparty Trading & Matched Pairs
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `symbol` | VARCHAR(20) | **Yes** | Composite Key; 1–20 uppercase alphanumeric | `'NOVAENERGY'` |
-| `trade_date` | DATE | **Yes** | Composite Key; ISO-8601 (`YYYY-MM-DD`) | `'2026-08-27'` |
-| `buyer_pan` | VARCHAR(10) | **Yes** | Composite Key; `[A-Z]{5}[0-9]{4}[A-Z]{1}` | `'CVXUL2488S'` |
-| `buyer_legal_name` | VARCHAR(250) | **Yes** | Non-empty string | `'Pooja Sharma'` |
-| `seller_pan` | VARCHAR(10) | **Yes** | Composite Key; `[A-Z]{5}[0-9]{4}[A-Z]{1}` | `'HWFTM1488X'` |
-| `seller_legal_name` | VARCHAR(250) | **Yes** | Non-empty string | `'Rahul Gupta'` |
-| `buyer_tm_id` | VARCHAR(20) | **Yes** | Alphanumeric identifier | `'TM101'` |
-| `seller_tm_id` | VARCHAR(20) | **Yes** | Alphanumeric identifier | `'TM101'` |
-| `matched_quantity` | BIGINT | **Yes** | `> 0` | `520000` |
-| `matched_turnover_value` | DECIMAL(20,2) | **Yes** | `> 0.00` | `143962000.00` |
-| `pairwise_ltp_push_value` | DECIMAL(15,2) | Optional | Decimal value | `2.80` |
-| `is_same_broker_wash` | BOOLEAN | **Yes** | `True` or `False` | `True` |
-| `algo_execution_flag` | INTEGER | Optional | `0` or `1` | `0` |
-
----
-
-## 4. Shareholding Structure & Demographics
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `symbol` | VARCHAR(20) | **Yes** | Composite Key; 1–20 uppercase alphanumeric | `'NOVAENERGY'` |
-| `quarter_code` | VARCHAR(10) | **Yes** | Composite Key; e.g. `'Q127'`, `'Q426'` | `'Q127'` |
-| `filing_date` | DATE | **Yes** | ISO-8601 (`YYYY-MM-DD`) | `'2026-06-30'` |
-| `category_type` | VARCHAR(40) | **Yes** | Composite Key; `'PROMOTER_GROUP'`, `'TOP_1_PCT_PUBLIC'`, `'GENERAL_PUBLIC_FLOAT'` | `'PROMOTER_GROUP'` |
-| `total_shares_count` | BIGINT | **Yes** | `>= 0` | `58450000` |
-| `holding_percentage` | DECIMAL(5,2) | **Yes** | `0.00` to `100.00` | `58.45` |
-| `pledged_shares_percentage` | DECIMAL(5,2) | Optional | `0.00` to `100.00` | `12.50` |
-| `unique_holding_pans` | INTEGER | **Yes** | `>= 0` | `14250` |
-| `avg_daily_trading_pans` | INTEGER | **Yes** | `>= 0` | `24` |
-
----
-
-## 5. Corporate Actions & Material Disclosures
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `symbol` | VARCHAR(20) | **Yes** | Composite Key; 1–20 uppercase alphanumeric | `'NOVAENERGY'` |
-| `isin` | CHAR(12) | **Yes** | Exact 12 alphanumeric characters | `'INE752716A01'` |
-| `announcement_date` | DATE | **Yes** | Composite Key; ISO-8601 (`YYYY-MM-DD`) | `'2026-08-20'` |
-| `record_date` | DATE | **Yes** | ISO-8601 (`YYYY-MM-DD`) | `'2026-08-26'` |
-| `ex_date` | DATE | **Yes** | ISO-8601 (`YYYY-MM-DD`) | `'2026-08-25'` |
-| `action_category` | VARCHAR(40) | **Yes** | Composite Key; `'BONUS'`, `'SPLIT'`, `'DIVIDEND'`, `'RIGHTS'`, `'BOARD_MEETING'` | `'BONUS'` |
-| `announcement_purpose` | VARCHAR(500) | **Yes** | Non-empty string | `'Board approves 1:1 Bonus Issue'` |
-| `ratio_or_value` | VARCHAR(50) | Optional | Text description or ratio | `'1:1'` |
-| `dilution_factor` | DECIMAL(8,6) | **Yes** | `> 0.000000` | `0.500000` |
-
----
-
-## 6. Market Trading Calendar
-
-| Field Name | Data Type | Mandatory | Constraints / Validation | Sample Value |
-| :--- | :--- | :---: | :--- | :--- |
-| `calendar_date` | DATE | **Yes** | Primary Key; ISO-8601 (`YYYY-MM-DD`) | `'2026-08-27'` |
-| `is_trading_day` | BOOLEAN | **Yes** | `True` or `False` | `True` |
-| `holiday_name` | VARCHAR(100) | Optional | Non-empty if holiday | `'Diwali - Laxmi Pujan'` |
-
+| Section | Period | Field Name | Variable Name | Example | Description | Calculation / Source |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Daily Market OHLCV & Price Trends** | 180 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
+| | | Trade Date | `trade_date` | 2026-08-27 | EOD date for which the record applies | Precalculated |
+| | | ISIN | `isin` | INE752716A01 | International Securities Identification Number | Precalculated |
+| | | Company Legal Name | `company_name` | Nova Energy Ltd | Official listed corporate entity name | Precalculated |
+| | | Day Open Price | `open_price` | 264.91 | Official opening price on trade date | Precalculated |
+| | | Day High Price | `day_high_price` | 274.86 | Intraday highest traded price on trade date | Precalculated |
+| | | Day Low Price | `day_low_price` | 263.59 | Intraday lowest traded price on trade date | Precalculated |
+| | | Close Price | `close_price` | 274.74 | Official 30-min VWAP closing price on trade date | Precalculated |
+| | | Previous Close Price | `prev_close_price` | 261.77 | Official closing price of immediately preceding trading day | Precalculated |
+| | | Total Traded Quantity | `total_traded_quantity` | 1971401 | Total shares traded in the scrip on trade date | Precalculated |
+| | | Total Traded Turnover | `total_traded_value` | 541622710.74 | Total rupee value transacted in the scrip on trade date | Precalculated |
+| | | Upper Circuit Limit | `upper_circuit_limit` | 274.86 | Maximum permissible intraday price set by exchange for trade date | Precalculated |
+| | | Lower Circuit Limit | `lower_circuit_limit` | 248.68 | Minimum permissible intraday price set by exchange for trade date | Precalculated |
+| | | 52-Week High Price | `week_52_high_price` | 274.74 | Highest price in last 52 weeks; fallback when full 180-day history is unavailable | Precalculated |
+| | | 52-Week Low Price | `week_52_low_price` | 137.00 | Lowest price in last 52 weeks | Precalculated |
+| | | Closing Price (T-180) | `base_price_180d` | 140.53 | Closing price 180 trading days prior to trade date; denominator for Price Rise % | Backend |
+| | | Volume Baseline Mean | `baseline_volume_mean` | 288547.36 | Rolling mean of 15-day avg volume over 180 trading days | Backend |
+| | | Volume Baseline Std Dev | `baseline_volume_std` | 459243.93 | Rolling σ of 15-day avg volume over 180 trading days | Backend |
+| | | 180-Day Return Baseline Mean | `return_mean_180d` | 0.0014 | Rolling mean of daily return percentages over 180 trading days | Backend |
+| | | 180-Day Return Baseline Std Dev | `return_std_180d` | 0.0215 | Rolling σ of daily return percentages over 180 trading days | Backend |
+| | | 180-Day Peak High Price | `peak_high_180d` | 268.50 | Highest traded price over rolling 180 trading days prior to trade date | Backend |
+| **Participant Trading & LTP Impact** | 15 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
+| | | Trade Date | `trade_date` | 2026-08-27 | EOD date for which the record applies | Precalculated |
+| | | Client PAN | `client_pan` | HWFTM1488X | Unique income-tax PAN of the participant | Precalculated |
+| | | Client Legal Name | `client_legal_name` | Rahul Gupta | Registered name of the participant as per KYC | Precalculated |
+| | | Trading Member ID | `trading_member_id` | TM101 | Broker / trading member through whom trades were executed | Precalculated |
+| | | Client Category | `client_category` | INDIVIDUAL | Category of client (INDIVIDUAL, CORPORATE, PROMOTER, HNI, FPI) | Precalculated |
+| | | Buy Quantity | `buy_quantity` | 85000 | Total shares purchased by this participant on trade date | Precalculated |
+| | | Sell Quantity | `sell_quantity` | 12000 | Total shares sold by this participant on trade date | Precalculated |
+| | | Buy Turnover Value | `buy_turnover_value` | 23352900.00 | Total rupee value of purchases by this participant on trade date | Precalculated |
+| | | Sell Turnover Value | `sell_turnover_value` | 3296880.00 | Total rupee value of sales by this participant on trade date | Precalculated |
+| | | Buy Trade Count | `buy_trade_count` | 142 | Total number of buy trade executions on trade date | Precalculated |
+| | | Sell Trade Count | `sell_trade_count` | 28 | Total number of sell trade executions on trade date | Precalculated |
+| | | Aggressor Buy Quantity | `aggressor_buy_quantity` | 75000 | Volume where participant was the price-initiating buyer | Precalculated |
+| | | Gross Positive LTP Value | `gross_positive_ltp_value` | 4808097.78 | Cumulative rupee value of upward price pushes by this participant | Precalculated |
+| | | Gross Negative LTP Value | `gross_negative_ltp_value` | 120500.00 | Cumulative rupee value of downward price pushes by this participant | Precalculated |
+| **Counterparty Trading & Matched Pairs** | 15 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
+| | | Trade Date | `trade_date` | 2026-08-27 | EOD date for which the record applies | Precalculated |
+| | | Buyer PAN | `buyer_pan` | CVXUL2488S | PAN of the buying entity in the matched pair | Precalculated |
+| | | Buyer Legal Name | `buyer_legal_name` | Lokesh Joshi | Registered name of the buyer as per KYC | Precalculated |
+| | | Seller PAN | `seller_pan` | HWFTM1488X | PAN of the selling entity in the matched pair | Precalculated |
+| | | Seller Legal Name | `seller_legal_name` | Rahul Gupta | Registered name of the seller as per KYC | Precalculated |
+| | | Buyer Broker ID | `buyer_tm_id` | TM101 | Trading member ID of buying broker | Precalculated |
+| | | Seller Broker ID | `seller_tm_id` | TM101 | Trading member ID of selling broker | Precalculated |
+| | | Matched Quantity | `matched_quantity` | 67617 | Total shares transacted between this buyer-seller pair on trade date | Precalculated |
+| | | Matched Turnover Value | `matched_turnover_value` | 18577094.58 | Total rupee value of matched trades between this pair on trade date | Precalculated |
+| | | Pairwise LTP Push Value | `pairwise_ltp_push_value` | 0.32 | Net directional rupee price shift generated between this matched pair | Precalculated |
+| | | Reverse Matched Quantity | `reverse_matched_quantity` | 64236 | Volume executed in reverse direction (B sells to A) across window | Precalculated |
+| **Shareholding** | 180 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
+| | | Quarter Code | `quarter_code` | Q127 | Statutory filing quarter code in QMYY format | Precalculated |
+| | | Filing Date | `filing_date` | 2026-06-30 | Date on which the shareholding pattern was filed | Precalculated |
+| | | Category Type | `category_type` | PROMOTER_GROUP | Float categorization (PROMOTER_GROUP, TOP_1_PCT_PUBLIC, GENERAL_PUBLIC_FLOAT) | Precalculated |
+| | | Total Shares Count | `total_shares_count` | 58450000 | Number of shares held by this category | Precalculated |
+| | | Holding Percentage | `holding_percentage` | 58.45 | Percentage of total issued capital held by this category | Precalculated |
+| | | Pledged Shares Percentage | `pledged_shares_percentage` | 12.50 | Encumbered or pledged shares percentage of float | Precalculated |
+| | | Unique Holding PANs | `unique_holding_pans` | 14 | Count of distinct PAN holders within this category | Precalculated |
+| | | Avg Daily Trading PANs | `avg_daily_trading_pans` | 24 | Average number of unique PANs trading this scrip per day in the quarter | Precalculated |
+| | | Substantial Holder PAN | `holder_pan` | AAACP9876K | Unique PAN of holder owning >= 1.00% of voting equity | Precalculated |
+| | | Substantial Holder Legal Name | `holder_legal_name` | Nova Energy Promoter Trust | Registered KYC legal name of substantial shareholder | Precalculated |
+| | | Substantial Holder Category | `holder_category` | PROMOTER | Classification (PROMOTER, INSTITUTIONAL_DII, INSTITUTIONAL_FPI, PUBLIC_INDIVIDUAL) | Precalculated |
+| | | Substantial Shares Held | `shares_held` | 42000000 | Total voting shares held by this substantial entity | Precalculated |
+| | | Substantial Pledged Shares Count | `pledged_shares_count` | 5250000 | Count of shares encumbered or pledged by this holder | Precalculated |
+| **Corporate Actions** | 15 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
+| | | ISIN | `isin` | INE752716A01 | International Securities Identification Number | Precalculated |
+| | | Announcement Date | `announcement_date` | 2026-08-20 | Date on which the corporate action was publicly disclosed | Precalculated |
+| | | Record Date | `record_date` | 2026-08-26 | Official shareholder entitlement record date | Precalculated |
+| | | Ex-Date | `ex_date` | 2026-08-25 | Date from which the adjusted price takes effect | Precalculated |
+| | | Action Category | `action_category` | BONUS | Type of corporate action (BONUS, SPLIT, DIVIDEND, RIGHTS, BOARD_MEETING, AGM) | Precalculated |
+| | | Announcement Details | `announcement_purpose` | Board approves 1:1 Bonus Issue of Equity Shares | Detailed announcement narrative | Precalculated |
+| | | Ratio or Value | `ratio_or_value` | 1:1 | Raw ratio or rupee value as announced (e.g. 1:1, ₹5.00) | Precalculated |
+| | | Dilution Factor | `dilution_factor` | 0.500000 | Price adjustment multiplier | Precalculated (Future Scope) |
+| **Trading Calendar** | 180 Days | Calendar Date | `calendar_date` | 2026-08-27 | The date being classified as a trading or non-trading day | Precalculated |
+| | | Is Trading Day | `is_trading_day` | TRUE | Whether a regular exchange trading session occurred on this date | Precalculated |
+| | | Holiday Name | `holiday_name` | NULL | Official exchange holiday designation string | Precalculated |
+| | | Is Special Auction | `is_special_auction` | FALSE | Whether a special call auction session was active on this date | Precalculated |
+| **Client Details** | Master Record | Client PAN | `client_pan` | HWFTM1488X | Permanent Account Number of trading client | Precalculated |
+| | | Client Legal Name | `client_legal_name` | Rahul Gupta | Full registered entity name as per KYC records | Precalculated |
+| **Alert Settings** | - | Price Rise Weight | `w1` | 1 | Scoring weight applied to the Price Rise % metric | Admin Config |
+| | | Price Z-Score Weight | `w2` | 1 | Scoring weight applied to the Price Z-Score metric | Admin Config |
+| | | Volume Z-Score Weight | `w3` | 1 | Scoring weight applied to the Volume Z-Score metric | Admin Config |
+| | | Band Hit Days Weight | `w4` | 1 | Scoring weight applied to the Band Hit Days metric | Admin Config |
+| | | New High Breakout Weight | `w5` | 1 | Scoring weight applied to the 180-Day New High Breakout metric | Admin Config |
+| | | Shortlist Threshold | `shortlist_threshold` | 10 | Minimum composite score for a scrip to be added to the watchlist | Admin Config |

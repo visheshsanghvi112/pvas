@@ -367,10 +367,14 @@ CREATE TABLE IF NOT EXISTS surveillance_alert_cases (
 CREATE TABLE IF NOT EXISTS portal_user_accounts (
     user_id                   INTEGER         PRIMARY KEY AUTOINCREMENT,
     username                  VARCHAR(50)     NOT NULL UNIQUE,
+    email                     VARCHAR(100)    NOT NULL UNIQUE,
+    full_name                 VARCHAR(100)    NOT NULL DEFAULT '',
+    department                VARCHAR(100)    NOT NULL DEFAULT 'Market Conduct',
     password_hash             VARCHAR(255)    NOT NULL,
     assigned_role             VARCHAR(20)     NOT NULL DEFAULT 'Viewer', -- 'Admin', 'Analyst', 'Viewer'
     is_account_active         BOOLEAN         NOT NULL DEFAULT TRUE,
-    created_timestamp         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
+    created_timestamp         TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
+    last_login_at             TIMESTAMP
 );
 
 -- --------------------------------------------------------------------------------------
@@ -381,6 +385,7 @@ CREATE TABLE IF NOT EXISTS compliance_audit_logs (
     log_id                    INTEGER         PRIMARY KEY AUTOINCREMENT,
     log_timestamp             TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
     username                  VARCHAR(50)     NOT NULL,
+    role                      VARCHAR(20)     NOT NULL DEFAULT 'Analyst',
     action_code               VARCHAR(100)    NOT NULL, -- 'MARK_SAFE', 'RECALIBRATE_MODEL', 'EXPORT_REPORT'
     target_entity             VARCHAR(50),              -- e.g. Stock symbol or Config key
     action_narrative          TEXT            NOT NULL,
@@ -413,7 +418,8 @@ INSERT INTO client_demat_accounts (client_pan, depository_id, beneficiary_acc_no
 ('XWRUW6552F', 'IN300789', '30918234', '2022-01-25', 'PKTBY7338I', TRUE, 'XXXXXX8821'),
 ('PKTBY7338I', 'IN300789', '30918235', '2022-01-25', 'XWRUW6552F', FALSE, 'XXXXXX8821'),
 ('WGLNH6994Q', 'IN300111', '40192834', '2019-11-10', NULL, FALSE, 'XXXXXX3391'),
-('KVONN8964A', 'IN300222', '50821943', '2023-04-20', NULL, FALSE, 'XXXXXX7741');
+('KVONN8964A', 'IN300222', '50821943', '2023-04-20', NULL, FALSE, 'XXXXXX7741'),
+('AAACP9876K', 'IN300001', '60000001', '2015-06-15', NULL, FALSE, 'XXXXXX0001');
 
 -- 3. Insert Trading Session Calendar
 INSERT INTO trading_session_calendar (calendar_date, is_trading_day, holiday_name, is_special_auction) VALUES
@@ -454,12 +460,12 @@ INSERT INTO market_baseline_stats (symbol, trade_date, base_price_180d, baseline
 
 -- 6. Insert Participant Daily Trades (Aggressive Price Pushers / LTP Impact)
 INSERT INTO participant_daily_trades (symbol, trade_date, client_pan, client_legal_name, trading_member_id, buy_quantity, sell_quantity, buy_turnover_value, sell_turnover_value, gross_positive_ltp_value, gross_negative_ltp_value, same_broker_wash_quantity, client_category) VALUES
-('NOVAENERGY', '2026-08-27', 'HWFTM1488X', 'Rahul Gupta', 'TM101', 85000, 12000, 172975000.00, 24420000.00, 4808097.78,  120500.00, 0, 'INDIVIDUAL'),
-('NOVAENERGY', '2026-08-27', 'CVXUL2488S', 'Lokesh Joshi', 'TM101', 78000,  8000, 158730000.00, 16280000.00, 4633637.45,  985045.43, 0, 'INDIVIDUAL'),
-('NOVAENERGY', '2026-08-27', 'XWRUW6552F', 'Jayant Trivedi', 'TM102', 65000,  5000, 132275000.00, 10175000.00, 4001977.30,   95000.00, 0, 'INDIVIDUAL'),
-('NOVAENERGY', '2026-08-27', 'WGLNH6994Q', 'Vikram Kapoor', 'TM103', 25000, 18000,  50875000.00, 36630000.00, 1276512.15,  282888.39, 0, 'INDIVIDUAL'),
-('NOVAENERGY', '2026-08-27', 'PKTBY7338I', 'Sunita Trivedi', 'TM102', 24000, 15000,  48840000.00, 30525000.00, 1237636.51,  150000.00, 0, 'INDIVIDUAL'),
-('NOVAENERGY', '2026-08-27', 'KVONN8964A', 'Sunita Sharma', 'TM104', 22000, 12000,  44770000.00, 24420000.00, 1204066.02,  197693.64, 0, 'INDIVIDUAL');
+('NOVAENERGY', '2026-08-27', 'HWFTM1488X', 'Rahul Gupta', 'TM101', 85000, 12000, 172975000.00, 24420000.00, 4808097.78,  0.00, 0, 'INDIVIDUAL'),
+('NOVAENERGY', '2026-08-27', 'CVXUL2488S', 'Lokesh Joshi', 'TM101', 78000,  8000, 158730000.00, 16280000.00, 4633637.45,  0.00, 0, 'INDIVIDUAL'),
+('NOVAENERGY', '2026-08-27', 'XWRUW6552F', 'Jayant Trivedi', 'TM102', 65000,  5000, 132275000.00, 10175000.00, 4001977.30,   0.00, 0, 'INDIVIDUAL'),
+('NOVAENERGY', '2026-08-27', 'WGLNH6994Q', 'Vikram Kapoor', 'TM103', 25000, 18000,  50875000.00, 36630000.00, 1276512.15,  0.00, 0, 'INDIVIDUAL'),
+('NOVAENERGY', '2026-08-27', 'PKTBY7338I', 'Sunita Trivedi', 'TM102', 24000, 15000,  48840000.00, 30525000.00, 1237636.51,  0.00, 0, 'INDIVIDUAL'),
+('NOVAENERGY', '2026-08-27', 'KVONN8964A', 'Sunita Sharma', 'TM104', 22000, 12000,  44770000.00, 24420000.00, 1204066.02,  0.00, 0, 'INDIVIDUAL');
 
 -- 7. Insert Counterparty Matched Pairs (Top bilateral pairs by matched volume)
 INSERT INTO counterparty_trade_pairs (symbol, trade_date, buyer_pan, buyer_legal_name, seller_pan, seller_legal_name, buyer_tm_id, seller_tm_id, matched_quantity, matched_turnover_value, pairwise_ltp_push_value, is_same_broker_wash) VALUES
@@ -476,7 +482,10 @@ INSERT INTO shareholding_summary (symbol, quarter_code, filing_date, category_ty
 ('NOVAENERGY', 'Q127', '2026-06-30', 'GENERAL_PUBLIC_FLOAT',  23350000, 23.35,  0.00, 14250, 24);
 
 INSERT INTO large_shareholders_registry (symbol, quarter_code, holder_pan, holder_legal_name, holder_category, shares_held, holding_percentage, pledged_shares_count) VALUES
-('NOVAENERGY', 'Q127', 'AAACP9876K', 'Nova Energy Promoter Trust', 'PROMOTER', 42000000, 42.00, 5250000);
+('NOVAENERGY', 'Q127', 'AAACP9876K', 'Nova Energy Promoter Trust', 'PROMOTER',          42000000, 42.00, 5250000),
+('NOVAENERGY', 'Q127', 'CVXUL2488S', 'Lokesh Joshi',               'INSTITUTIONAL_DII',  8000000,  8.00,       0),
+('NOVAENERGY', 'Q127', 'XWRUW6552F', 'Jayant Trivedi',             'INSTITUTIONAL_FPI',  5500000,  5.50,       0),
+('NOVAENERGY', 'Q127', 'PKTBY7338I', 'Sunita Trivedi',             'PUBLIC_INDIVIDUAL',  4000000,  4.00,       0);
 
 -- 9. Insert Corporate Action Announcements
 INSERT INTO corporate_events_feed (symbol, isin, action_category, announcement_purpose, announcement_date, ex_date, record_date, ratio_or_value, dilution_factor) VALUES
@@ -499,13 +508,15 @@ INSERT INTO surveillance_alert_cases (symbol, observation_date, composite_risk_s
 ('NOVAENERGY', '2026-08-27', 28.50, 'HIGH', 'ACTIVE', 276.85, 3.42, 4.15, 8, 11, 'vishesh_admin', 'Scrip flagged with high composite score (28.5/100). Concentrated aggressive buy push delivered by Rahul Gupta and Lokesh Joshi lifting ask price. High bilateral counterparty concentration with Jayant Trivedi.');
 
 -- 13. Insert System Users & Audit Logs
-INSERT INTO portal_user_accounts (username, password_hash, assigned_role, is_account_active) VALUES
-('vishesh_admin', 'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Admin', TRUE),
-('analyst_surv',  'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Analyst', TRUE);
+INSERT INTO portal_user_accounts (username, email, full_name, department, password_hash, assigned_role, is_account_active) VALUES
+('vishesh_admin', 'vishesh@pvasf.gov.in', 'Vishesh Sanghvi', 'Surveillance & Risk Oversight', 'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Admin', TRUE),
+('arao_analyst',  'arao@pvasf.gov.in',    'Ananya Rao',      'Market Conduct Division',       'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Analyst', TRUE),
+('analyst_surv',  'surv@pvasf.gov.in',    'Surveillance Off','Trade Investigations',          'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Analyst', TRUE),
+('guest_viewer',  'guest@pvasf.gov.in',   'Audit Guest',     'Compliance Review',             'pbkdf2_sha256$100000$auth_salt$reference_hash_standard_audit', 'Viewer', TRUE);
 
-INSERT INTO compliance_audit_logs (username, action_code, target_entity, action_narrative, client_ip_address) VALUES
-('vishesh_admin', 'ALERT_GENERATION', 'NOVAENERGY', 'System computed EOD risk score: 28.5 (HIGH). Added to Active Surveillance Watchlist.', '127.0.0.1'),
-('vishesh_admin', 'VIEW_DOSSIER', 'NOVAENERGY', 'Officer opened Single-Stock Forensic Investigation Workspace for NOVAENERGY.', '127.0.0.1');
+INSERT INTO compliance_audit_logs (username, role, action_code, target_entity, action_narrative, client_ip_address) VALUES
+('vishesh_admin', 'Admin', 'ALERT_GENERATION', 'NOVAENERGY', 'System computed EOD risk score: 28.5 (HIGH). Added to Active Surveillance Watchlist.', '127.0.0.1'),
+('vishesh_admin', 'Admin', 'VIEW_DOSSIER', 'NOVAENERGY', 'Officer opened Single-Stock Forensic Investigation Workspace for NOVAENERGY.', '127.0.0.1');
 
 -- ======================================================================================
 -- ANALYTICAL SURVEILLANCE VIEWS

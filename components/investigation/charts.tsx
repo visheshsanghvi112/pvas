@@ -2123,20 +2123,20 @@ export function CombinedMarketChart({
   metrics?: any;
   isExpanded?: boolean;
 }) {
-  // Surveillance Timeframes: "15D" | "1M" | "3M" | "180D" | "Max" (default "180D" / 180-Day Baseline)
-  const [timeframe, setTimeframe] = useState<"15D" | "1M" | "3M" | "180D" | "Max">("180D");
+  // Surveillance Timeframes: "15D" | "1M" | "3M" | "6M" | "Max" (default "6M" / 180D Baseline)
+  const [timeframe, setTimeframe] = useState<"15D" | "1M" | "3M" | "6M" | "Max">("6M");
 
-  // Visual Chart Controls: 20 DMA & 50 DMA OFF by default as requested
+  // Visual Chart Controls: Price, 20 DMA, 50 DMA, Volume, and 15D Surveillance Window (all ON by default as per PVASF §5.1.1)
   const [showPrice, setShowPrice] = useState(true);
-  const [show20DMA, setShow20DMA] = useState(false);
-  const [show50DMA, setShow50DMA] = useState(false);
+  const [show20DMA, setShow20DMA] = useState(true);
+  const [show50DMA, setShow50DMA] = useState(true);
   const [showVolume, setShowVolume] = useState(true);
   const [show15DWindow, setShow15DWindow] = useState(true);
 
-  // Active hover point state
+  // Active hover point state for real-time crosshair HUD tracker
   const [hoveredPoint, setHoveredPoint] = useState<any>(null);
 
-  // Precompute moving averages and high breakouts
+  // Precompute moving averages, delivery %, and volume within 180D baseline
   const processedData = useMemo(() => {
     if (!history || history.length === 0) return [];
     const sorted = [...history].sort((a, b) => (a.date > b.date ? 1 : -1));
@@ -2150,21 +2150,21 @@ export function CombinedMarketChart({
       const low = Number(pt.low) || close;
       const open = Number(pt.open) || close;
 
-      // 20 DMA
+      // 20 DMA (§5.1.1)
       let dma20 = pt.ma20;
       if (dma20 == null) {
         const s20 = arr.slice(Math.max(0, idx - 19), idx + 1);
         dma20 = s20.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s20.length;
       }
 
-      // 50 DMA
+      // 50 DMA (§5.1.1)
       let dma50 = pt.ma50;
       if (dma50 == null) {
         const s50 = arr.slice(Math.max(0, idx - 49), idx + 1);
         dma50 = s50.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s50.length;
       }
 
-      // Daily Return
+      // Daily Return %
       const prevClose = idx > 0 ? (Number(arr[idx - 1].close) || close) : close;
       const dailyReturn = idx > 0 ? ((close - prevClose) / prevClose) * 100 : 0;
 
@@ -2172,7 +2172,7 @@ export function CombinedMarketChart({
       const is180High = idx > 0 && high > rollingHigh;
       if (high > rollingHigh) rollingHigh = high;
 
-      // Synthetic Deliverable Volume %
+      // Synthetic Deliverable Volume % for Screener-grade inspection
       const deliveryPct = Math.min(85, Math.max(28, 45 + ((idx * 13 + Math.round(close)) % 36)));
 
       return {
@@ -2191,48 +2191,56 @@ export function CombinedMarketChart({
     });
   }, [history]);
 
-  // Sliced data according to surveillance timeframe (default 180D)
+  // Sliced data according to surveillance timeframe
   const displayData = useMemo(() => {
     if (processedData.length === 0) return [];
     if (timeframe === "15D") return processedData.slice(-15);
     if (timeframe === "1M") return processedData.slice(-22);
     if (timeframe === "3M") return processedData.slice(-65);
-    if (timeframe === "180D") return processedData.slice(-180);
+    if (timeframe === "6M") return processedData.slice(-180);
     return processedData;
   }, [processedData, timeframe]);
 
-  // Baseline start and latest end points of the active timeframe
+  // Latest active data point for fallback when not hovering
+  const latestPoint = displayData.length > 0 ? displayData[displayData.length - 1] : null;
+  const activeStats = hoveredPoint || latestPoint;
+
+  // First baseline point for timeframe % change calculation
   const basePoint = displayData.length > 0 ? displayData[0] : null;
-  const lastPoint = displayData.length > 0 ? displayData[displayData.length - 1] : null;
-
-  // Timeframe net price change percentage
-  const periodPriceChangePct = (basePoint && lastPoint && basePoint.close > 0)
-    ? ((lastPoint.close - basePoint.close) / basePoint.close) * 100
+  const priceChangePct = (basePoint && activeStats && basePoint.close > 0)
+    ? ((activeStats.close - basePoint.close) / basePoint.close) * 100
     : 0;
 
-  // Active hover stats percentage change vs period base
-  const hoverPriceChangePct = (basePoint && hoveredPoint && basePoint.close > 0)
-    ? ((hoveredPoint.close - basePoint.close) / basePoint.close) * 100
-    : 0;
-
-  // Dynamic price bounds
+  // Dynamic price bounds encompassing ALL active series: close, low, high, and visible DMAs
   const priceMin = useMemo(() => {
-    const vals = displayData.map(d => d.close).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const vals: number[] = [];
+    displayData.forEach(d => {
+      if (typeof d.close === 'number' && !isNaN(d.close) && d.close > 0) vals.push(d.close);
+      if (typeof d.low === 'number' && !isNaN(d.low) && d.low > 0) vals.push(d.low);
+      if (show20DMA && typeof d.dma20 === 'number' && !isNaN(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
+      if (show50DMA && typeof d.dma50 === 'number' && !isNaN(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
+    });
     if (!vals.length) return 0;
-    return Math.floor(Math.min(...vals) * 0.96);
-  }, [displayData]);
+    return Math.floor(Math.min(...vals) * 0.94);
+  }, [displayData, show20DMA, show50DMA]);
 
   const priceMax = useMemo(() => {
-    const vals = displayData.map(d => d.close).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const vals: number[] = [];
+    displayData.forEach(d => {
+      if (typeof d.close === 'number' && !isNaN(d.close) && d.close > 0) vals.push(d.close);
+      if (typeof d.high === 'number' && !isNaN(d.high) && d.high > 0) vals.push(d.high);
+      if (show20DMA && typeof d.dma20 === 'number' && !isNaN(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
+      if (show50DMA && typeof d.dma50 === 'number' && !isNaN(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
+    });
     if (!vals.length) return 100;
-    return Math.ceil(Math.max(...vals) * 1.04);
-  }, [displayData]);
+    return Math.ceil(Math.max(...vals) * 1.06);
+  }, [displayData, show20DMA, show50DMA]);
 
-  // Dynamic volume bound (anchored to bottom 26% of canvas)
+  // Dynamic volume bound (anchored to bottom 30% of canvas)
   const volMax = useMemo(() => {
     const vols = displayData.map(d => d.volume).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
     if (!vols.length) return 100000;
-    return Math.ceil(Math.max(...vols) * 4.0);
+    return Math.ceil(Math.max(...vols) * 3.4);
   }, [displayData]);
 
   // 15-Day Surveillance Window Coordinates
@@ -2254,87 +2262,126 @@ export function CombinedMarketChart({
     return d;
   };
 
+  const hasAnomaly = (metrics?.score ?? metrics?.risk_score ?? metrics?.final_score ?? 0) >= 15.0 || metrics?.risk === "High";
 
   if (!history || history.length === 0) {
     return (
-      <div className="w-full h-[380px] flex items-center justify-center text-slate-400 text-xs font-semibold">
+      <div className="w-full h-[400px] flex items-center justify-center text-slate-400 text-xs font-semibold">
         Loading surveillance chart data...
       </div>
     );
   }
 
   return (
-    <div className="w-full flex flex-col gap-3 min-w-0 font-sans">
+    <div className="w-full flex flex-col gap-3.5 min-w-0 font-sans">
       {/* ------------------------------------------------------------- */}
-      {/* Top Header Bar: Timeframes (Left) + Clean Metric Snapshot (Right) */}
+      {/* Top Header Bar: Surveillance Timeframes (Left) + Tools (Right) */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
-        {/* Timeframe Selector (Default 180D Baseline) */}
-        <div className="inline-flex rounded-lg bg-slate-100/90 p-0.5 border border-slate-200/60 shadow-2xs">
-          {(["15D", "1M", "3M", "180D", "Max"] as const).map((tf) => (
+      <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
+        {/* Left: Timeframe Segment Control */}
+        <div className="inline-flex rounded-lg bg-slate-100 p-1">
+          {(["15D", "1M", "3M", "6M", "Max"] as const).map((tf) => (
             <button
               key={tf}
               type="button"
               onClick={() => setTimeframe(tf)}
               className={cn(
-                "px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer select-none",
+                "px-3.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer select-none",
                 timeframe === tf
-                  ? "bg-white text-indigo-900 shadow-xs border border-slate-200"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                  ? "bg-white text-indigo-700 shadow-xs border border-slate-200/80"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               )}
             >
-              {tf === "15D" ? "15D (Surveillance)" : tf === "180D" ? "6M (180D)" : tf}
+              {tf === "15D" ? "15D (Window)" : tf === "6M" ? "6M (180D Baseline)" : tf}
             </button>
           ))}
         </div>
 
-        {/* Live Period & Active Metrics Snapshot (Replaced Alert Window Button & Uncluttered) */}
-        <div className="flex items-center gap-2.5">
-          {basePoint && lastPoint && (
-            <div className="hidden sm:flex items-center gap-2 text-xs bg-slate-50/90 border border-slate-200/80 px-2.5 py-1 rounded-lg shadow-2xs">
-              {hoveredPoint ? (
-                <div className="flex items-center gap-1.5 font-mono">
-                  <span className="text-slate-500 font-sans font-medium">Date:</span>
-                  <span className="font-bold text-slate-900">{formatTooltipDate(hoveredPoint.date)}</span>
-                  <span className="text-slate-300">·</span>
-                  <span className="text-slate-500 font-sans">Close:</span>
-                  <span className="font-bold text-slate-950">₹{hoveredPoint.close?.toFixed(2)}</span>
-                  <span className={cn(
-                    "text-[11px] font-bold px-1.5 py-0.2 rounded border",
-                    hoverPriceChangePct >= 0
-                      ? "text-emerald-700 bg-emerald-50 border-emerald-200/70"
-                      : "text-rose-700 bg-rose-50 border-rose-200/70"
-                  )}>
-                    {hoverPriceChangePct >= 0 ? "+" : ""}{hoverPriceChangePct.toFixed(2)}% vs Base
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5">
-                  <span className="text-slate-500 font-medium">Period:</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {formatTooltipDate(basePoint.date)} – {formatTooltipDate(lastPoint.date)}
-                  </span>
-                  <span className="text-slate-400 font-mono text-[10.5px]">({displayData.length}D)</span>
-                  <span className="text-slate-300">·</span>
-                  <span className="text-slate-500 font-medium">Price:</span>
-                  <span className="font-mono text-slate-700">
-                    ₹{basePoint.close?.toFixed(2)} → <strong className="text-slate-950 font-bold">₹{lastPoint.close?.toFixed(2)}</strong>
-                  </span>
-                  <span className={cn(
-                    "font-mono font-bold text-[11px] px-1.5 py-0.2 rounded border",
-                    periodPriceChangePct >= 0
-                      ? "text-emerald-700 bg-emerald-50 border-emerald-200/70"
-                      : "text-rose-700 bg-rose-50 border-rose-200/70"
-                  )}>
-                    {periodPriceChangePct >= 0 ? "+" : ""}{periodPriceChangePct.toFixed(2)}%
-                  </span>
-                </div>
-              )}
-            </div>
+        {/* Right: 15D Surveillance Window Toggle & Anomaly Alert */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {hasAnomaly && timeframe !== "15D" && (
+            <button
+              type="button"
+              onClick={() => setTimeframe("15D")}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer shadow-2xs"
+              title="Click to zoom into the 15-day manipulation window"
+            >
+              <Zap className="w-3.5 h-3.5 text-rose-600" />
+              <span>Pump Anomaly Detected</span>
+            </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setShow15DWindow(!show15DWindow)}
+            className={cn(
+              "px-3.5 py-1 text-xs font-bold rounded-lg border transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer select-none",
+              show15DWindow
+                ? "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
+                : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
+            )}
+            title="Toggle 15-Day Surveillance Window Highlight"
+          >
+            <span className={cn("w-2 h-2 rounded-full", show15DWindow ? "bg-amber-600" : "bg-slate-300")} />
+            <span>15D Window</span>
+          </button>
           <ChartGuideButton />
         </div>
       </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* Real-time Live Stats Subheader (Crosshair Tracker) */}
+      {/* ------------------------------------------------------------- */}
+      {activeStats && (
+        <div className="flex flex-wrap items-center justify-between gap-3 px-3 py-2 bg-slate-50/80 rounded-xl border border-slate-200/80 text-xs font-medium">
+          <div className="flex items-center gap-4 flex-wrap">
+            <span className="text-slate-500 font-semibold font-mono">
+              {formatTooltipDate(activeStats.date)}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500">Price:</span>
+              <span className="font-bold text-slate-900 text-sm">
+                ₹{activeStats.close?.toFixed(2)}
+              </span>
+              <span className={cn(
+                "text-[11px] font-bold px-1.5 py-0.2 rounded font-mono ml-0.5",
+                priceChangePct >= 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50"
+              )}>
+                {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(2)}%
+              </span>
+            </div>
+
+            {activeStats.dma20 != null && show20DMA && (
+              <div className="flex items-center gap-1 text-slate-600">
+                <span className="w-2 h-2 rounded-full bg-[#0284c7]" />
+                <span className="font-semibold text-sky-900">20 DMA:</span>
+                <span className="font-bold text-slate-800">₹{activeStats.dma20?.toFixed(2)}</span>
+              </div>
+            )}
+
+            {activeStats.dma50 != null && show50DMA && (
+              <div className="flex items-center gap-1 text-slate-600">
+                <span className="w-2 h-2 rounded-full bg-[#d97706]" />
+                <span className="font-semibold text-amber-900">50 DMA:</span>
+                <span className="font-bold text-slate-800">₹{activeStats.dma50?.toFixed(2)}</span>
+              </div>
+            )}
+          </div>
+
+          {activeStats.volume != null && showVolume && (
+            <div className="flex items-center gap-1.5 text-slate-600 shrink-0">
+              <span className="w-2 h-2 rounded-full bg-[#60a5fa]" />
+              <span className="font-semibold text-blue-900">Vol:</span>
+              <span className="font-bold text-slate-800 font-mono">
+                {activeStats.volume >= 1000 ? `${Math.round(activeStats.volume / 1000)}k` : activeStats.volume}
+              </span>
+              <span className="text-[11px] text-slate-500 font-normal">
+                (D: {activeStats.deliveryPct}%)
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ------------------------------------------------------------- */}
       {/* Main Dual-Axis Chart Canvas */}
@@ -2343,7 +2390,7 @@ export function CombinedMarketChart({
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={displayData}
-            margin={{ top: 12, right: 65, left: 10, bottom: 8 }}
+            margin={{ top: 15, right: 65, left: 15, bottom: 10 }}
             onMouseMove={(state: any) => {
               if (state && state.activePayload && state.activePayload.length) {
                 const nextPoint = state.activePayload[0].payload;
@@ -2354,25 +2401,17 @@ export function CombinedMarketChart({
             }}
             onMouseLeave={() => setHoveredPoint(null)}
           >
-            <defs>
-              <linearGradient id="priceGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#4338ca" stopOpacity={0.16} />
-                <stop offset="85%" stopColor="#6366f1" stopOpacity={0.02} />
-                <stop offset="100%" stopColor="#818cf8" stopOpacity={0.0} />
-              </linearGradient>
-            </defs>
-
             <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
 
             {/* X-Axis */}
             <XAxis
               dataKey="date"
               tickFormatter={formatDateTick}
-              stroke="#e2e8f0"
-              tick={{ fontSize: 11, fill: "#475569", fontWeight: 600 }}
-              axisLine={{ stroke: "#e2e8f0" }}
+              stroke="#cbd5e1"
+              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
+              axisLine={{ stroke: "#cbd5e1" }}
               tickLine={false}
-              minTickGap={45}
+              minTickGap={35}
             />
 
             {/* Left Y-Axis: Volume */}
@@ -2385,19 +2424,19 @@ export function CombinedMarketChart({
                 if (v >= 1000) return `${Math.round(v / 1000)}k`;
                 return String(v);
               }}
-              stroke="#e2e8f0"
-              tick={{ fontSize: 11, fill: "#64748b", fontWeight: 500 }}
+              stroke="#cbd5e1"
+              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
               axisLine={false}
               tickLine={false}
-              width={52}
+              width={60}
               label={{
                 value: "Volume",
                 angle: -90,
                 position: "insideLeft",
-                fill: "#475569",
-                fontSize: 11,
+                fill: "#1e293b",
+                fontSize: 12,
                 fontWeight: 700,
-                offset: 8
+                offset: 10
               }}
             />
 
@@ -2407,19 +2446,19 @@ export function CombinedMarketChart({
               orientation="right"
               domain={[priceMin, priceMax]}
               tickFormatter={(p) => `₹${Math.round(p).toLocaleString("en-IN")}`}
-              stroke="#e2e8f0"
-              tick={{ fontSize: 11, fill: "#1e293b", fontWeight: 600 }}
+              stroke="#cbd5e1"
+              tick={{ fontSize: 11, fill: "#334155", fontWeight: 600 }}
               axisLine={false}
               tickLine={false}
-              width={65}
+              width={60}
               label={{
-                value: "Price (₹)",
+                value: "Price on NSE",
                 angle: 90,
                 position: "insideRight",
                 fill: "#1e293b",
-                fontSize: 11,
+                fontSize: 12,
                 fontWeight: 700,
-                offset: 18
+                offset: 20
               }}
             />
 
@@ -2427,7 +2466,7 @@ export function CombinedMarketChart({
               content={<CustomScreenerTooltip />}
               isAnimationActive={false}
               wrapperStyle={{ outline: "none", pointerEvents: "none", zIndex: 100 }}
-              cursor={{ stroke: "#94a3b8", strokeDasharray: "3 3", strokeWidth: 1 }}
+              cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
             />
 
             {/* 15-Day Surveillance Window Highlight */}
@@ -2436,23 +2475,25 @@ export function CombinedMarketChart({
                 yAxisId="right"
                 x1={win15Start}
                 x2={win15End}
+                y1={priceMin}
+                y2={priceMax}
                 fill="#fef3c7"
-                fillOpacity={0.35}
+                fillOpacity={0.45}
                 stroke="#f59e0b"
                 strokeDasharray="3 3"
-                strokeWidth={1.2}
+                strokeWidth={1.5}
               />
             )}
 
-            {/* Volume Histogram (Left Axis) */}
+            {/* Volume Bars (Left Axis - Soft Institutional Blue) */}
             {showVolume && (
               <Bar
                 yAxisId="left"
                 dataKey="volume"
-                fill="#cbd5e1"
-                stroke="#94a3b8"
+                fill="#93c5fd"
+                stroke="#60a5fa"
                 strokeWidth={0.5}
-                fillOpacity={0.7}
+                fillOpacity={0.85}
                 radius={[2, 2, 0, 0]}
                 isAnimationActive={false}
               />
@@ -2465,7 +2506,7 @@ export function CombinedMarketChart({
                 type="monotone"
                 dataKey="dma20"
                 stroke="#0284c7"
-                strokeWidth={1.8}
+                strokeWidth={2.0}
                 dot={false}
                 isAnimationActive={false}
                 connectNulls
@@ -2479,27 +2520,14 @@ export function CombinedMarketChart({
                 type="monotone"
                 dataKey="dma50"
                 stroke="#d97706"
-                strokeWidth={1.8}
+                strokeWidth={2.0}
                 dot={false}
                 isAnimationActive={false}
                 connectNulls
               />
             )}
 
-            {/* Area Gradient Fill under Price */}
-            {showPrice && (
-              <Area
-                yAxisId="right"
-                type="monotone"
-                dataKey="close"
-                stroke="none"
-                fill="url(#priceGradient)"
-                isAnimationActive={false}
-                connectNulls
-              />
-            )}
-
-            {/* Price on NSE Line (Right Axis - Crisp High-Contrast Indigo) */}
+            {/* Price on NSE Line (Right Axis - High Contrast Indigo) */}
             {showPrice && (
               <Line
                 yAxisId="right"
@@ -2517,78 +2545,93 @@ export function CombinedMarketChart({
       </div>
 
       {/* ------------------------------------------------------------- */}
-      {/* Bottom Indicator Toggle Bar (Sleek Chip Pills) */}
+      {/* Bottom Interactive Legend Checkbox Bar (High Contrast) */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex flex-wrap items-center justify-center gap-2 pt-2.5 border-t border-slate-100 text-xs font-semibold">
-        {/* Price on NSE */}
-        <button
-          type="button"
-          onClick={() => setShowPrice(!showPrice)}
-          title="Daily closing VWAP price line on NSE"
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
-            showPrice ? "bg-indigo-50 border-indigo-200 text-indigo-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
-          )}
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#4338ca]" />
+      <div className="flex flex-wrap items-center justify-center gap-6 pt-3 border-t border-slate-200 text-xs font-bold text-slate-800">
+        {/* Price on NSE Toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-indigo-900 transition-colors">
+          <input
+            type="checkbox"
+            checked={showPrice}
+            onChange={(e) => setShowPrice(e.target.checked)}
+            className="sr-only"
+          />
+          <span className={cn(
+            "w-4 h-4 rounded flex items-center justify-center border transition-all",
+            showPrice ? "bg-[#4338ca] border-[#312e81] text-white shadow-2xs" : "border-slate-300 bg-white"
+          )}>
+            {showPrice && <Check className="w-3 h-3 stroke-[3]" />}
+          </span>
           <span>Price on NSE</span>
-        </button>
+        </label>
 
-        {/* 20 DMA */}
-        <button
-          type="button"
-          onClick={() => setShow20DMA(!show20DMA)}
-          title="20-Day Moving Average: 1-month short term trend baseline"
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
-            show20DMA ? "bg-sky-50 border-sky-200 text-sky-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
-          )}
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#0284c7]" />
-          <span>20 DMA</span>
-        </button>
+        {/* 20 DMA Toggle (§5.1.1) */}
+        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-sky-900 transition-colors">
+          <input
+            type="checkbox"
+            checked={show20DMA}
+            onChange={(e) => setShow20DMA(e.target.checked)}
+            className="sr-only"
+          />
+          <span className={cn(
+            "w-4 h-4 rounded flex items-center justify-center border transition-all",
+            show20DMA ? "bg-[#0284c7] border-[#0369a1] text-white shadow-2xs" : "border-slate-300 bg-white"
+          )}>
+            {show20DMA && <Check className="w-3 h-3 stroke-[3]" />}
+          </span>
+          <span>20 DMA (§5.1.1)</span>
+        </label>
 
-        {/* 50 DMA */}
-        <button
-          type="button"
-          onClick={() => setShow50DMA(!show50DMA)}
-          title="50-Day Moving Average: 2.5-month medium term trend baseline"
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
-            show50DMA ? "bg-amber-50 border-amber-200 text-amber-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
-          )}
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#d97706]" />
-          <span>50 DMA</span>
-        </button>
+        {/* 50 DMA Toggle (§5.1.1) */}
+        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-amber-900 transition-colors">
+          <input
+            type="checkbox"
+            checked={show50DMA}
+            onChange={(e) => setShow50DMA(e.target.checked)}
+            className="sr-only"
+          />
+          <span className={cn(
+            "w-4 h-4 rounded flex items-center justify-center border transition-all",
+            show50DMA ? "bg-[#d97706] border-[#b45309] text-white shadow-2xs" : "border-slate-300 bg-white"
+          )}>
+            {show50DMA && <Check className="w-3 h-3 stroke-[3]" />}
+          </span>
+          <span>50 DMA (§5.1.1)</span>
+        </label>
 
-        {/* Volume */}
-        <button
-          type="button"
-          onClick={() => setShowVolume(!showVolume)}
-          title="Total exchange traded volume (quantity of shares exchanged per day)"
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
-            showVolume ? "bg-slate-100 border-slate-300 text-slate-900 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
-          )}
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#94a3b8]" />
+        {/* Volume Toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-blue-900 transition-colors">
+          <input
+            type="checkbox"
+            checked={showVolume}
+            onChange={(e) => setShowVolume(e.target.checked)}
+            className="sr-only"
+          />
+          <span className={cn(
+            "w-4 h-4 rounded flex items-center justify-center border transition-all",
+            showVolume ? "bg-[#60a5fa] border-[#3b82f6] text-white shadow-2xs" : "border-slate-300 bg-white"
+          )}>
+            {showVolume && <Check className="w-3 h-3 stroke-[3]" />}
+          </span>
           <span>Volume</span>
-        </button>
+        </label>
 
-        {/* 15D Analysis Window */}
-        <button
-          type="button"
-          onClick={() => setShow15DWindow(!show15DWindow)}
-          title="15-Day Analysis Window: Recent observation period compared against the 180-day baseline"
-          className={cn(
-            "inline-flex items-center gap-1.5 px-3 py-1 rounded-full border transition-all cursor-pointer select-none",
-            show15DWindow ? "bg-amber-50 border-amber-300 text-amber-950 font-bold shadow-2xs" : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 opacity-60"
-          )}
-        >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+        {/* 15D Surveillance Window Toggle */}
+        <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-amber-900 transition-colors">
+          <input
+            type="checkbox"
+            checked={show15DWindow}
+            onChange={(e) => setShow15DWindow(e.target.checked)}
+            className="sr-only"
+          />
+          <span className={cn(
+            "w-4 h-4 rounded flex items-center justify-center border transition-all",
+            show15DWindow ? "bg-[#f59e0b] border-[#d97706] text-white shadow-2xs" : "border-slate-300 bg-white"
+          )}>
+            {show15DWindow && <Check className="w-3 h-3 stroke-[3]" />}
+          </span>
           <span>15D Analysis Window</span>
-        </button>
+        </label>
       </div>
     </div>
   );

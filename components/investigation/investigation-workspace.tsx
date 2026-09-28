@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, Fragment } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
@@ -657,7 +657,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             </Card>
 
             {/* Unified Price, Volume & DMA Surveillance Analysis Chart */}
-            <Card className="border-slate-200/90 shadow-xs overflow-hidden">
+            <Card className="group border-slate-200/90 shadow-xs overflow-hidden">
               <SectionHeader
                 icon={<TrendingUp className="w-4.5 h-4.5 text-indigo-600" />}
                 title="Unified Price, Volume & DMA Analysis"
@@ -915,6 +915,75 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       ]}
                     />
                   </Card>
+
+                  {/* TABLE 3: Significant Shareholders Register (Holdings >= 1.00%) */}
+                  {shBreakdown?.major_shareholders && shBreakdown.major_shareholders.length > 0 && (
+                    <Card>
+                      <SectionHeader
+                        icon={<Users className="w-4 h-4 text-amber-600" />}
+                        title="Significant Shareholders Register (Holdings ≥ 1.00%)"
+                        subtitle="Detailed registry of major institutional, promoter, and individual block holders"
+                        info="Entities holding 1% or more of paid-up equity capital. Highlights substantial holders (>= 5%) and pledged positions."
+                      />
+                      <DataTable
+                        alignments={["left", "left", "left", "right", "right", "right", "center"]}
+                        headers={[
+                          "Shareholder Legal Name",
+                          "Client PAN",
+                          "Category",
+                          "Shares Held",
+                          "% Equity",
+                          "Pledged Shares",
+                          "Status Flag"
+                        ]}
+                        rows={shBreakdown.major_shareholders.map((sh: any, idx: number) => {
+                          const pct = Number(sh.holding_pct || 0);
+                          const isPromoter = (sh.category || "").toUpperCase().includes("PROMOTER");
+                          const isSubstantial = pct >= 5.0;
+                          return [
+                            <span key={`name-${idx}`} className="font-bold text-slate-900">{sh.name || sh.client_name}</span>,
+                            <button
+                              type="button"
+                              key={`pan-${idx}`}
+                              onClick={() => sh.pan && setSelectedPan(sh.pan)}
+                              className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                              title="Click to view Client 360 profile"
+                            >
+                              <UserCircle className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              {sh.pan || "—"}
+                            </button>,
+                            <span key={`cat-${idx}`} className="font-medium text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">
+                              {sh.category || "PUBLIC"}
+                            </span>,
+                            <span key={`sh-${idx}`} className="font-mono font-bold text-slate-900">
+                              {Number(sh.shares || 0).toLocaleString("en-IN")}
+                            </span>,
+                            <span key={`pct-${idx}`} className="font-mono font-bold text-indigo-700">
+                              {pct.toFixed(2)}%
+                            </span>,
+                            <span key={`pl-${idx}`} className="font-mono text-slate-600">
+                              {sh.pledged_count ? Number(sh.pledged_count).toLocaleString("en-IN") : "0"}
+                            </span>,
+                            <span key={`flag-${idx}`} className="inline-flex items-center">
+                              {isPromoter ? (
+                                <span className="px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-semibold text-[11px] border border-indigo-100">
+                                  Promoter
+                                </span>
+                              ) : isSubstantial ? (
+                                <span className="px-2 py-0.5 rounded bg-rose-50 text-rose-700 font-semibold text-[11px] border border-rose-200">
+                                  Substantial (≥ 5%)
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px]">
+                                  Standard
+                                </span>
+                              )}
+                            </span>
+                          ];
+                        })}
+                      />
+                    </Card>
+                  )}
                 </>
               );
             })()}
@@ -1243,29 +1312,50 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         <span key="h-bvol" className="inline-flex items-center gap-1 whitespace-nowrap">Buy Vol <InfoTooltip text="Total buy execution quantity." /></span>,
                         <span key="h-svol" className="inline-flex items-center gap-1 whitespace-nowrap">Sell Vol <InfoTooltip text="Total sell execution quantity." /></span>
                       ]}
-                      rows={participants.profit_makers.map((p) => [
-                        <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
-                        <button
-                          type="button"
-                          key={p.participant}
-                          onClick={() => setSelectedPan(p.participant)}
-                          className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
-                          title="Click to view Client 360 profile"
-                        >
-                          <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                          {p.participant}
-                        </button>,
-                        <span key="pnl" className={cn(
-                          "font-mono text-xs font-semibold whitespace-nowrap tabular-nums",
-                          Number(p.net_pnl || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
-                        )}>
-                          {Number(p.net_pnl || 0) >= 0
-                            ? `+₹${Number(p.net_pnl || 0).toLocaleString("en-IN")}`
-                            : `-₹${Math.abs(Number(p.net_pnl || 0)).toLocaleString("en-IN")}`}
-                        </span>,
-                        <span key="bvol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.buy_volume || 0).toLocaleString("en-IN")}</span>,
-                        <span key="svol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.sell_volume || 0).toLocaleString("en-IN")}</span>,
-                      ])}
+                      rows={participants.profit_makers.map((p) => {
+                        const pnlVal = Number(p.net_pnl || 0);
+                        const isPos = pnlVal >= 0;
+                        const absVal = Math.abs(pnlVal);
+                        const formattedAmt = absVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        let macroLabel = "";
+                        if (absVal >= 10000000) {
+                          macroLabel = `${isPos ? "+" : "-"}₹${(absVal / 10000000).toFixed(2)} Cr`;
+                        } else if (absVal >= 100000) {
+                          macroLabel = `${isPos ? "+" : "-"}₹${(absVal / 100000).toFixed(2)} L`;
+                        }
+
+                        return [
+                          <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
+                          <button
+                            type="button"
+                            key={p.participant}
+                            onClick={() => setSelectedPan(p.participant)}
+                            className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                            title="Click to view Client 360 profile"
+                          >
+                            <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            {p.participant}
+                          </button>,
+                          <div key="pnl" className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap tabular-nums">
+                            <span className={cn(
+                              "font-mono text-xs font-bold",
+                              isPos ? "text-emerald-700" : "text-rose-600"
+                            )}>
+                              {isPos ? `+₹${formattedAmt}` : `-₹${formattedAmt}`}
+                            </span>
+                            {macroLabel && (
+                              <span className={cn(
+                                "text-[10px] font-extrabold px-1.5 py-0.2 rounded border font-sans",
+                                isPos ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-rose-50 text-rose-800 border-rose-200"
+                              )}>
+                                {macroLabel}
+                              </span>
+                            )}
+                          </div>,
+                          <span key="bvol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.buy_volume || 0).toLocaleString("en-IN")}</span>,
+                          <span key="svol" className="font-mono text-xs text-slate-700 whitespace-nowrap tabular-nums">{Number(p.sell_volume || 0).toLocaleString("en-IN")}</span>,
+                        ];
+                      })}
                     />
                   </Card>
                 </>

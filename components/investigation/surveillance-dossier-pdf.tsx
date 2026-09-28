@@ -30,17 +30,21 @@ interface SurveillanceDossierPdfProps {
 
 // ── Curated Security & Company Lookups ──
 const COMPANY_NAMES: Record<string, [string, string]> = {
-  ALPHATECH: ["Alpha Technologies Ltd", "INE123A01015"],
-  NOVAENERGY: ["Nova Energy Ltd", "INE002A01018"],
-  ZENITHBIO: ["Zenith Bio-Tech Ltd", "INE456B01023"],
-  ORBITCEM: ["Orbit Cement Ltd", "INE789C01031"],
+  NOVAENERGY: ["Nova Energy Ltd", "INE752716A01"],
+  ALPHATECH: ["Alpha Technologies Ltd", "INE001A01010"],
+  ZENITHBIO: ["Zenith Bio-Tech Ltd", "INE003C01030"],
+  ORBITCEM: ["Orbit Cement Ltd", "INE004D01040"],
   TCS: ["Tata Consultancy Services Ltd", "INE467B01029"],
   SBIN: ["State Bank of India", "INE062A01020"],
   ICICIBANK: ["ICICI Bank Ltd", "INE090A01021"],
   AXISBANK: ["Axis Bank Ltd", "INE238A01034"],
   RELIANCE: ["Reliance Industries Ltd", "INE002A01018"],
-  INFY: ["Infosys Ltd", "INE009A01021"],
   HDFCBANK: ["HDFC Bank Ltd", "INE040A01034"],
+  INFY: ["Infosys Ltd", "INE009A01021"],
+  WIPRO: ["Wipro Ltd", "INE075A01022"],
+  BAJFINANCE: ["Bajaj Finance Ltd", "INE296A01024"],
+  MARUTI: ["Maruti Suzuki India Ltd", "INE585B01010"],
+  SUNPHARMA: ["Sun Pharma Industries Ltd", "INE044A01036"],
 };
 
 // ── PVASF Scoring Calculations ──

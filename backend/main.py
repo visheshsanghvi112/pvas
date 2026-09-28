@@ -20,19 +20,32 @@ from backend.routers.auth import router as auth_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Startup: initialise database schema and seed synthetic data.
+    Startup: initialise database schema and seed synthetic data if empty.
     Teardown: connection cleanup handled automatically.
     """
     from backend.db.database import init_db, SessionLocal
     from backend.db.seed import seed_database
+    from backend.db.models import SysUser, DailyMarketEod
 
     print("[startup] Initialising database schema …")
     init_db()
 
     db = SessionLocal()
     try:
-        summary = seed_database(db)
-        print(f"[startup] Seed summary: {summary}")
+        user_count = db.query(SysUser).count()
+        eod_count = db.query(DailyMarketEod).count()
+        if user_count == 0 or eod_count == 0:
+            summary = seed_database(db)
+            print(f"[startup] Seed summary: {summary}")
+        else:
+            print("[startup] Database already seeded and operational.")
+    except Exception as e:
+        print(f"[startup] Database initialization check: {e}")
+        try:
+            summary = seed_database(db)
+            print(f"[startup] Seed summary: {summary}")
+        except Exception as seed_err:
+            print(f"[startup] Seed error fallback: {seed_err}")
     finally:
         db.close()
 

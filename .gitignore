@@ -23,3 +23,5 @@ __pycache__/
 .env.test.local
 .env.production.local
 agent_reference/
+*.db-wal
+*.db-shm

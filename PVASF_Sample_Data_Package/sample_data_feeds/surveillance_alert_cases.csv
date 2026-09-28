@@ -1,0 +1,16 @@
+case_reference_id,symbol,observation_date,composite_risk_score,alert_severity_level,surveillance_status,metric_price_rise_pct,metric_price_zscore,metric_volume_zscore,metric_band_hit_days,metric_new_high_days,assigned_officer,investigation_notes
+1,NOVAENERGY,2026-08-27,28.5,HIGH,ACTIVE,276.85,3.42,4.15,8,11,vishesh_admin,Scrip flagged with high composite score (28.5/100). Concentrated aggressive buy push delivered by Rahul Gupta and Lokesh Joshi lifting ask price. High bilateral counterparty concentration with Jayant Trivedi.
+2,ALPHATECH,2026-08-27,78.5,HIGH,ACTIVE,28.4,2.45,2.8,5,8,arao_analyst,High-risk alert: Repeated circuit touches with promoter pledge leverage (12.5%) and concentrated bilateral trading.
+3,ZENITHBIO,2026-08-27,56,MEDIUM,ACTIVE,14.2,1.6,1.95,2,4,analyst_surv,Medium risk alert: Elevated volume Z-score with moderate upper circuit persistence.
+4,ORBITCEM,2026-08-27,52,MEDIUM,ACTIVE,18.1,1.75,2.1,3,5,analyst_surv,Medium risk alert: Upper circuit spike on single session with CTCL algorithmic execution pattern.
+5,TCS,2026-08-27,12,LOW,MONITORED,2.3,0.2,0.4,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+6,SBIN,2026-08-27,22.5,LOW,MONITORED,6.2,0.85,1.15,0,1,,Benchmark institutional security continuously observed under standard surveillance filters.
+7,ICICIBANK,2026-08-27,18,LOW,MONITORED,4.1,0.45,0.8,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+8,AXISBANK,2026-08-27,19.5,LOW,MONITORED,5.4,0.6,0.95,0,1,,Benchmark institutional security continuously observed under standard surveillance filters.
+9,RELIANCE,2026-08-27,11,LOW,MONITORED,1.8,0.15,0.3,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+10,HDFCBANK,2026-08-27,13,LOW,MONITORED,2.5,0.25,0.5,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+11,INFY,2026-08-27,14.5,LOW,MONITORED,3.1,0.35,0.6,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+12,WIPRO,2026-08-27,15,LOW,MONITORED,3.2,0.4,0.7,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+13,BAJFINANCE,2026-08-27,17.5,LOW,MONITORED,4.8,0.55,0.85,0,1,,Benchmark institutional security continuously observed under standard surveillance filters.
+14,MARUTI,2026-08-27,10.5,LOW,MONITORED,1.5,0.1,0.25,0,0,,Benchmark institutional security continuously observed under standard surveillance filters.
+15,SUNPHARMA,2026-08-27,16,LOW,MONITORED,3.8,0.5,0.75,0,1,,Benchmark institutional security continuously observed under standard surveillance filters.

@@ -3,23 +3,31 @@ backend/db/seed.py
 ────────────────────────────────────────────────────────────────────────────
 Deterministic high-fidelity database seeder for PVASF.
 Populates all 15 clean relational tables in surveillance.db:
-  - 15 symbols with 200+ trading days of historical OHLCV data (>3,000 records)
-  - Explicit high-risk surveillance profile for NOVAENERGY (Price Rise >250%, Volume Z >3.5, 8+ circuit hits)
-  - Medium-risk surveillance profile for ALPHATECH
-  - 13 benchmark/institutional symbols (TCS, RELIANCE, INFY, HDFCBANK, SBIN, etc.)
-  - Realistic participant trades, counterparty matched pairs, shareholding patterns, corporate events
-  - Default administrative and analyst users (vishesh_admin, arao_analyst, analyst_surv)
+  - 15 symbols with 260 trading days of historical OHLCV data (3,900 records)
+  - Continuous Geometric Brownian Motion with realistic upper-circuit pump profile for NOVAENERGY (135.67 -> 274.74)
+  - 500 deterministic client identities & demat accounts
+  - 15-day multi-symbol participant daily trades (~2,900 records) & counterparty pairs (~800 records)
+  - Accurate trade turnover valuation (matched_turnover = matched_qty * close_price), eliminating P&L distortions
+  - 4 quarters of shareholding summaries & large shareholder registries across all 15 symbols
+  - Corporate actions, dilution factors, and broker daily summaries
+  - Initial system users and audit logs
+  - Analytical surveillance views (v_daily_surveillance_summary, v_participant_conduct_ranking, v_counterparty_concentration)
 """
 
 from __future__ import annotations
 
 import math
+import random
+import string
+import zlib
 from datetime import date, datetime, timedelta
 from typing import Any
 
+import numpy as np
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from backend.db.database import Base, engine, SessionLocal
+from backend.db.database import Base, SessionLocal, engine
 from backend.db.models import (
     BrokerDailySummary,
     ClientDematAccount,
@@ -39,34 +47,77 @@ from backend.db.models import (
 )
 from backend.security import hash_password
 
-# ── Seed Constants ──────────────────────────────────────────────────────────
+RANDOM_SEED = 42
+random.seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
+
 OBSERVATION_DATE = date(2026, 8, 27)
 
-SYMBOLS_META = {
-    "NOVAENERGY":  {"name": "Nova Energy Ltd",                   "isin": "INE002B01020", "base_price": 540.0,  "profile": "PUMP"},
-    "ALPHATECH":   {"name": "Alpha Technologies Ltd",            "isin": "INE001A01010", "base_price": 320.0,  "profile": "RALLY"},
-    "ZENITHBIO":   {"name": "Zenith Bio-Tech Ltd",               "isin": "INE003C01030", "base_price": 180.0,  "profile": "NORMAL"},
-    "ORBITCEM":    {"name": "Orbit Cement Ltd",                  "isin": "INE004D01040", "base_price": 450.0,  "profile": "NORMAL"},
-    "TCS":         {"name": "Tata Consultancy Services Ltd",     "isin": "INE467B01029", "base_price": 3800.0, "profile": "BENCHMARK"},
-    "SBIN":        {"name": "State Bank of India",               "isin": "INE062A01020", "base_price": 820.0,  "profile": "BENCHMARK"},
-    "ICICIBANK":   {"name": "ICICI Bank Ltd",                    "isin": "INE090A01021", "base_price": 1150.0, "profile": "BENCHMARK"},
-    "AXISBANK":    {"name": "Axis Bank Ltd",                     "isin": "INE238A01034", "base_price": 1200.0, "profile": "BENCHMARK"},
-    "RELIANCE":    {"name": "Reliance Industries Ltd",           "isin": "INE002A01018", "base_price": 2900.0, "profile": "BENCHMARK"},
-    "HDFCBANK":    {"name": "HDFC Bank Ltd",                     "isin": "INE040A01034", "base_price": 1650.0, "profile": "BENCHMARK"},
-    "INFY":        {"name": "Infosys Ltd",                       "isin": "INE009A01021", "base_price": 1750.0, "profile": "BENCHMARK"},
-    "WIPRO":       {"name": "Wipro Ltd",                         "isin": "INE075A01022", "base_price": 520.0,  "profile": "BENCHMARK"},
-    "BAJFINANCE":  {"name": "Bajaj Finance Ltd",                 "isin": "INE296A01024", "base_price": 7100.0, "profile": "BENCHMARK"},
-    "MARUTI":      {"name": "Maruti Suzuki India Ltd",           "isin": "INE585B01010", "base_price": 12400.0,"profile": "BENCHMARK"},
-    "SUNPHARMA":   {"name": "Sun Pharma Industries Ltd",         "isin": "INE044A01036", "base_price": 1680.0, "profile": "BENCHMARK"},
-}
+# ── 15 Scrip Universe ────────────────────────────────────────────────────────
+SYMBOLS = [
+    ("NOVAENERGY", 140.0,  0.25, "INE752716A01", "Nova Energy Ltd",                   "PUMP"),
+    ("ALPHATECH",  2400.0, 0.08, "INE001A01010", "Alpha Technologies Ltd",            "RALLY"),
+    ("ZENITHBIO",  1600.0, 0.05, "INE003C01030", "Zenith Bio-Tech Ltd",               "NORMAL"),
+    ("ORBITCEM",   1550.0, 0.12, "INE004D01040", "Orbit Cement Ltd",                  "NORMAL"),
+    ("TCS",        3800.0, 0.04, "INE467B01029", "Tata Consultancy Services Ltd",     "BENCHMARK"),
+    ("SBIN",        780.0, 0.18, "INE062A01020", "State Bank of India",               "BENCHMARK"),
+    ("ICICIBANK",  1100.0, 0.06, "INE090A01021", "ICICI Bank Ltd",                    "BENCHMARK"),
+    ("AXISBANK",   1150.0, 0.15, "INE238A01034", "Axis Bank Ltd",                     "BENCHMARK"),
+    ("RELIANCE",   2900.0, 0.06, "INE002A01018", "Reliance Industries Ltd",           "BENCHMARK"),
+    ("HDFCBANK",   1750.0, 0.05, "INE040A01034", "HDFC Bank Ltd",                     "BENCHMARK"),
+    ("INFY",       1550.0, 0.07, "INE009A01021", "Infosys Ltd",                       "BENCHMARK"),
+    ("WIPRO",       480.0, 0.10, "INE075A01022", "Wipro Ltd",                         "BENCHMARK"),
+    ("BAJFINANCE", 7200.0, 0.12, "INE296A01024", "Bajaj Finance Ltd",                 "BENCHMARK"),
+    ("MARUTI",    11000.0, 0.08, "INE585B01010", "Maruti Suzuki India Ltd",           "BENCHMARK"),
+    ("SUNPHARMA",  1200.0, 0.09, "INE044A01036", "Sun Pharma Industries Ltd",         "BENCHMARK"),
+]
+
+COMPANY_NAMES = {sym[0]: sym[4] for sym in SYMBOLS}
+ISIN_MAP = {sym[0]: sym[3] for sym in SYMBOLS}
+
+BROKERS = [
+    ("TM101", "Apex Global Securities Ltd"),
+    ("TM102", "Zenith Capital Markets Ltd"),
+    ("TM103", "Summit Financial Services Ltd"),
+    ("TM104", "Vanguard Wealth Management Ltd"),
+    ("TM105", "Pioneer Broking & Trades Ltd"),
+    ("TM106", "Beacon Equity Partners Ltd"),
+    ("TM107", "Horizon Prime Securities Ltd"),
+    ("TM108", "Equinox Trading Desk Ltd"),
+    ("TM109", "Nexus Capital Advisors Ltd"),
+    ("TM110", "Matrix Clearing & Broking Ltd"),
+]
+
+FIRST_NAMES = [
+    "Rahul", "Sunita", "Jayant", "Lokesh", "Vikram", "Aditi", "Aarav",
+    "Meera", "Farhan", "Kavya", "Nikhil", "Pooja", "Arjun", "Deepa",
+    "Harish", "Geeta", "Tarun", "Usha", "Yashvi", "Ananya"
+]
+LAST_NAMES = [
+    "Gupta", "Trivedi", "Joshi", "Kapoor", "Sharma", "Agarwal", "Patel",
+    "Mehta", "Iyer", "Singh", "Chatterjee", "Desai", "Rao", "Bose"
+]
+CITIES = ["Mumbai", "Ahmedabad", "Surat", "Delhi", "Jaipur", "Bengaluru", "Hyderabad", "Kolkata", "Pune", "Chennai"]
 
 HOLIDAYS = {
+    date(2025, 8, 15): "Independence Day",
+    date(2025, 10, 2): "Mahatma Gandhi Jayanti",
+    date(2025, 10, 21): "Diwali",
+    date(2025, 12, 25): "Christmas",
     date(2026, 1, 26): "Republic Day",
     date(2026, 3, 6):  "Holi",
     date(2026, 4, 14): "Dr Ambedkar Jayanti",
     date(2026, 5, 1):  "Maharashtra Day",
     date(2026, 8, 15): "Independence Day",
 }
+
+
+def _make_pan(seed_key: str) -> str:
+    r = random.Random(seed_key)
+    a5 = "".join(r.choices(string.ascii_uppercase, k=5))
+    d4 = "".join(r.choices(string.digits, k=4))
+    a1 = r.choice(string.ascii_uppercase)
+    return f"{a5}{d4}{a1}"
 
 
 def _generate_trading_calendar(start_date: date, end_date: date) -> list[dict]:
@@ -87,18 +138,89 @@ def _generate_trading_calendar(start_date: date, end_date: date) -> list[dict]:
     return records
 
 
+def _get_trading_days(n_days: int = 260) -> list[date]:
+    dates = []
+    curr = OBSERVATION_DATE
+    while len(dates) < n_days:
+        if curr.weekday() < 5 and curr not in HOLIDAYS:
+            dates.append(curr)
+        curr -= timedelta(days=1)
+    return sorted(dates)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Analytical Surveillance Views DDL
+# ══════════════════════════════════════════════════════════════════════════════
+
+VIEWS_DDL = """
+CREATE VIEW IF NOT EXISTS v_daily_surveillance_summary AS
+SELECT 
+    d.symbol,
+    d.trade_date,
+    d.close_price,
+    d.prev_close_price,
+    ROUND(((d.close_price - COALESCE(d.prev_close_price, d.close_price)) / NULLIF(d.prev_close_price, 0)) * 100.0, 2) AS price_change_pct,
+    d.total_traded_quantity,
+    d.total_traded_value,
+    d.upper_circuit_limit,
+    d.lower_circuit_limit,
+    CASE WHEN d.close_price >= d.upper_circuit_limit THEN 1 ELSE 0 END AS is_upper_circuit_hit,
+    d.baseline_volume_mean,
+    d.baseline_volume_std
+FROM daily_market_eod d;
+
+CREATE VIEW IF NOT EXISTS v_participant_conduct_ranking AS
+SELECT 
+    p.symbol,
+    p.trade_date,
+    p.client_pan,
+    p.client_legal_name,
+    p.trading_member_id,
+    p.buy_quantity,
+    p.sell_quantity,
+    p.buy_turnover_value,
+    p.sell_turnover_value,
+    p.gross_positive_ltp_value,
+    p.gross_negative_ltp_value,
+    (p.gross_positive_ltp_value - p.gross_negative_ltp_value) AS net_ltp_impact,
+    p.same_broker_wash_quantity,
+    p.client_category
+FROM participant_daily_trades p;
+
+CREATE VIEW IF NOT EXISTS v_counterparty_concentration AS
+SELECT 
+    c.symbol,
+    c.trade_date,
+    c.buyer_pan,
+    c.buyer_legal_name,
+    c.seller_pan,
+    c.seller_legal_name,
+    c.buyer_tm_id,
+    c.seller_tm_id,
+    c.matched_quantity,
+    c.matched_turnover_value,
+    c.pairwise_ltp_push_value,
+    c.is_same_broker_wash,
+    c.algo_execution_flag
+FROM counterparty_trade_pairs c;
+"""
+
+
 def seed_database(db: Session) -> dict[str, Any]:
     """
-    Populates all 15 clean tables with rich deterministic surveillance data.
+    Populates all 15 clean tables with complete, continuous, deterministic surveillance data.
     """
-    # Check if already seeded with full dataset
-    existing_eod = db.query(DailyMarketEod).count()
-    if existing_eod >= 3000:
-        return {"status": "ALREADY_SEEDED", "eod_rows": existing_eod}
-
-    print("[seed] Cleaning and recreating all tables...")
+    print("[seed] Resetting and recreating all 15 clean tables...")
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+
+    # Create analytical views
+    with engine.connect() as conn:
+        for stmt in VIEWS_DDL.strip().split(";"):
+            cleaned = stmt.strip()
+            if cleaned:
+                conn.execute(text(cleaned))
+        conn.commit()
 
     # ── 1. Users & Audit Logs ───────────────────────────────────────────────
     users = [
@@ -162,7 +284,16 @@ def seed_database(db: Session) -> dict[str, Any]:
             role="Admin",
             action="ALERT_GENERATION",
             target="NOVAENERGY",
-            details="Automated EOD scoring triggered: Composite Risk Score 28.5 (HIGH).",
+            details="System computed EOD risk score: 28.5 (HIGH). Added to Active Surveillance Watchlist.",
+            ip_address="127.0.0.1"
+        ),
+        SysAuditLog(
+            timestamp=datetime.utcnow() - timedelta(hours=1),
+            username="vishesh_admin",
+            role="Admin",
+            action="VIEW_DOSSIER",
+            target="NOVAENERGY",
+            details="Officer opened Single-Stock Forensic Investigation Workspace for NOVAENERGY.",
             ip_address="127.0.0.1"
         ),
     ]
@@ -175,379 +306,740 @@ def seed_database(db: Session) -> dict[str, Any]:
     db.add_all([TradingSessionCalendar(**rec) for rec in cal_records])
     db.flush()
 
-    trading_days = [rec["calendar_date"] for rec in cal_records if rec["is_trading_day"] and rec["calendar_date"] <= OBSERVATION_DATE]
-    trading_days.sort()
-    # Use the last 240 trading days
-    eval_trading_days = trading_days[-240:]
+    num_trading_days = 260
+    t_days = _get_trading_days(num_trading_days)
+    print(f"[seed] Trading days generated: {len(t_days)} days from {t_days[0]} to {t_days[-1]}")
 
-    # ── 3. Client Identity Master & Demat Accounts ──────────────────────────
-    clients_data = [
-        ("HWFTM1488X", "Rahul Gupta",              "INDIVIDUAL", "ACTIVE", "Mumbai",    date(2021, 3, 15), "WATCHLIST", "IN300123", "10495821", None,         False),
-        ("CVXUL2488S", "Lokesh Joshi",             "INDIVIDUAL", "ACTIVE", "Ahmedabad", date(2020, 8, 10), "WATCHLIST", "IN300456", "20581942", None,         False),
-        ("XWRUW6552F", "Jayant Trivedi",           "INDIVIDUAL", "ACTIVE", "Surat",     date(2022, 1, 22), "WATCHLIST", "IN300789", "30918234", "PKTBY7338I", True),
-        ("PKTBY7338I", "Sunita Trivedi",           "INDIVIDUAL", "ACTIVE", "Surat",     date(2022, 1, 22), "STANDARD",  "IN300789", "30918235", "XWRUW6552F", False),
-        ("WGLNH6994Q", "Vikram Kapoor",            "INDIVIDUAL", "ACTIVE", "Delhi",     date(2019, 11, 5), "STANDARD",  "IN300111", "40192834", None,         False),
-        ("KVONN8964A", "Sunita Sharma",            "INDIVIDUAL", "ACTIVE", "Jaipur",    date(2023, 4, 18), "STANDARD",  "IN300222", "50821943", None,         False),
-        ("AAACP9876K", "Nova Energy Promoter Trust", "PROMOTER", "ACTIVE", "Mumbai",    date(2015, 6, 12), "STANDARD",  "IN300333", "60931824", None,         False),
-        ("AABCT1234F", "Alpha Holdings Pvt Ltd",   "CORPORATE",  "ACTIVE", "Mumbai",    date(2018, 9, 20), "STANDARD",  "IN300444", "70142859", None,         False),
-        ("PLMNB5544K", "Apex Quant Fund FPI",      "FPI",        "ACTIVE", "Mumbai",    date(2021, 5, 14), "STANDARD",  "IN300555", "80253961", None,         False),
-        ("ZXCVB9988M", "Zenith Venture Partners",  "CORPORATE",  "ACTIVE", "Bengaluru", date(2019, 7, 25), "STANDARD",  "IN300666", "90364072", None,         False),
-        ("QWERT1122D", "Mahesh Deshmukh",          "INDIVIDUAL", "ACTIVE", "Pune",      date(2022, 10, 1), "STANDARD",  "IN300777", "11223344", None,         False),
-        ("ASDFG3344E", "Kavita Shah",              "INDIVIDUAL", "ACTIVE", "Ahmedabad", date(2023, 2, 11), "STANDARD",  "IN300888", "22334455", None,         False),
+    # ── 3. Client Identity Master & Demat Accounts (500 Clients) ────────────
+    print("[seed] Seeding client_identity_master and client_demat_accounts (500 clients)...")
+    ring_clients = [
+        ("HWFTM1488X", "Rahul Gupta",               "INDIVIDUAL", "Mumbai",    "WATCHLIST"),
+        ("CVXUL2488S", "Lokesh Joshi",               "INDIVIDUAL", "Ahmedabad", "WATCHLIST"),
+        ("XWRUW6552F", "Jayant Trivedi",             "INDIVIDUAL", "Surat",     "WATCHLIST"),
+        ("PKTBY7338I", "Sunita Trivedi",             "INDIVIDUAL", "Surat",     "STANDARD"),
+        ("WGLNH6994Q", "Vikram Kapoor",              "INDIVIDUAL", "Delhi",     "STANDARD"),
+        ("KVONN8964A", "Sunita Sharma",              "INDIVIDUAL", "Jaipur",    "STANDARD"),
+        ("AAACP9876K", "Nova Energy Promoter Trust", "PROMOTER",   "Mumbai",    "STANDARD"),
     ]
 
-    for pan, name, etype, state, city, reg_date, grade, dp_id, ben_acc, joint, poa in clients_data:
-        c = ClientIdentityMaster(
-            client_pan=pan,
-            client_legal_name=name,
-            entity_type=etype,
-            account_state=state,
-            residential_city=city,
-            registration_date=reg_date,
-            risk_profile_grade=grade,
-        )
-        db.add(c)
-        db.flush()
-
-        demat = ClientDematAccount(
-            client_pan=pan,
-            depository_id=dp_id,
-            beneficiary_acc_no=ben_acc,
-            account_open_date=reg_date,
-            joint_holder_pan_2=joint,
-            is_poa_active=poa,
-            bank_account_masked=f"XXXXXX{ben_acc[-4:]}"
-        )
-        db.add(demat)
-
-    db.flush()
-
-    # ── 4. Daily Market EOD Prices ───────────────────────────────────────────
-    # Deterministic price simulator
-    all_eod_records = []
-    baseline_stats_records = []
-
-    for sym, meta in SYMBOLS_META.items():
-        base_p = meta["base_price"]
-        profile = meta["profile"]
-        isin = meta["isin"]
-        company = meta["name"]
-
-        # Generate realistic price trajectory
-        price = base_p
-        vol_base = 150000 if profile in ["PUMP", "RALLY"] else 500000
-        vol_std = vol_base * 0.25
-
-        hist_prices = []
-        hist_vols = []
-
-        total_days = len(eval_trading_days)
-        recent_cutoff = total_days - 15  # Last 15 days is the evaluation window
-
-        for idx, t_date in enumerate(eval_trading_days):
-            is_recent = idx >= recent_cutoff
-            day_in_recent = idx - recent_cutoff
-
-            if profile == "PUMP":
-                if not is_recent:
-                    # Slow, steady base phase around 540 -> 1200 over 225 days
-                    drift = 0.003 + 0.001 * math.sin(idx / 10.0)
-                    price *= (1.0 + drift)
-                    vol = vol_base * (0.8 + 0.4 * (idx / total_days))
-                    upper_band = price * 1.05
-                    lower_band = price * 0.95
-                else:
-                    # Aggressive 15-day surge from 1200 -> 2035 with multiple upper circuits
-                    surge_curve = [
-                        1255.0, 1310.0, 1370.0, 1415.0, 1480.0,
-                        1535.0, 1605.0, 1675.0, 1750.0, 1810.0,
-                        1885.0, 1950.0, 2035.0, 2035.0, 2035.0
-                    ]
-                    price = surge_curve[min(day_in_recent, len(surge_curve) - 1)]
-                    vol = vol_base * (3.5 + 0.3 * day_in_recent)  # Massive volume explosion (Z > 3.5)
-                    upper_band = price * 1.05
-                    lower_band = price * 0.95
-            elif profile == "RALLY":
-                if not is_recent:
-                    drift = 0.0015 * math.cos(idx / 12.0)
-                    price *= (1.0 + drift)
-                    vol = vol_base * (0.9 + 0.2 * math.sin(idx / 5.0))
-                else:
-                    drift = 0.015  # +1.5% daily gain in recent window
-                    price *= (1.0 + drift)
-                    vol = vol_base * 2.2
-                upper_band = price * 1.10
-                lower_band = price * 0.90
-            else:
-                # Normal institutional stock movement (random walk around base)
-                wave = 0.008 * math.sin(idx / 8.0) + 0.004 * math.cos(idx / 15.0)
-                price = base_p * (1.0 + wave)
-                vol = vol_base * (1.0 + 0.15 * math.sin(idx / 4.0))
-                upper_band = price * 1.20
-                lower_band = price * 0.80
-
-            high_p = price * (1.0 + (0.015 if not is_recent else 0.025))
-            low_p = price * (1.0 - (0.012 if not is_recent else 0.008))
-            open_p = (price + low_p) / 2.0
-            tot_qty = int(vol)
-            tot_val = round(tot_qty * price, 2)
-            deliv_qty = int(tot_qty * 0.42)
-
-            hist_prices.append(price)
-            hist_vols.append(tot_qty)
-
-            # Prev close
-            prev_close = hist_prices[-2] if len(hist_prices) > 1 else price * 0.99
-
-            rec = DailyMarketEod(
-                symbol=sym,
-                trade_date=t_date,
-                isin=isin,
-                company_name=company,
-                open_price=round(open_p, 2),
-                day_high_price=round(high_p, 2),
-                day_low_price=round(low_p, 2),
-                close_price=round(price, 2),
-                total_traded_quantity=tot_qty,
-                total_traded_value=tot_val,
-                upper_circuit_limit=round(upper_band, 2),
-                lower_circuit_limit=round(lower_band, 2),
-                delivery_quantity=deliv_qty,
-                prev_close_price=round(prev_close, 2),
-                week_52_high_price=round(max(hist_prices), 2),
-                week_52_low_price=round(min(hist_prices), 2),
-                base_price_180d=round(hist_prices[0], 2) if len(hist_prices) >= 180 else round(base_p, 2),
-                baseline_volume_mean=round(sum(hist_vols[:180]) / max(1, len(hist_vols[:180])), 2),
-                baseline_volume_std=round(vol_std, 2),
-            )
-            all_eod_records.append(rec)
-
-        # Baseline stats on observation date
-        base_180 = hist_prices[-(180 + 1)] if len(hist_prices) > 180 else hist_prices[0]
-        v_slice = hist_vols[-195:-15] if len(hist_vols) >= 195 else hist_vols[:180]
-        v_mean = sum(v_slice) / len(v_slice)
-        v_std = math.sqrt(sum((x - v_mean) ** 2 for x in v_slice) / max(1, len(v_slice) - 1)) if len(v_slice) > 1 else 1000.0
-
-        baseline_stats_records.append(MarketBaselineStat(
-            symbol=sym,
-            trade_date=OBSERVATION_DATE,
-            base_price_180d=round(base_180, 2),
-            baseline_volume_mean=round(v_mean, 2),
-            baseline_volume_std=round(v_std, 2),
-            return_mean_180d=0.00125 if profile == "PUMP" else 0.00045,
-            return_std_180d=0.01850 if profile == "PUMP" else 0.01200,
-            peak_high_180d=round(max(hist_prices[:-15]), 2),
-        ))
-
-    db.add_all(all_eod_records)
-    db.add_all(baseline_stats_records)
-    db.flush()
-
-    # ── 5. Participant Daily Trades ──────────────────────────────────────────
-    # High-risk participant trade activities for NOVAENERGY & ALPHATECH
-    part_trades = [
-        # NOVAENERGY top aggressive contributors
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="HWFTM1488X", client_legal_name="Rahul Gupta",
-            trading_member_id="TM101", buy_quantity=85000, sell_quantity=12000, buy_turnover_value=172975000.0, sell_turnover_value=24420000.0,
-            gross_positive_ltp_value=4808097.78, gross_negative_ltp_value=120500.0, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="CVXUL2488S", client_legal_name="Lokesh Joshi",
-            trading_member_id="TM101", buy_quantity=78000, sell_quantity=8000, buy_turnover_value=158730000.0, sell_turnover_value=16280000.0,
-            gross_positive_ltp_value=4633637.45, gross_negative_ltp_value=985045.43, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="XWRUW6552F", client_legal_name="Jayant Trivedi",
-            trading_member_id="TM102", buy_quantity=65000, sell_quantity=5000, buy_turnover_value=132275000.0, sell_turnover_value=10175000.0,
-            gross_positive_ltp_value=4001977.30, gross_negative_ltp_value=95000.0, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="WGLNH6994Q", client_legal_name="Vikram Kapoor",
-            trading_member_id="TM103", buy_quantity=25000, sell_quantity=18000, buy_turnover_value=50875000.0, sell_turnover_value=36630000.0,
-            gross_positive_ltp_value=1276512.15, gross_negative_ltp_value=282888.39, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="PKTBY7338I", client_legal_name="Sunita Trivedi",
-            trading_member_id="TM102", buy_quantity=24000, sell_quantity=15000, buy_turnover_value=48840000.0, sell_turnover_value=30525000.0,
-            gross_positive_ltp_value=1237636.51, gross_negative_ltp_value=150000.0, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-        ParticipantDailyTrade(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, client_pan="KVONN8964A", client_legal_name="Sunita Sharma",
-            trading_member_id="TM104", buy_quantity=22000, sell_quantity=12000, buy_turnover_value=44770000.0, sell_turnover_value=24420000.0,
-            gross_positive_ltp_value=1204066.02, gross_negative_ltp_value=197693.64, same_broker_wash_quantity=0, client_category="INDIVIDUAL"
-        ),
-    ]
-    db.add_all(part_trades)
-
-    # ── 6. Counterparty Matched Pairs ────────────────────────────────────────
-    cpty_pairs = [
-        CounterpartyTradePair(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE,
-            buyer_pan="CVXUL2488S", buyer_legal_name="Lokesh Joshi",
-            seller_pan="HWFTM1488X", seller_legal_name="Rahul Gupta",
-            buyer_tm_id="TM101", seller_tm_id="TM101",
-            matched_quantity=1014255, matched_turnover_value=147117687.75,
-            pairwise_ltp_push_value=4.80, is_same_broker_wash=True
-        ),
-        CounterpartyTradePair(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE,
-            buyer_pan="XWRUW6552F", buyer_legal_name="Jayant Trivedi",
-            seller_pan="CVXUL2488S", seller_legal_name="Lokesh Joshi",
-            buyer_tm_id="TM102", seller_tm_id="TM101",
-            matched_quantity=491930, matched_turnover_value=71354446.50,
-            pairwise_ltp_push_value=2.35, is_same_broker_wash=False
-        ),
-        CounterpartyTradePair(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE,
-            buyer_pan="HWFTM1488X", buyer_legal_name="Rahul Gupta",
-            seller_pan="XWRUW6552F", seller_legal_name="Jayant Trivedi",
-            buyer_tm_id="TM101", seller_tm_id="TM102",
-            matched_quantity=480949, matched_turnover_value=69761652.45,
-            pairwise_ltp_push_value=2.10, is_same_broker_wash=False
-        ),
-        CounterpartyTradePair(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE,
-            buyer_pan="PKTBY7338I", buyer_legal_name="Sunita Trivedi",
-            seller_pan="WGLNH6994Q", seller_legal_name="Vikram Kapoor",
-            buyer_tm_id="TM102", seller_tm_id="TM103",
-            matched_quantity=475280, matched_turnover_value=68939364.00,
-            pairwise_ltp_push_value=1.45, is_same_broker_wash=False
-        ),
-        CounterpartyTradePair(
-            symbol="NOVAENERGY", trade_date=OBSERVATION_DATE,
-            buyer_pan="KVONN8964A", buyer_legal_name="Sunita Sharma",
-            seller_pan="XWRUW6552F", seller_legal_name="Jayant Trivedi",
-            buyer_tm_id="TM104", seller_tm_id="TM102",
-            matched_quantity=416520, matched_turnover_value=60416226.00,
-            pairwise_ltp_push_value=1.15, is_same_broker_wash=False
-        ),
-    ]
-    db.add_all(cpty_pairs)
-
-    # ── 7. Shareholding Pattern ──────────────────────────────────────────────
-    for sym in SYMBOLS_META.keys():
-        if sym == "NOVAENERGY":
-            p_pct, top1_pct, float_pct = 58.45, 18.20, 23.35
-            pledged = 12.50
-        elif sym == "ALPHATECH":
-            p_pct, top1_pct, float_pct = 62.00, 14.50, 23.50
-            pledged = 5.00
+    clients = []
+    for i in range(500):
+        if i < len(ring_clients):
+            pan, name, etype, city, grade = ring_clients[i]
         else:
-            p_pct, top1_pct, float_pct = 50.00, 25.00, 25.00
-            pledged = 0.00
+            pan = _make_pan(f"CLIENT_SEED_{i:04d}")
+            fn = random.choice(FIRST_NAMES)
+            ln = random.choice(LAST_NAMES)
+            name = f"{fn} {ln}"
+            city = random.choice(CITIES)
+            etype = "PROMOTER" if i == 6 else ("CORPORATE" if i % 8 == 0 else "INDIVIDUAL")
+            grade = "HIGH_RISK" if i < 20 else ("WATCHLIST" if i < 50 else "STANDARD")
 
-        tot_sh = 100000000
-        sh_records = [
-            ShareholdingSummary(
-                symbol=sym, quarter_code="Q127", filing_date=date(2026, 6, 30),
-                category_type="PROMOTER_GROUP", total_shares_count=int(tot_sh * p_pct / 100.0),
-                holding_percentage=p_pct, pledged_shares_percentage=pledged, unique_holding_pans=14, avg_daily_trading_pans=24
-            ),
-            ShareholdingSummary(
-                symbol=sym, quarter_code="Q127", filing_date=date(2026, 6, 30),
-                category_type="TOP_1_PCT_PUBLIC", total_shares_count=int(tot_sh * top1_pct / 100.0),
-                holding_percentage=top1_pct, pledged_shares_percentage=0.0, unique_holding_pans=120, avg_daily_trading_pans=24
-            ),
-            ShareholdingSummary(
-                symbol=sym, quarter_code="Q127", filing_date=date(2026, 6, 30),
-                category_type="GENERAL_PUBLIC_FLOAT", total_shares_count=int(tot_sh * float_pct / 100.0),
-                holding_percentage=float_pct, pledged_shares_percentage=0.0, unique_holding_pans=14250, avg_daily_trading_pans=24
-            ),
-        ]
-        db.add_all(sh_records)
+        reg_date = date(2020, 1, 1) + timedelta(days=i * 4)
+        clients.append({
+            "pan": pan,
+            "name": name,
+            "type": etype,
+            "city": city,
+            "grade": grade,
+            "reg_date": reg_date
+        })
 
-    # Large shareholders
-    large_holders = [
-        LargeShareholdersRegistry(
-            symbol="NOVAENERGY", quarter_code="Q127", holder_pan="AAACP9876K", holder_legal_name="Nova Energy Promoter Trust",
-            holder_category="PROMOTER", shares_held=42000000, holding_percentage=42.00, pledged_shares_count=5250000
-        ),
-        LargeShareholdersRegistry(
-            symbol="NOVAENERGY", quarter_code="Q127", holder_pan="PLMNB5544K", holder_legal_name="Apex Quant Fund FPI",
-            holder_category="INSTITUTIONAL_FPI", shares_held=9500000, holding_percentage=9.50, pledged_shares_count=0
-        ),
-        LargeShareholdersRegistry(
-            symbol="ALPHATECH", quarter_code="Q127", holder_pan="AABCT1234F", holder_legal_name="Alpha Holdings Pvt Ltd",
-            holder_category="PROMOTER", shares_held=50000000, holding_percentage=50.00, pledged_shares_count=2500000
-        ),
+    client_map = {cl["pan"]: cl for cl in clients}
+
+    client_entities = [
+        ClientIdentityMaster(
+            client_pan=cl["pan"],
+            client_legal_name=cl["name"],
+            entity_type=cl["type"],
+            account_state="ACTIVE",
+            residential_city=cl["city"],
+            registration_date=cl["reg_date"],
+            risk_profile_grade=cl["grade"]
+        )
+        for cl in clients
     ]
-    db.add_all(large_holders)
+    db.add_all(client_entities)
+    db.flush()
 
-    # ── 8. Corporate Events & Dilution Factors ───────────────────────────────
-    corp_events = [
-        CorporateEventsFeed(
-            symbol="NOVAENERGY", isin="INE002B01020", action_category="BONUS",
-            announcement_purpose="Board approves 1:1 Bonus Issue of Equity Shares",
-            announcement_date=date(2026, 8, 20), ex_date=date(2026, 8, 25), record_date=date(2026, 8, 26),
-            ratio_or_value="1:1", dilution_factor=0.500000
-        ),
-        CorporateEventsFeed(
-            symbol="NOVAENERGY", isin="INE002B01020", action_category="BOARD_MEETING",
-            announcement_purpose="Outcome of Board Meeting - Consideration of Financial Results",
-            announcement_date=date(2026, 8, 14), ex_date=None, record_date=None,
-            ratio_or_value=None, dilution_factor=1.000000
-        ),
-        CorporateEventsFeed(
-            symbol="ALPHATECH", isin="INE001A01010", action_category="DIVIDEND",
-            announcement_purpose="Interim Dividend of INR 8.00 per share declared",
-            announcement_date=date(2026, 8, 5), ex_date=date(2026, 8, 18), record_date=date(2026, 8, 19),
-            ratio_or_value="INR 8.00", dilution_factor=1.000000
-        ),
+    # Golden demat accounts from surveillance_schema.sql (exact DP IDs and BO account numbers)
+    GOLDEN_DEMAT = {
+        "HWFTM1488X": ("IN300123", "10495821", None,         False, "XXXXXX4819"),
+        "CVXUL2488S": ("IN300456", "20581942", None,         False, "XXXXXX1029"),
+        "XWRUW6552F": ("IN300789", "30918234", "PKTBY7338I", True,  "XXXXXX8821"),
+        "PKTBY7338I": ("IN300789", "30918235", "XWRUW6552F", False, "XXXXXX8821"),
+        "WGLNH6994Q": ("IN300111", "40192834", None,         False, "XXXXXX3391"),
+        "KVONN8964A": ("IN300222", "50821943", None,         False, "XXXXXX7741"),
+        "AAACP9876K": ("IN300001", "60000001", None,         False, "XXXXXX0001"),
+    }
+    demat_entities = []
+    for idx, cl in enumerate(clients):
+        if cl["pan"] in GOLDEN_DEMAT:
+            dep_id, ben_acc, joint2, is_poa, bank_masked = GOLDEN_DEMAT[cl["pan"]]
+        else:
+            dep_id = f"IN300{str(100 + (idx % 25)).zfill(3)}"
+            ben_acc = f"10{str(idx).zfill(6)}"
+            joint2 = None
+            is_poa = False
+            bank_masked = f"XXXXXX{random.randint(1000, 9999)}"
+        demat_entities.append(
+            ClientDematAccount(
+                client_pan=cl["pan"],
+                depository_id=dep_id,
+                beneficiary_acc_no=ben_acc,
+                account_open_date=cl["reg_date"],
+                joint_holder_pan_2=joint2,
+                is_poa_active=is_poa,
+                bank_account_masked=bank_masked
+            )
+        )
+    db.add_all(demat_entities)
+    db.flush()
+
+    # ── 4. Daily Market EOD Prices & Baseline Statistics ─────────────────────
+    print("[seed] Generating daily_market_eod and market_baseline_stats...")
+    all_eod_records = []
+    all_baseline_stats = []
+
+    close_price_by_sym_date: dict[tuple[str, str], float] = {}
+
+    for sym, base_price, vol_pct, isin, comp_name, profile in SYMBOLS:
+        r_state = np.random.RandomState(zlib.crc32(sym.encode("utf-8")) % 10000)
+
+        closes = np.zeros(num_trading_days)
+        volumes = np.zeros(num_trading_days)
+        closes[0] = base_price
+
+        if profile == "PUMP":  # NOVAENERGY
+            golden_15_closes = [142.05, 149.11, 156.47, 163.88, 171.42, 179.96, 188.35, 197.43, 207.21, 216.63, 227.00, 237.82, 249.38, 261.77, 274.74]
+            golden_15_vols = [1773627, 2036939, 1425246, 1657804, 1950085, 1669326, 1745849, 1894577, 1923398, 2041329, 1695132, 1700065, 1856936, 1705959, 1971401]
+            for day_i in range(1, 245):
+                ret = r_state.normal(-0.0001, 0.004)
+                closes[day_i] = round(closes[day_i - 1] * (1.0 + ret), 2)
+            closes[245:] = golden_15_closes
+            volumes[:245] = np.maximum(r_state.normal(150000, 10000, 245), 40000)
+            volumes[245:] = golden_15_vols
+
+        elif profile == "RALLY":  # ALPHATECH
+            circuit_days = {246, 248, 250, 252, 254, 256, 258, 259}
+            for day_i in range(1, num_trading_days):
+                if day_i < 245:
+                    ret = r_state.normal(0.0007, 0.008)
+                else:
+                    ret = 0.098 if day_i in circuit_days else r_state.uniform(0.008, 0.015)
+                closes[day_i] = round(closes[day_i - 1] * (1.0 + ret), 2)
+
+            volumes[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volumes[245:] = r_state.normal(1200000, 30000, 15)
+
+        elif sym == "ZENITHBIO":
+            circuit_days = {247, 250, 252, 255, 257, 259}
+            for day_i in range(1, num_trading_days):
+                if day_i < 245:
+                    ret = r_state.normal(0.0006, 0.007)
+                else:
+                    ret = 0.055 if day_i in circuit_days else r_state.uniform(0.005, 0.012)
+                closes[day_i] = round(closes[day_i - 1] * (1.0 + ret), 2)
+
+            volumes[:245] = np.maximum(r_state.normal(140000, 10000, 245), 40000)
+            volumes[245:] = r_state.normal(800000, 25000, 15)
+
+        elif sym == "ORBITCEM":
+            circuit_days = {257}
+            for day_i in range(1, num_trading_days):
+                if day_i < 245:
+                    ret = r_state.normal(0.0003, 0.006)
+                else:
+                    ret = 0.114 if day_i in circuit_days else r_state.uniform(0.001, 0.006)
+                closes[day_i] = round(closes[day_i - 1] * (1.0 + ret), 2)
+
+            volumes[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
+            volumes[245:] = r_state.normal(210000, 10000, 15)
+
+        else:  # BENCHMARK BLUECHIPS
+            for day_i in range(1, num_trading_days):
+                ret = r_state.normal(0.0001, 0.006)
+                closes[day_i] = round(closes[day_i - 1] * (1.0 + ret), 2)
+            volumes = np.maximum(r_state.normal(300000, 25000, num_trading_days), 80000)
+
+        hist_p: list[float] = []
+        hist_v: list[int] = []
+
+        for day_i, trd_date in enumerate(t_days):
+            d_str = trd_date.strftime("%Y-%m-%d")
+            c_price = float(closes[day_i])
+            prev_c = float(closes[day_i - 1]) if day_i > 0 else c_price
+
+            close_price_by_sym_date[(sym, d_str)] = c_price
+
+            is_pump_window = (profile == "PUMP" and day_i >= 245)
+            if is_pump_window:
+                open_p = round(prev_c * 1.012, 2)
+                upper_band = round(prev_c * 1.05, 2)
+                lower_band = round(prev_c * 0.95, 2)
+                high_p = max(c_price, upper_band)
+                low_p = round(min(open_p, c_price) * 0.995, 2)
+            else:
+                open_p = round(prev_c * r_state.uniform(0.998, 1.002), 2)
+                upper_band = round(prev_c * 1.05, 2)
+                lower_band = round(prev_c * 0.95, 2)
+                high_p = round(max(open_p, c_price) * r_state.uniform(1.0, 1.010), 2)
+                low_p = round(min(open_p, c_price) * r_state.uniform(0.990, 1.0), 2)
+
+            tot_qty = int(volumes[day_i])
+            tot_val = round(tot_qty * c_price, 2)
+            deliv_qty = int(tot_qty * (0.55 if is_pump_window else 0.42))
+
+            hist_p.append(c_price)
+            hist_v.append(tot_qty)
+
+            base_180 = hist_p[max(0, len(hist_p) - 180)]
+            v_slice = hist_v[max(0, len(hist_v) - 180):]
+            v_mean = float(np.mean(v_slice))
+            v_std = float(max(100.0, np.std(v_slice)))
+            w52_high = max(hist_p)
+            w52_low = min(hist_p)
+
+            all_eod_records.append(
+                DailyMarketEod(
+                    symbol=sym,
+                    trade_date=trd_date,
+                    isin=isin,
+                    company_name=comp_name,
+                    open_price=open_p,
+                    day_high_price=high_p,
+                    day_low_price=low_p,
+                    close_price=c_price,
+                    total_traded_quantity=tot_qty,
+                    total_traded_value=tot_val,
+                    upper_circuit_limit=upper_band,
+                    lower_circuit_limit=lower_band,
+                    delivery_quantity=deliv_qty,
+                    prev_close_price=prev_c,
+                    week_52_high_price=round(w52_high, 2),
+                    week_52_low_price=round(w52_low, 2),
+                    base_price_180d=round(base_180, 2),
+                    baseline_volume_mean=round(v_mean, 2),
+                    baseline_volume_std=round(v_std, 2)
+                )
+            )
+
+            if day_i >= 180:
+                h_c = closes[day_i - 180:day_i]
+                h_v = volumes[day_i - 180:day_i]
+                r_diffs = np.diff(h_c) / h_c[:-1]
+                all_baseline_stats.append(
+                    MarketBaselineStat(
+                        symbol=sym,
+                        trade_date=trd_date,
+                        base_price_180d=round(float(h_c[0]), 2),
+                        baseline_volume_mean=round(float(np.mean(h_v)), 2),
+                        baseline_volume_std=round(float(max(1.0, np.std(h_v))), 2),
+                        return_mean_180d=round(float(np.mean(r_diffs)), 6),
+                        return_std_180d=round(float(max(0.001, np.std(r_diffs))), 6),
+                        peak_high_180d=round(float(np.max(h_c)), 2)
+                    )
+                )
+
+    db.bulk_save_objects(all_eod_records)
+    db.bulk_save_objects(all_baseline_stats)
+    db.flush()
+    print(f"[seed] Seeded {len(all_eod_records)} EOD market rows & {len(all_baseline_stats)} baseline statistics.")
+
+    # ── 5. Participant Daily Trades & Counterparty Pairs ─────────────────────
+    print("[seed] Generating multi-date participant_daily_trades and counterparty_trade_pairs across 15-day window...")
+    recent_15_days = t_days[-15:]
+    part_trades: list[ParticipantDailyTrade] = []
+    cpty_pairs: list[CounterpartyTradePair] = []
+
+    ring_pans = ["HWFTM1488X", "CVXUL2488S", "XWRUW6552F", "PKTBY7338I", "WGLNH6994Q", "KVONN8964A"]
+
+    for sym, _, _, _, _, profile in SYMBOLS:
+        active_client_subset = clients[:40]
+        for trd_d in recent_15_days:
+            d_str = trd_d.strftime("%Y-%m-%d")
+            cp = close_price_by_sym_date.get((sym, d_str), 100.0)
+
+            if sym == "NOVAENERGY":
+                day_pans = list(ring_pans) + [cl["pan"] for cl in active_client_subset[6:14]]
+            elif sym in ["ALPHATECH", "ZENITHBIO", "ORBITCEM"]:
+                day_pans = [cl["pan"] for cl in active_client_subset[:12]]
+            else:
+                day_pans = [cl["pan"] for cl in random.sample(active_client_subset, 10)]
+
+            day_idx = recent_15_days.index(trd_d)
+            for idx_p, pan in enumerate(day_pans):
+                cl_info = client_map[pan]
+                brk_id = BROKERS[idx_p % len(BROKERS)][0]
+
+                if sym == "NOVAENERGY" and pan in ring_pans:
+                    b_qty = random.randint(45000, 110000)
+                    s_qty = random.randint(30000, 95000)
+                    b_val = round(b_qty * cp, 2)
+                    s_val = round(s_qty * cp, 2)
+                    # Exact golden per-share daily push distribution (summing to 4.80, 2.35, 2.10, 1.45, 1.15)
+                    day_push_map = {
+                        "CVXUL2488S": 0.32,
+                        "XWRUW6552F": 0.16 if day_idx < 10 else 0.15,
+                        "HWFTM1488X": 0.14,
+                        "PKTBY7338I": 0.10 if day_idx < 10 else 0.09,
+                        "KVONN8964A": 0.08 if day_idx < 10 else 0.07,
+                    }
+                    pos_push = day_push_map.get(pan, 0.0)
+                    neg_push = 0.0  # Pure aggressive price pushers, no negative price suppressors
+                    wash_q = int(min(b_qty, s_qty) * 0.70)
+                else:
+                    b_qty = random.randint(8000, 45000)
+                    s_qty = random.randint(8000, 42000)
+                    b_val = round(b_qty * cp, 2)
+                    s_val = round(s_qty * cp, 2)
+                    pos_push = round(b_val * 0.020, 2)
+                    neg_push = round(s_val * 0.020, 2)
+                    wash_q = 0
+
+                part_trades.append(
+                    ParticipantDailyTrade(
+                        symbol=sym,
+                        trade_date=trd_d,
+                        client_pan=pan,
+                        client_legal_name=cl_info["name"],
+                        trading_member_id=brk_id,
+                        buy_quantity=b_qty,
+                        sell_quantity=s_qty,
+                        buy_turnover_value=b_val,
+                        sell_turnover_value=s_val,
+                        gross_positive_ltp_value=pos_push,
+                        gross_negative_ltp_value=neg_push,
+                        same_broker_wash_quantity=wash_q,
+                        buy_trade_count=random.randint(12, 85),
+                        sell_trade_count=random.randint(8, 65),
+                        aggressor_buy_quantity=int(b_qty * 0.65),
+                        client_category=cl_info["type"]
+                    )
+                )
+
+            # Counterparty matched trade pairs
+            if sym == "NOVAENERGY":
+                # Exact golden bilateral legs matching surveillance_schema.sql
+                # Across the 15-day window, daily pushes sum to exact golden per-share points:
+                # CVXUL2488S: 4.80 (40.51%), XWRUW6552F: 2.35 (19.83%), HWFTM1488X: 2.10 (17.72%),
+                # PKTBY7338I: 1.45 (12.24%), KVONN8964A: 1.15 (9.70%)
+                push_cvx = 0.32
+                push_xwr = 0.16 if day_idx < 10 else 0.15
+                push_hwf = 0.14
+                push_pkt = 0.10 if day_idx < 10 else 0.09
+                push_kvo = 0.08 if day_idx < 10 else 0.07
+
+                bilateral_legs = [
+                    ("CVXUL2488S", "HWFTM1488X", "TM101", "TM101", int(1014255 / 15), True, push_cvx),
+                    ("XWRUW6552F", "CVXUL2488S", "TM102", "TM101", int(491930 / 15), False, push_xwr),
+                    ("HWFTM1488X", "XWRUW6552F", "TM101", "TM102", int(480949 / 15), False, push_hwf),
+                    ("PKTBY7338I", "WGLNH6994Q", "TM102", "TM103", int(475280 / 15), False, push_pkt),
+                    ("KVONN8964A", "XWRUW6552F", "TM104", "TM102", int(416520 / 15), False, push_kvo),
+                ]
+            elif sym in ["ALPHATECH", "ZENITHBIO", "ORBITCEM"]:
+                p0, p1, p2, p3 = day_pans[0], day_pans[1], day_pans[2], day_pans[3]
+                bilateral_legs = [
+                    (p0, p1, "TM101", "TM102", random.randint(120000, 250000), False, 1.20),
+                    (p1, p2, "TM102", "TM103", random.randint(110000, 240000), False, 0.95),
+                    (p2, p0, "TM103", "TM101", random.randint(105000, 230000), False, 0.80),
+                    (p3, p1, "TM104", "TM102", random.randint(80000, 150000), False, 0.50),
+                ]
+            else:
+                p0, p1 = day_pans[0], day_pans[1]
+                p2, p3 = day_pans[2], day_pans[3]
+                bilateral_legs = [
+                    (p0, p1, "TM101", "TM102", random.randint(25000, 60000), False, 0.25),
+                    (p2, p3, "TM103", "TM104", random.randint(20000, 50000), False, 0.20),
+                    (p1, p0, "TM102", "TM101", random.randint(18000, 45000), False, 0.15),
+                ]
+
+            for leg in bilateral_legs:
+                b_pan, s_pan, b_tm, s_tm, m_qty, same_brk, push = leg
+                m_val = round(m_qty * cp, 2)
+                b_name = client_map[b_pan]["name"]
+                s_name = client_map[s_pan]["name"]
+
+                cpty_pairs.append(
+                    CounterpartyTradePair(
+                        symbol=sym,
+                        trade_date=trd_d,
+                        buyer_pan=b_pan,
+                        buyer_legal_name=b_name,
+                        seller_pan=s_pan,
+                        seller_legal_name=s_name,
+                        buyer_tm_id=b_tm,
+                        seller_tm_id=s_tm,
+                        matched_quantity=m_qty,
+                        matched_turnover_value=m_val,
+                        pairwise_ltp_push_value=push,
+                        reverse_matched_quantity=int(m_qty * 0.95),
+                        is_same_broker_wash=same_brk,
+                        algo_execution_flag=1 if sym == "ORBITCEM" else 0
+                    )
+                )
+
+    db.bulk_save_objects(part_trades)
+    db.bulk_save_objects(cpty_pairs)
+    db.flush()
+    print(f"[seed] Seeded {len(part_trades)} participant trades & {len(cpty_pairs)} counterparty pairs.")
+
+    # ── 6. Shareholding Summary & Registry (4 Quarters across 15 Symbols) ────
+    print("[seed] Seeding shareholding_summary and large_shareholders_registry...")
+    quarters = [
+        ("Q325", date(2025, 9, 30)),
+        ("Q425", date(2025, 12, 31)),
+        ("Q126", date(2026, 3, 31)),
+        ("Q226", date(2026, 6, 30))
     ]
-    db.add_all(corp_events)
 
-    dilution_factors = [
-        PriceDilutionFactor(symbol="NOVAENERGY", split_multiplier=0.500000, valid_from_date=date(2026, 8, 25), valid_thru_date=date(9999, 12, 31)),
-        PriceDilutionFactor(symbol="ALPHATECH", split_multiplier=1.000000, valid_from_date=date(2020, 1, 1), valid_thru_date=date(9999, 12, 31)),
-    ]
-    db.add_all(dilution_factors)
+    sh_summary_records: list[ShareholdingSummary] = []
+    large_holder_records: list[LargeShareholdersRegistry] = []
 
-    # ── 9. Broker Daily Summary ──────────────────────────────────────────────
-    broker_summaries = [
-        BrokerDailySummary(trading_member_id="TM101", trading_member_name="Alpha Securities Pvt Ltd",    symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, total_buy_volume=163000, total_sell_volume=20000, same_broker_wash_volume=1014255, total_turnover_value=331705000.0),
-        BrokerDailySummary(trading_member_id="TM102", trading_member_name="Zenith Capital Markets Ltd", symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, total_buy_volume=89000,  total_sell_volume=20000, same_broker_wash_volume=0,       total_turnover_value=181115000.0),
-        BrokerDailySummary(trading_member_id="TM103", trading_member_name="Metro Equity Broking Ltd",   symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, total_buy_volume=25000,  total_sell_volume=18000, same_broker_wash_volume=0,       total_turnover_value=87505000.0),
-        BrokerDailySummary(trading_member_id="TM104", trading_member_name="Prime Broking Services Ltd", symbol="NOVAENERGY", trade_date=OBSERVATION_DATE, total_buy_volume=22000,  total_sell_volume=12000, same_broker_wash_volume=0,       total_turnover_value=69190000.0),
-    ]
-    db.add_all(broker_summaries)
+    for sym, _, _, _, _, _ in SYMBOLS:
+        tot_cap = 100_000_000
+        for q_code, q_date in quarters:
+            if sym == "NOVAENERGY":
+                # Golden values from surveillance_schema.sql (Q127 / 2026-06-30)
+                prom_pct, top1_pct, float_pct = 58.45, 18.20, 23.35
+                pledged_pct = 12.50
+                nova_prom_shares = 58_450_000
+                nova_prom_pledged = 5_250_000
+                unique_prom_pans, avg_prom_pans = 14, 24
+                unique_top1_pans, avg_top1_pans = 120, 24
+                unique_float_pans, avg_float_pans = 14250, 24
+            elif sym == "ALPHATECH":
+                prom_pct, top1_pct, float_pct = 62.00, 16.50, 21.50
+                pledged_pct = 6.00
+                unique_prom_pans, avg_prom_pans = 4, 1
+                unique_top1_pans, avg_top1_pans = 18, 12
+                unique_float_pans, avg_float_pans = 42000, 850
+            else:
+                prom_pct, top1_pct, float_pct = 50.00, 25.00, 25.00
+                pledged_pct = 0.00
+                unique_prom_pans, avg_prom_pans = 4, 1
+                unique_top1_pans, avg_top1_pans = 18, 12
+                unique_float_pans, avg_float_pans = 42000, 850
 
-    # ── 10. Surveillance Alert Cases ─────────────────────────────────────────
+            # Use Q127 as the primary quarter code for NOVAENERGY (golden spec)
+            eff_q_code = "Q127" if sym == "NOVAENERGY" else q_code
+            eff_q_date = date(2026, 6, 30) if sym == "NOVAENERGY" else q_date
+
+            sh_summary_records.append(
+                ShareholdingSummary(
+                    symbol=sym, quarter_code=eff_q_code, filing_date=eff_q_date,
+                    category_type="PROMOTER_GROUP",
+                    total_shares_count=nova_prom_shares if sym == "NOVAENERGY" else int(tot_cap * prom_pct / 100),
+                    holding_percentage=prom_pct,
+                    pledged_shares_percentage=pledged_pct,
+                    locked_in_shares_percentage=0.0,
+                    unique_holding_pans=unique_prom_pans, avg_daily_trading_pans=avg_prom_pans
+                )
+            )
+            sh_summary_records.append(
+                ShareholdingSummary(
+                    symbol=sym, quarter_code=eff_q_code, filing_date=eff_q_date,
+                    category_type="TOP_1_PCT_PUBLIC",
+                    total_shares_count=int(tot_cap * top1_pct / 100),
+                    holding_percentage=top1_pct,
+                    pledged_shares_percentage=0.0,
+                    locked_in_shares_percentage=0.0,
+                    unique_holding_pans=unique_top1_pans, avg_daily_trading_pans=avg_top1_pans
+                )
+            )
+            sh_summary_records.append(
+                ShareholdingSummary(
+                    symbol=sym, quarter_code=eff_q_code, filing_date=eff_q_date,
+                    category_type="GENERAL_PUBLIC_FLOAT",
+                    total_shares_count=int(tot_cap * float_pct / 100),
+                    holding_percentage=float_pct,
+                    pledged_shares_percentage=0.0,
+                    locked_in_shares_percentage=0.0,
+                    unique_holding_pans=unique_float_pans, avg_daily_trading_pans=avg_float_pans
+                )
+            )
+
+            # NOVAENERGY large shareholder: Nova Energy Promoter Trust (AAACP9876K)
+            if sym == "NOVAENERGY":
+                large_holder_records.append(
+                    LargeShareholdersRegistry(
+                        symbol=sym, quarter_code=eff_q_code,
+                        holder_pan="AAACP9876K",
+                        holder_legal_name="Nova Energy Promoter Trust",
+                        holder_category="PROMOTER",
+                        shares_held=42_000_000,
+                        holding_percentage=42.00,
+                        pledged_shares_count=nova_prom_pledged
+                    )
+                )
+            else:
+                large_holder_records.append(
+                    LargeShareholdersRegistry(
+                        symbol=sym, quarter_code=eff_q_code,
+                        holder_pan=clients[0]["pan"], holder_legal_name=clients[0]["name"],
+                        holder_category="PROMOTER",
+                        shares_held=int(tot_cap * prom_pct / 100),
+                        holding_percentage=prom_pct,
+                        pledged_shares_count=int(tot_cap * prom_pct * pledged_pct / 10000)
+                    )
+                )
+            large_holder_records.append(
+                LargeShareholdersRegistry(
+                    symbol=sym, quarter_code=eff_q_code,
+                    holder_pan=clients[1]["pan"], holder_legal_name=clients[1]["name"],
+                    holder_category="INSTITUTIONAL_DII",
+                    shares_held=int(tot_cap * 0.08),
+                    holding_percentage=8.00,
+                    pledged_shares_count=0
+                )
+            )
+            large_holder_records.append(
+                LargeShareholdersRegistry(
+                    symbol=sym, quarter_code=eff_q_code,
+                    holder_pan=clients[2]["pan"], holder_legal_name=clients[2]["name"],
+                    holder_category="INSTITUTIONAL_FPI",
+                    shares_held=int(tot_cap * 0.055),
+                    holding_percentage=5.50,
+                    pledged_shares_count=0
+                )
+            )
+            large_holder_records.append(
+                LargeShareholdersRegistry(
+                    symbol=sym, quarter_code=eff_q_code,
+                    holder_pan=clients[3]["pan"], holder_legal_name=clients[3]["name"],
+                    holder_category="PUBLIC_INDIVIDUAL",
+                    shares_held=int(tot_cap * 0.04),
+                    holding_percentage=4.00,
+                    pledged_shares_count=0
+                )
+            )
+            # Skip duplicate quarters for NOVAENERGY (golden spec has a single Q127 entry)
+            if sym == "NOVAENERGY":
+                break
+
+    db.bulk_save_objects(sh_summary_records)
+    db.bulk_save_objects(large_holder_records)
+    db.flush()
+    print(f"[seed] Seeded {len(sh_summary_records)} shareholding summaries & {len(large_holder_records)} large shareholder records.")
+
+    # ── 7. Corporate Events & Price Dilution Factors ─────────────────────────
+    print("[seed] Seeding corporate_events_feed and price_dilution_factors...")
+    corp_events: list[CorporateEventsFeed] = []
+    dilution_factors: list[PriceDilutionFactor] = []
+
+    for sym, _, _, isin, _, _ in SYMBOLS:
+        if sym == "NOVAENERGY":
+            # Golden corporate actions from surveillance_schema.sql:
+            # 1. Board Meeting - Outcome of Board Meeting (2026-08-14)
+            corp_events.append(
+                CorporateEventsFeed(
+                    symbol=sym, isin=isin, action_category="BOARD_MEETING",
+                    announcement_purpose="Outcome of Board Meeting - Financial Results",
+                    announcement_date=date(2026, 8, 14),
+                    ex_date=None, record_date=None, ratio_or_value=None, dilution_factor=1.000000
+                )
+            )
+            # 2. Bonus 1:1 (ex 2026-08-25, record 2026-08-26)
+            corp_events.append(
+                CorporateEventsFeed(
+                    symbol=sym, isin=isin, action_category="BONUS",
+                    announcement_purpose="Board approves 1:1 Bonus Issue of Equity Shares",
+                    announcement_date=date(2026, 8, 20),
+                    ex_date=date(2026, 8, 25), record_date=date(2026, 8, 26),
+                    ratio_or_value="1:1", dilution_factor=0.500000
+                )
+            )
+            dilution_factors.append(
+                PriceDilutionFactor(
+                    symbol=sym, split_multiplier=0.500000,
+                    valid_from_date=date(2026, 8, 25), valid_thru_date=date(9999, 12, 31)
+                )
+            )
+        elif sym == "ALPHATECH":
+            corp_events.append(
+                CorporateEventsFeed(
+                    symbol=sym, isin=isin, action_category="SPLIT",
+                    announcement_purpose="Alpha Technologies Ltd Stock Split 10:1 (FV INR 10 to INR 1)",
+                    announcement_date=date(2026, 1, 10),
+                    ex_date=date(2026, 1, 25), record_date=date(2026, 1, 27),
+                    ratio_or_value="10:1", dilution_factor=0.100000
+                )
+            )
+            dilution_factors.append(
+                PriceDilutionFactor(
+                    symbol=sym, split_multiplier=0.100000,
+                    valid_from_date=date(2026, 1, 25), valid_thru_date=date(9999, 12, 31)
+                )
+            )
+        else:
+            dilution_factors.append(
+                PriceDilutionFactor(
+                    symbol=sym, split_multiplier=1.000000,
+                    valid_from_date=date(2025, 1, 1), valid_thru_date=date(9999, 12, 31)
+                )
+            )
+
+    db.bulk_save_objects(corp_events)
+    db.bulk_save_objects(dilution_factors)
+    db.flush()
+    print(f"[seed] Seeded {len(corp_events)} corporate events & {len(dilution_factors)} dilution factors.")
+
+    # ── 8. Broker Daily Summary ──────────────────────────────────────────────
+    print("[seed] Seeding broker_daily_summary across observation window...")
+    broker_summaries: list[BrokerDailySummary] = []
+    for tm_id, tm_name in BROKERS:
+        for trd_d in recent_15_days:
+            d_str = trd_d.strftime("%Y-%m-%d")
+            for sym, _, _, _, _, _ in SYMBOLS[:6]:
+                cp = close_price_by_sym_date.get((sym, d_str), 100.0)
+                b_vol = random.randint(150000, 600000)
+                s_vol = random.randint(140000, 580000)
+                w_vol = random.randint(15000, 80000) if tm_id == "TM101" and sym == "NOVAENERGY" else 0
+                tot_val = round((b_vol + s_vol) * cp, 2)
+                broker_summaries.append(
+                    BrokerDailySummary(
+                        trading_member_id=tm_id,
+                        trading_member_name=tm_name,
+                        symbol=sym,
+                        trade_date=trd_d,
+                        total_buy_volume=b_vol,
+                        total_sell_volume=s_vol,
+                        same_broker_wash_volume=w_vol,
+                        total_turnover_value=tot_val
+                    )
+                )
+
+    db.bulk_save_objects(broker_summaries)
+    db.flush()
+    print(f"[seed] Seeded {len(broker_summaries)} broker daily summary records.")
+
+    # ── 9. Surveillance Alert Cases ──────────────────────────────────────────
+    print("[seed] Seeding surveillance_alert_cases...")
     alert_cases = [
         SurveillanceAlertCase(
-            symbol="NOVAENERGY", observation_date=OBSERVATION_DATE,
-            composite_risk_score=28.50, alert_severity_level="HIGH", surveillance_status="ACTIVE",
-            metric_price_rise_pct=276.85, metric_price_zscore=3.42, metric_volume_zscore=4.15,
-            metric_band_hit_days=8, metric_new_high_days=11, assigned_officer="vishesh_admin",
-            investigation_notes="Scrip flagged with high composite score (28.5/100). Concentrated aggressive buy push delivered by Rahul Gupta and Lokesh Joshi lifting ask price. High bilateral counterparty concentration with Jayant Trivedi."
+            symbol="NOVAENERGY",
+            observation_date=OBSERVATION_DATE,
+            composite_risk_score=28.50,
+            alert_severity_level="HIGH",
+            surveillance_status="ACTIVE",
+            metric_price_rise_pct=276.85,
+            metric_price_zscore=3.42,
+            metric_volume_zscore=4.15,
+            metric_band_hit_days=8,
+            metric_new_high_days=11,
+            assigned_officer="vishesh_admin",
+            investigation_notes="Scrip flagged with high composite score (28.5/100). Concentrated aggressive buy push delivered by Rahul Gupta and Lokesh Joshi lifting ask price. High bilateral counterparty concentration with Jayant Trivedi.",
+            last_updated_time=datetime.utcnow()
         ),
         SurveillanceAlertCase(
-            symbol="ALPHATECH", observation_date=OBSERVATION_DATE,
-            composite_risk_score=12.40, alert_severity_level="MEDIUM", surveillance_status="UNDER_REVIEW",
-            metric_price_rise_pct=42.15, metric_price_zscore=2.10, metric_volume_zscore=2.45,
-            metric_band_hit_days=3, metric_new_high_days=4, assigned_officer="arao_analyst",
-            investigation_notes="Moderate volume breakout observed following interim dividend announcement. Under active review."
+            symbol="ALPHATECH",
+            observation_date=OBSERVATION_DATE,
+            composite_risk_score=78.50,
+            alert_severity_level="HIGH",
+            surveillance_status="ACTIVE",
+            metric_price_rise_pct=28.40,
+            metric_price_zscore=2.45,
+            metric_volume_zscore=2.80,
+            metric_band_hit_days=5,
+            metric_new_high_days=8,
+            assigned_officer="arao_analyst",
+            investigation_notes="High-risk alert: Repeated circuit touches with promoter pledge leverage (12.5%) and concentrated bilateral trading.",
+            last_updated_time=datetime.utcnow()
+        ),
+        SurveillanceAlertCase(
+            symbol="ZENITHBIO",
+            observation_date=OBSERVATION_DATE,
+            composite_risk_score=56.00,
+            alert_severity_level="MEDIUM",
+            surveillance_status="ACTIVE",
+            metric_price_rise_pct=14.20,
+            metric_price_zscore=1.60,
+            metric_volume_zscore=1.95,
+            metric_band_hit_days=2,
+            metric_new_high_days=4,
+            assigned_officer="analyst_surv",
+            investigation_notes="Medium risk alert: Elevated volume Z-score with moderate upper circuit persistence.",
+            last_updated_time=datetime.utcnow()
+        ),
+        SurveillanceAlertCase(
+            symbol="ORBITCEM",
+            observation_date=OBSERVATION_DATE,
+            composite_risk_score=52.00,
+            alert_severity_level="MEDIUM",
+            surveillance_status="ACTIVE",
+            metric_price_rise_pct=18.10,
+            metric_price_zscore=1.75,
+            metric_volume_zscore=2.10,
+            metric_band_hit_days=3,
+            metric_new_high_days=5,
+            assigned_officer="analyst_surv",
+            investigation_notes="Medium risk alert: Upper circuit spike on single session with CTCL algorithmic execution pattern.",
+            last_updated_time=datetime.utcnow()
         ),
     ]
-    db.add_all(alert_cases)
 
+    benchmark_scores = {
+        "SBIN":       (22.50, 6.20, 0.85, 1.15, 0, 1),
+        "AXISBANK":   (19.50, 5.40, 0.60, 0.95, 0, 1),
+        "ICICIBANK":  (18.00, 4.10, 0.45, 0.80, 0, 0),
+        "BAJFINANCE": (17.50, 4.80, 0.55, 0.85, 0, 1),
+        "SUNPHARMA":  (16.00, 3.80, 0.50, 0.75, 0, 1),
+        "WIPRO":      (15.00, 3.20, 0.40, 0.70, 0, 0),
+        "INFY":       (14.50, 3.10, 0.35, 0.60, 0, 0),
+        "HDFCBANK":   (13.00, 2.50, 0.25, 0.50, 0, 0),
+        "TCS":        (12.00, 2.30, 0.20, 0.40, 0, 0),
+        "RELIANCE":   (11.00, 1.80, 0.15, 0.30, 0, 0),
+        "MARUTI":     (10.50, 1.50, 0.10, 0.25, 0, 0),
+    }
+
+    for sym, _, _, _, _, profile in SYMBOLS:
+        if profile == "BENCHMARK":
+            score, p_rise, p_z, v_z, b_hits, n_highs = benchmark_scores.get(sym, (12.0, 2.0, 0.2, 0.4, 0, 0))
+            alert_cases.append(
+                SurveillanceAlertCase(
+                    symbol=sym,
+                    observation_date=OBSERVATION_DATE,
+                    composite_risk_score=score,
+                    alert_severity_level="LOW",
+                    surveillance_status="MONITORED",
+                    metric_price_rise_pct=p_rise,
+                    metric_price_zscore=p_z,
+                    metric_volume_zscore=v_z,
+                    metric_band_hit_days=b_hits,
+                    metric_new_high_days=n_highs,
+                    assigned_officer=None,
+                    investigation_notes="Benchmark institutional security continuously observed under standard surveillance filters.",
+                    last_updated_time=datetime.utcnow()
+                )
+            )
+
+    db.bulk_save_objects(alert_cases)
     db.commit()
-    total_eod = len(all_eod_records)
-    print(f"[seed] Database seeded successfully: {total_eod} EOD rows across {len(SYMBOLS_META)} symbols.")
+    print(f"[seed] Seeded {len(alert_cases)} surveillance alert cases.")
+
+    print("[seed] Database seeding completed successfully with zero proprietary leaks.")
     return {
-        "status": "SEEDED_SUCCESS",
-        "symbols": len(SYMBOLS_META),
-        "eod_rows": total_eod,
-        "trading_days": len(eval_trading_days),
-        "users": len(users),
-        "alert_cases": len(alert_cases)
+        "status": "SUCCESS",
+        "daily_market_eod": len(all_eod_records),
+        "participant_daily_trades": len(part_trades),
+        "counterparty_trade_pairs": len(cpty_pairs),
+        "client_identity_master": len(client_entities),
+        "client_demat_accounts": len(demat_entities),
+        "shareholding_summary": len(sh_summary_records),
+        "large_shareholders_registry": len(large_holder_records),
+        "corporate_events_feed": len(corp_events),
+        "price_dilution_factors": len(dilution_factors),
+        "broker_daily_summary": len(broker_summaries),
+        "surveillance_alert_cases": len(alert_cases),
+        "trading_session_calendar": len(cal_records),
+        "market_baseline_stats": len(all_baseline_stats),
     }
 
 
 if __name__ == "__main__":
-    db = SessionLocal()
+    session = SessionLocal()
     try:
-        res = seed_database(db)
-        print(f"Seed Result: {res}")
+        res = seed_database(session)
+        print("Result:", res)
     finally:
-        db.close()
+        session.close()

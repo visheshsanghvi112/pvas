@@ -40,7 +40,7 @@ COMPANY_NAMES = {
 
 ISIN_CODES = {
     "ALPHATECH": "INE001A01010",
-    "NOVAENERGY": "INE002B01020",
+    "NOVAENERGY": "INE752716A01",
     "ZENITHBIO": "INE003C01030",
     "ORBITCEM": "INE004D01040",
     "TCS": "INE467B01029",
@@ -152,7 +152,7 @@ class EODSurveillanceService:
                     "PosContVal": pos_vals,
                     "NegContVal": 0.0,
                 })
-                # Construct matched seller rows
+                # Construct matched seller rows (passive liquidity / wash counterparty: 0 LTP push)
                 s_df = pd.DataFrame({
                     "Ticker": raw_df["Ticker"],
                     "Date": raw_df["Date"],
@@ -798,7 +798,12 @@ class EODSurveillanceService:
 
         trades_slice = self.current_trades_df
         if as_of_date and not trades_slice.empty and "Date" in trades_slice.columns:
-            trades_slice = cast(pd.DataFrame, trades_slice[trades_slice["Date"].astype(str).str[:10] <= as_of_date])
+            trades_date_strs = trades_slice["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
+            if not df_t.empty and "DateStr" in df_t.columns:
+                window_dates = list(df_t["DateStr"].tail(window_days))
+                trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs.isin(window_dates)])
+            else:
+                trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs <= as_of_date])
 
         part_res: ParticipantAuditResult = self.engine.analyze_participants(
             ticker, trades_slice, final_close, total_vol
@@ -1047,10 +1052,25 @@ class EODSurveillanceService:
             top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else int(top1_shares_t * 0.9)
             top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else 17.50
 
+            major_shareholders = [
+                {
+                    "pan": p.holder_pan,
+                    "name": p.holder_legal_name,
+                    "client_name": p.holder_legal_name,
+                    "category": p.holder_category,
+                    "shares": p.shares_held,
+                    "holding_pct": float(p.holding_percentage or 0.0),
+                    "pledged_count": p.pledged_shares_count or 0,
+                    "is_substantial": float(p.holding_percentage or 0.0) >= 5.0,
+                }
+                for p in prom_records
+            ]
+
             return {
                 "symbol": ticker,
                 "quarterly_history": list(quarters.values()),
                 "promoter_group": promoters,
+                "major_shareholders": major_shareholders,
                 "promoter_shares_t": promoter_shares_t,
                 "promoter_pct_t": promoter_pct_t,
                 "promoter_shares_180": promoter_shares_180,
@@ -1066,6 +1086,7 @@ class EODSurveillanceService:
                 "symbol": ticker,
                 "quarterly_history": [],
                 "promoter_group": [],
+                "major_shareholders": [],
                 "promoter_shares_t": 58450000,
                 "promoter_pct_t": 58.45,
                 "promoter_shares_180": 58450000,
