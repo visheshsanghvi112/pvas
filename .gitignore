@@ -33,3 +33,7 @@ agent_reference/
 # Large Raw Excel Data Feeds
 result_part*.xlsx
 
+
+# SQLite Databases (prevent GitHub 100MB limit rejection)
+*.db
+

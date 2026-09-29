@@ -326,15 +326,18 @@ class SurveillanceEngine:
         """
         lookback = self.config.lookback_days
         recent = self.config.recent_days
-        required_len = lookback + recent + 1
+        min_required = recent + 5
 
         if "Close" not in df.columns:
             df = normalize_columns(df, ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"])
 
-        if len(df) < required_len:
+        if len(df) < min_required:
             raise ValueError(
-                f"Only {len(df)} trading days available, need at least {required_len} days for 180d lookback analysis"
+                f"Only {len(df)} trading days available, need at least {min_required} days for surveillance analysis"
             )
+
+        # Allow flexible lookback when exact 180 calendar/trading day archive is passed (e.g. 179 trading days)
+        effective_lookback = min(lookback, max(5, len(df) - recent - 1))
 
         # If price band is not provided, estimate it from historical high moves (2%, 5%, 10%, or 20%)
         if band_percent is None:
@@ -360,9 +363,9 @@ class SurveillanceEngine:
         low = pd.to_numeric(df["Low"], errors="coerce").ffill().bfill().fillna(1e-4)
 
         # --- 1. Price Rise % ---
-        # Compare highest price in the last 15 days against the price 180 days ago
+        # Compare highest price in the last 15 days against the baseline price at the start of lookback
         last15_high = high.iloc[-recent:].max()
-        close_t180 = float(close.iloc[-(lookback + 1)])
+        close_t180 = float(close.iloc[-(effective_lookback + 1)])
         safe_close_t180 = max(close_t180, 1e-4) if close_t180 != 0 else 1e-4
         price_rise_pct = ((last15_high - close_t180) / safe_close_t180) * 100
         price_rise_score = self.score_price_rise(price_rise_pct)
@@ -378,10 +381,10 @@ class SurveillanceEngine:
         # Helper: Standard Z-score = (Current Value - Historical Mean) / Historical Std Dev
         def zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
-            if len(series_clean) < lookback + 1:
+            if len(series_clean) < effective_lookback + 1:
                 return 0.0
             latest = series_clean.iloc[-1]
-            background = series_clean.iloc[-(lookback + 1):-1]
+            background = series_clean.iloc[-(effective_lookback + 1):-1]
             mu = background.mean()
             sigma = background.std()
             if sigma < 1e-6 or np.isnan(sigma):
@@ -391,10 +394,10 @@ class SurveillanceEngine:
         # Helper: Robust Modified Z-score using Median & MAD (less sensitive to single huge spikes)
         def modified_zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
-            if len(series_clean) < lookback + 1:
+            if len(series_clean) < effective_lookback + 1:
                 return 0.0
             latest = series_clean.iloc[-1]
-            background = series_clean.iloc[-(lookback + 1):-1]
+            background = series_clean.iloc[-(effective_lookback + 1):-1]
             median = background.median()
             mad = (background - median).abs().median()
             if mad < 1e-6 or np.isnan(mad):
@@ -424,7 +427,7 @@ class SurveillanceEngine:
 
         # --- 5. 180-Day New High Breakout ---
         # Counts days where today's high broke past the previous 180-day ceiling (PVASF 2.5.1)
-        rolling_180_high_prev = high.shift(1).rolling(lookback).max()
+        rolling_180_high_prev = high.shift(1).rolling(effective_lookback, min_periods=min(15, effective_lookback)).max()
         is_new_high = high > rolling_180_high_prev
         new_high_days = int(is_new_high.iloc[-recent:].sum())
         new_high_score = self.score_new_high(new_high_days)

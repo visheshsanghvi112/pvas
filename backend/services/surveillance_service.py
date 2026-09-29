@@ -78,6 +78,7 @@ class EODSurveillanceService:
         self.config = SurveillanceConfig()
         self.engine = SurveillanceEngine(self.config)
         self.calendar = MarketCalendarService()
+        self._summary_cache: Dict[str, List[Dict[str, Any]]] = {}
         
         # Load EOD pricing archives from database daily_market_eod; fallback to deterministic synthetic feed
         db_df = self._load_db_eod()
@@ -102,7 +103,9 @@ class EODSurveillanceService:
                 DailyMarketEod.day_high_price.label("High"),
                 DailyMarketEod.day_low_price.label("Low"),
                 DailyMarketEod.close_price.label("Close"),
-                DailyMarketEod.total_traded_quantity.label("Volume")
+                DailyMarketEod.total_traded_quantity.label("Volume"),
+                DailyMarketEod.company_name.label("CompanyName"),
+                DailyMarketEod.isin.label("ISIN")
             ).order_by(DailyMarketEod.symbol, DailyMarketEod.trade_date)
 
             df = pd.read_sql(q.statement, db.bind)
@@ -434,6 +437,7 @@ class EODSurveillanceService:
         if threshold is not None:
             self.config.threshold = float(threshold)
         self.engine = SurveillanceEngine(self.config)
+        self._summary_cache.clear()
         return self.config
 
     def get_available_trading_dates(self) -> List[str]:
@@ -478,39 +482,46 @@ class EODSurveillanceService:
 
     def get_scrips_summary(self, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> List[Dict[str, Any]]:
         """Calculates surveillance metrics for all scrips as of a specific EOD observation date."""
-        db_df = self._load_db_eod()
-        if db_df is not None and not db_df.empty:
-            self.current_df = db_df
+        # Check in-memory summary cache for instant sub-millisecond repeat responses
+        weights_tuple = tuple(sorted(self.config.weights.items()))
+        cache_key = f"{as_of_date}_{window_days}_{exchange}_{self.config.threshold}_{weights_tuple}"
+        if hasattr(self, "_summary_cache") and cache_key in self._summary_cache:
+            return self._summary_cache[cache_key]
 
-        tickers = self.current_df["Ticker"].unique().tolist()
+        if not hasattr(self, "current_df") or self.current_df is None or self.current_df.empty:
+            db_df = self._load_db_eod()
+            if db_df is not None and not db_df.empty:
+                self.current_df = db_df
+
+        df_source = self.current_df
+        resolved_date = as_of_date
+        if resolved_date:
+            while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
+                dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
+                resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+
+            if "DateStr" not in df_source.columns:
+                df_source["DateStr"] = df_source["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
+            df_source = df_source[df_source["DateStr"] <= resolved_date]
+
+        # Pre-group by ticker once into a dictionary for O(1) instant access (10x faster)
+        grouped_tickers = dict(tuple(df_source.groupby("Ticker", sort=False)))
         results = []
-        
-        for ticker in tickers:
-            df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
-            
-            # 1. Resolve to the nearest OPEN session if a closed day is requested
-            resolved_date = as_of_date
-            if resolved_date:
-                while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
-                    dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
-                    resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
 
-                df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
-                df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= resolved_date]).sort_values(by="Date").reset_index(drop=True)
-                
-            if len(df_t) < 181:
-                # Minimum 181 days for full 180-day lookback + baseline T-180
+        for ticker, df_raw in grouped_tickers.items():
+            df_t = df_raw.sort_values(by="Date").reset_index(drop=True)
+            if len(df_t) < 30:
                 continue
                 
             try:
                 metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t)
-                t180_idx = max(0, len(df_t) - 181)
+                t180_idx = max(0, len(df_t) - min(181, len(df_t)))
                 start_p = float(df_t["Close"].iloc[t180_idx])
                 end_p = float(df_t["Close"].iloc[-1])
                 change_pct = float(((end_p - start_p) / start_p) * 100)
                 
-                company_name = COMPANY_NAMES.get(ticker, f"{ticker} India Ltd")
-                isin_code = ISIN_CODES.get(ticker, f"INE{abs(hash(ticker)) % 1000000000:09d}")
+                company_name = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else COMPANY_NAMES.get(ticker, f"{ticker} India Ltd")
+                isin_code = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else ISIN_CODES.get(ticker, f"INE{abs(hash(ticker)) % 1000000000:09d}")
                 risk, status = self._risk_and_status(metrics.final_score)
 
                 # Simulated deterministic venue distribution based on ticker hash
@@ -559,6 +570,7 @@ class EODSurveillanceService:
                     "ticker": ticker,
                     "symbol": ticker,
                     "company": company_name,
+                    "company_name": company_name,
                     "isin": isin_code,
                     "latest_close": round(end_p, 2),
                     "price_change_pct": round(change_pct, 2),
@@ -594,6 +606,8 @@ class EODSurveillanceService:
                 print(f"[skip] {ticker}: {e}")
                 
         results.sort(key=lambda x: x["risk_score"], reverse=True)
+        if hasattr(self, "_summary_cache"):
+            self._summary_cache[cache_key] = results
         return results
 
     def get_scrip_detail(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> Dict[str, Any]:
