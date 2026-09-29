@@ -1919,22 +1919,17 @@ const formatTooltipDate = (d: string) => {
 const CustomScreenerTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
-    const isAnomalyDay = data.is180High || data.isNewHigh || data.isBandHit;
 
     return (
       <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-3.5 py-2.5 shadow-2xl min-w-[210px] text-left font-sans pointer-events-none select-none">
-        {/* Date + Anomaly Flag */}
+        {/* Date + Circuit Limit Flag */}
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-1.5">
           <span className="text-slate-700 font-bold text-xs font-mono">
             {formatTooltipDate(label || data.date)}
           </span>
-          {isAnomalyDay && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
-              {data.is180High
-                ? "180D Peak"
-                : data.isNewHigh
-                ? `${data.lookbackDays}D Peak`
-                : "Band Hit"}
+          {data.isBandHit && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 shadow-2xs">
+              Upper Circuit
             </span>
           )}
         </div>
@@ -2090,15 +2085,9 @@ export function ChartGuideButton() {
               </div>
             </div>
             <div className="flex items-start gap-1.5">
-              <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[10px] font-bold shrink-0 mt-0.5">180D Peak</span>
+              <span className="px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold shrink-0 mt-0.5">Upper Circuit</span>
               <div>
-                Triggered when today&apos;s high is a brand new 6-month historical breakout (feeds Metric 5).
-              </div>
-            </div>
-            <div className="flex items-start gap-1.5">
-              <span className="px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold shrink-0 mt-0.5">Band Hit</span>
-              <div>
-                Triggered when price rises &ge;90% of the daily upper circuit limit (feeds Metric 4).
+                Triggered when price rises &ge;90% of the daily exchange upper circuit limit (feeds Metric 4).
               </div>
             </div>
             <div className="flex items-start gap-1.5">
