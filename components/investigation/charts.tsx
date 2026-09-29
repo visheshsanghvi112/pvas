@@ -1341,17 +1341,20 @@ export function AnomalyEventMatrixChart({
 
   const bandThresholdFraction = 0.90 * (bandPercent > 1 ? bandPercent / 100 : bandPercent);
 
+  const historyDays = history.length;
+  const isFull180 = historyDays >= 170;
+
   const dayRecords = history.map((h, i) => {
     const lookbackStart = Math.max(0, i - 180);
     const lookbackSlice = history.slice(lookbackStart, i);
-    const prev180High = lookbackSlice.length > 0
+    const prevHigh = lookbackSlice.length > 0
       ? Math.max(...lookbackSlice.map((p) => p.high ?? p.close))
       : (history[0]?.high ?? history[0]?.close ?? 0);
     const high = h.high ?? h.close;
     const prevClose = i > 0 ? (history[i - 1]?.close || h.close) : h.close;
     const highPct = prevClose > 0 ? ((high - prevClose) / prevClose) : 0;
     return {
-      hit180High: high > prev180High,
+      hit180High: i > 0 && high > prevHigh,
       hitPriceBand: highPct >= bandThresholdFraction,
     };
   });
@@ -1360,6 +1363,11 @@ export function AnomalyEventMatrixChart({
   const total180Hits = metrics?.new_high_days ?? last15.filter((d) => d.hit180High).length;
   const totalBandHits = metrics?.band_hit_days ?? last15.filter((d) => d.hitPriceBand).length;
   const displayBandPct = bandPercent > 1 ? bandPercent : Math.round(bandPercent * 100);
+
+  const peakStatLabel = isFull180 ? "Hit 180-day high" : `Hit ${historyDays}-day high`;
+  const peakStatSub = isFull180
+    ? "Days in past 15 where the scrip's intraday high exceeded its prior 180-day peak"
+    : `Days in past 15 where the scrip exceeded its prior peak across available ${historyDays} sessions`;
 
   const Stat = ({
     count, label, sub, color
@@ -1397,8 +1405,8 @@ export function AnomalyEventMatrixChart({
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       <Stat
         count={total180Hits}
-        label="Hit 180-day high"
-        sub="Days in past 15 where the scrip's intraday high exceeded its prior 180-day peak"
+        label={peakStatLabel}
+        sub={peakStatSub}
         color="rose"
       />
       <Stat
@@ -1911,7 +1919,7 @@ const formatTooltipDate = (d: string) => {
 const CustomScreenerTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
-    const isAnomalyDay = data.is180High || data.isBandHit;
+    const isAnomalyDay = data.is180High || data.isNewHigh || data.isBandHit;
 
     return (
       <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-3.5 py-2.5 shadow-2xl min-w-[210px] text-left font-sans pointer-events-none select-none">
@@ -1922,7 +1930,11 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
           </span>
           {isAnomalyDay && (
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
-              {data.is180High ? "180D Peak" : "Band Hit"}
+              {data.is180High
+                ? "180D Peak"
+                : data.isNewHigh
+                ? `${data.lookbackDays}D Peak`
+                : "Band Hit"}
             </span>
           )}
         </div>
@@ -2150,27 +2162,36 @@ export function CombinedMarketChart({
       const low = Number(pt.low) || close;
       const open = Number(pt.open) || close;
 
-      // 20 DMA (§5.1.1)
+      // 20 DMA (§5.1.1): only valid if at least 20 trading sessions exist
       let dma20 = pt.ma20;
-      if (dma20 == null) {
-        const s20 = arr.slice(Math.max(0, idx - 19), idx + 1);
-        dma20 = s20.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s20.length;
+      if (dma20 == null && idx >= 19) {
+        const s20 = arr.slice(idx - 19, idx + 1);
+        dma20 = s20.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / 20;
+      } else if (idx < 19 && pt.ma20 == null) {
+        dma20 = undefined; // Do not fabricate a fake 20 DMA on day 3
       }
 
-      // 50 DMA (§5.1.1)
+      // 50 DMA (§5.1.1): only valid if at least 50 trading sessions exist
       let dma50 = pt.ma50;
-      if (dma50 == null) {
-        const s50 = arr.slice(Math.max(0, idx - 49), idx + 1);
-        dma50 = s50.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / s50.length;
+      if (dma50 == null && idx >= 49) {
+        const s50 = arr.slice(idx - 49, idx + 1);
+        dma50 = s50.reduce((acc, p) => acc + (Number(p.close) || 0), 0) / 50;
+      } else if (idx < 49 && pt.ma50 == null) {
+        dma50 = undefined; // Do not fabricate a fake 50 DMA on day 5
       }
 
       // Daily Return %
       const prevClose = idx > 0 ? (Number(arr[idx - 1].close) || close) : close;
       const dailyReturn = idx > 0 ? ((close - prevClose) / prevClose) * 100 : 0;
 
-      // 180-Day New High Flag
-      const is180High = idx > 0 && high > rollingHigh;
-      if (high > rollingHigh) rollingHigh = high;
+      // True sliding lookback window (up to 180 prior sessions)
+      const lookbackSlice = arr.slice(Math.max(0, idx - 180), idx);
+      const lookbackDays = lookbackSlice.length;
+      const priorHigh = lookbackDays > 0 ? Math.max(...lookbackSlice.map((p) => Number(p.high) || Number(p.close))) : 0;
+
+      const isBreakout = idx > 0 && high > priorHigh;
+      const isGenuine180High = isBreakout && lookbackDays >= 170;
+      const isEarlyPeak = isBreakout && lookbackDays < 170;
 
       // Synthetic Deliverable Volume % for Screener-grade inspection
       const deliveryPct = Math.min(85, Math.max(28, 45 + ((idx * 13 + Math.round(close)) % 36)));
@@ -2184,9 +2205,11 @@ export function CombinedMarketChart({
         volume,
         deliveryPct,
         dailyReturn,
-        is180High: idx >= arr.length - 15 && is180High,
-        dma20: Number(Number(dma20).toFixed(2)),
-        dma50: Number(Number(dma50).toFixed(2)),
+        is180High: idx >= arr.length - 15 && isGenuine180High,
+        isNewHigh: idx >= arr.length - 15 && isEarlyPeak,
+        lookbackDays,
+        dma20: dma20 != null ? Number(Number(dma20).toFixed(2)) : undefined,
+        dma50: dma50 != null ? Number(Number(dma50).toFixed(2)) : undefined,
       };
     });
   }, [history]);
@@ -2706,6 +2729,20 @@ export function SurveillanceStatisticalDeck({
   const volSurgeMultiple = meanVol180 > 0 ? Math.round((latest15Vol / meanVol180) * 10) / 10 : 1.0;
   const volSpikeDays = last15Vol.filter((d) => d.surgeRatio >= 1.5).length;
 
+  const historyDays = history.length;
+  const isFull180 = historyDays >= 170;
+  const baselineLabel = isFull180 ? "Closing Price (T-180)" : `Baseline Close (T-${historyDays})`;
+  const baselineTooltip = isFull180
+    ? "The closing price 180 trading days (~6 months) ago, used as the baseline for Price Rise calculation against historical baseline."
+    : `Earliest available closing price in current dataset (${historyDays} sessions ago on ${history[0]?.date}). Lookback is adjusted to available depth.`;
+  const peakHighLabel = isFull180 ? "180-Day Peak High" : `${historyDays}-Day Peak High`;
+  const peakHighTooltip = isFull180
+    ? "The highest intraday price reached over the entire 180-day baseline period."
+    : `The highest intraday price reached over the available ${historyDays} trading sessions.`;
+  const obsSubtitle = isFull180
+    ? "Observation: 15-Day High vs T-180 Baseline"
+    : `Observation: 15-Day High vs T-${historyDays} Baseline (${historyDays}d available)`;
+
   return (
     <div className="space-y-4">
       {/* Card 1: Price Rise */}
@@ -2715,21 +2752,26 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Rise
-              <InfoTooltip text="Compares the absolute percentage growth of the stock's price in the last 15 days vis-à-vis price on T-180 days (contributes 25% to the total risk score)." />
+              <InfoTooltip text="Compares the absolute percentage growth of the stock's price in the last 15 days vis-à-vis price at baseline start (contributes 25% to the total risk score)." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               25% of Score
             </span>
+            {!isFull180 && (
+              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200" title={`Historical depth is ${historyDays} sessions, which is less than the standard 180 trading sessions.`}>
+                ⚠️ {historyDays}d History
+              </span>
+            )}
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Observation: 15-Day High vs T-180 Baseline
+            {obsSubtitle}
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Closing Price (T-180)
-              <InfoTooltip text="The closing price 180 trading days (~6 months) ago, used as the baseline for Price Rise calculation against historical baseline." />
+              {baselineLabel}
+              <InfoTooltip text={baselineTooltip} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
               ₹{startPrice.toFixed(2)}
@@ -2738,7 +2780,7 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Current Closing Price
-              <InfoTooltip text="Latest closing price on observation day T, showing total percentage change from T-180 baseline." />
+              <InfoTooltip text={`Latest closing price on observation day T, showing total percentage change from T-${historyDays} baseline.`} />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-blue-700 text-base">
@@ -2754,8 +2796,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              180-Day Peak High
-              <InfoTooltip text="The highest intraday price reached over the entire 180-day baseline period." />
+              {peakHighLabel}
+              <InfoTooltip text={peakHighTooltip} />
             </span>
             <span className="font-extrabold font-mono text-rose-700 text-base mt-1 block">
               ₹{max180High.toFixed(2)}

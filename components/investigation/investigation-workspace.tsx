@@ -577,18 +577,36 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </div>
               </div>
 
-              {/* Window Range Badge */}
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-xl px-2.5 py-1 text-xs text-amber-950 font-semibold shadow-2xs">
-                <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                <span>
-                  15D Analysis Window:{" "}
-                  <strong className="font-mono font-bold text-amber-950">
-                    {formatDateDisplay(windowStartDate)} → {formatDateDisplay(selectedDate)}
-                  </strong>
-                  <span className="ml-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300/80">
-                    {windowDays} Days
+              {/* Window Range Badge & Baseline Depth Indicator */}
+              <div className="flex items-center gap-2 flex-wrap">
+                {detail.history && detail.history.length < 170 && (
+                  <div
+                    className="flex items-center gap-1.5 bg-blue-50 border border-blue-200/90 rounded-xl px-2.5 py-1 text-xs text-blue-900 font-semibold shadow-2xs"
+                    title={`Dataset contains ${detail.history.length} trading sessions on or before ${selectedDate}. Baseline lookback metrics are evaluated over the available ${detail.history.length}-session archive.`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
+                    <span>
+                      Baseline Depth:{" "}
+                      <strong className="font-mono font-bold text-blue-950">
+                        {detail.history.length} Sessions
+                      </strong>{" "}
+                      <span className="text-[10px] text-blue-700 font-medium">(&lt; 180D archive)</span>
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-xl px-2.5 py-1 text-xs text-amber-950 font-semibold shadow-2xs">
+                  <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                  <span>
+                    15D Analysis Window:{" "}
+                    <strong className="font-mono font-bold text-amber-950">
+                      {formatDateDisplay(windowStartDate)} → {formatDateDisplay(selectedDate)}
+                    </strong>
+                    <span className="ml-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded border border-amber-300/80">
+                      {windowDays} Days
+                    </span>
                   </span>
-                </span>
+                </div>
               </div>
             </div>
 
