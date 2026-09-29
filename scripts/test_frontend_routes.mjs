@@ -40,9 +40,12 @@ async function runTestSuite() {
   await testHttpRoute("/");
   await testHttpRoute("/history");
   await testHttpRoute("/settings");
+  await testHttpRoute("/analysis/SKMEGGPROD");
+  await testHttpRoute("/analysis/TDPOWERSYS");
+  await testHttpRoute("/analysis/RELIANCE");
+  await testHttpRoute("/analysis/QUALITY");
   await testHttpRoute("/analysis/NOVAENERGY");
-  await testHttpRoute("/analysis/ALPHATECH");
-  await testHttpRoute("/analyse/NOVAENERGY", 307); // dynamic redirect test
+  await testHttpRoute("/analyse/SKMEGGPROD", 307); // dynamic redirect test
 
   // ── PHASE 2: Authentication & Token Management ──
   console.log("\n--- PHASE 2: Authentication & Role Switcher Verification ---");

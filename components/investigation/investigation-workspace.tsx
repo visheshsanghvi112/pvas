@@ -379,8 +379,27 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
   if (error || !detail) {
     return (
-      <div className="p-8 text-rose-600 text-sm font-mono">
-        {error ?? "Failed to load scrip details. Ensure backend is running."}
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white border border-slate-200/90 rounded-2xl p-6 text-center shadow-xs">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 mx-auto mb-4">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 mb-1">
+            Scrip Investigation Unavailable
+          </h3>
+          <p className="text-xs text-slate-600 mb-4 leading-relaxed font-mono">
+            {error ?? `Scrip ${symbol} could not be loaded.`}
+          </p>
+          <div className="pt-2 border-t border-slate-100 flex justify-center gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800 transition-colors"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Return to Alerts Watchlist
+            </Link>
+          </div>
+        </div>
       </div>
     );
   }
