@@ -231,6 +231,7 @@ export function AlertsTable({
   };
 
   const effThreshold = threshold ?? scrips[0]?.threshold ?? 60;
+  const mediumThreshold = Math.max(10, Math.round(effThreshold * 0.6));
 
   const riskCards = [
     {
@@ -248,7 +249,7 @@ export function AlertsTable({
       key: "Medium",
       label: "Medium",
       count: scrips.filter((s) => s.risk === "Medium").length,
-      subtitle: effThreshold > 10 ? `Alert Score 10–${effThreshold - 1}` : `Alert Score < ${effThreshold}`,
+      subtitle: `Alert Score ${mediumThreshold}–${effThreshold - 1}`,
       dot: "bg-amber-400",
       activeCardClass: "bg-amber-50/50 border-amber-300 ring-2 ring-amber-400/20 shadow-xs",
       activeBadge: "bg-amber-100/90 text-amber-800 border-amber-200/80",
@@ -259,7 +260,7 @@ export function AlertsTable({
       key: "Low",
       label: "Low",
       count: scrips.filter((s) => s.risk === "Low").length,
-      subtitle: "Alert Score < 10",
+      subtitle: `Alert Score < ${mediumThreshold}`,
       dot: "bg-emerald-400",
       activeCardClass: "bg-emerald-50/50 border-emerald-300 ring-2 ring-emerald-400/20 shadow-xs",
       activeBadge: "bg-emerald-100/90 text-emerald-800 border-emerald-200/80",
@@ -463,7 +464,7 @@ export function AlertsTable({
               <ThSort
                 field="score"
                 label="PVASF Score"
-                info="Overall risk score from 0 to 100. Higher scores mean potential price manipulation. Scores 15+ are flagged as High Risk."
+                info={`Overall risk score from 0 to 100. Higher scores mean potential price manipulation. Scores ${effThreshold}+ are flagged as High Risk.`}
                 width="16%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -568,6 +569,7 @@ export function AlertsTable({
                           href={`/analysis/${s.symbol}?${new URLSearchParams({
                             ...(asOfDate ? { asOfDate } : {}),
                             ...(windowDays ? { windowDays: String(windowDays) } : {}),
+                            ...(exchange && exchange !== "ALL" ? { exchange } : {}),
                           }).toString()}`}
                           className="font-bold text-sm text-slate-900 hover:text-blue-600 hover:underline leading-tight transition-colors"
                         >
@@ -668,6 +670,7 @@ export function AlertsTable({
                       href={`/analysis/${s.symbol}?${new URLSearchParams({
                         ...(asOfDate ? { asOfDate } : {}),
                         ...(windowDays ? { windowDays: String(windowDays) } : {}),
+                        ...(exchange && exchange !== "ALL" ? { exchange } : {}),
                       }).toString()}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs"
                     >

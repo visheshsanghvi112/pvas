@@ -1662,6 +1662,7 @@ export function ScoreDistributionChart({ scrips = [], threshold }: { scrips?: Sc
  */
 export function ParameterRadarChart({
   metrics,
+  weights,
 }: {
   metrics?: {
     price_rise_pct?: number;
@@ -1670,6 +1671,13 @@ export function ParameterRadarChart({
     band_hit_days?: number;
     new_high_days?: number;
     final_score?: number;
+  };
+  weights?: {
+    price_rise?: number;
+    price_z?: number;
+    volume_z?: number;
+    band_persistence?: number;
+    new_high?: number;
   };
 }) {
   const [highlightedItem, setHighlightedItem] =
@@ -1746,14 +1754,14 @@ export function ParameterRadarChart({
   };
 
   const leftCards = [
-    { label: "Price Rise %", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: 25 },
-    { label: "Price Z-Score", score: sPriceZ, rawVal: `${Number(metrics.price_z || 0).toFixed(2)}σ`, wt: 20 },
-    { label: "Volume Z-Score", score: sVolZ, rawVal: `${Number(metrics.volume_z || 0).toFixed(2)}σ`, wt: 25 },
+    { label: "Price Rise %", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: weights?.price_rise ?? 20 },
+    { label: "Price Z-Score", score: sPriceZ, rawVal: `${Number(metrics.price_z || 0).toFixed(2)}σ`, wt: weights?.price_z ?? 20 },
+    { label: "Volume Z-Score", score: sVolZ, rawVal: `${Number(metrics.volume_z || 0).toFixed(2)}σ`, wt: weights?.volume_z ?? 20 },
   ];
 
   const rightCards = [
-    { label: "Band Hits", score: sBand, rawVal: `${metrics.band_hit_days || 0}d`, wt: 15 },
-    { label: "180D New Highs", score: sHigh, rawVal: `${metrics.new_high_days || 0}d`, wt: 15 },
+    { label: "Band Hits", score: sBand, rawVal: `${metrics.band_hit_days || 0}d`, wt: weights?.band_persistence ?? 20 },
+    { label: "180D New Highs", score: sHigh, rawVal: `${metrics.new_high_days || 0}d`, wt: weights?.new_high ?? 20 },
   ];
 
   const renderParameterCard = (item: typeof leftCards[0]) => {
@@ -2659,9 +2667,17 @@ export function CombinedMarketChart({
 export function SurveillanceStatisticalDeck({
   history = [],
   metrics,
+  weights,
 }: {
   history?: PricePoint[];
   metrics?: any;
+  weights?: {
+    price_rise?: number;
+    price_z?: number;
+    volume_z?: number;
+    band_persistence?: number;
+    new_high?: number;
+  };
 }) {
   if (!history || history.length === 0) return null;
 
@@ -2743,10 +2759,10 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Rise
-              <InfoTooltip text="Compares the absolute percentage growth of the stock's price in the last 15 days vis-à-vis price at baseline start (contributes 25% to the total risk score)." />
+              <InfoTooltip text={`Compares the absolute percentage growth of the stock's price in the last 15 days vis-à-vis price at baseline start (contributes ${weights?.price_rise ?? 20}% to the total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
-              25% of Score
+              {weights?.price_rise ?? 20}% of Score
             </span>
             {!isFull180 && (
               <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200" title={`Historical depth is ${historyDays} sessions, which is less than the standard 180 trading sessions.`}>
@@ -2821,10 +2837,10 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Z-Score
-              <InfoTooltip text="Measures if average price movement over the last 15 days is statistically abnormal compared to rolling 15-day behaviour over 180 trading days (contributes 20% to total risk score)." />
+              <InfoTooltip text={`Measures if average price movement over the last 15 days is statistically abnormal compared to rolling 15-day behaviour over 180 trading days (contributes ${weights?.price_z ?? 20}% to total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
-              20% of Score
+              {weights?.price_z ?? 20}% of Score
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
@@ -2895,10 +2911,10 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-cyan-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Volume Z-Score
-              <InfoTooltip text="Measures if the stock's trading volume over the last 15 days is statistically abnormal compared to its typical 15-day volume behaviour over 6 months (contributes 25% to total risk score)." />
+              <InfoTooltip text={`Measures if the stock's trading volume over the last 15 days is statistically abnormal compared to its typical 15-day volume behaviour over 6 months (contributes ${weights?.volume_z ?? 20}% to total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
-              25% of Score
+              {weights?.volume_z ?? 20}% of Score
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">

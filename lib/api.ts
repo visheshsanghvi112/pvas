@@ -365,8 +365,9 @@ export async function fetchScripDetail(
   const new_high_days: number  = m["new_high_days"]  ?? m["180d New Highs (15d)"] ?? 0;
   const final_score: number    = m["final_score"]    ?? m["Final Score"]    ?? 0;
 
-  const effThreshold: number   = data.threshold ?? 15;
-  const risk = (data.risk as "High" | "Medium" | "Low") ?? (final_score >= effThreshold ? "High" : final_score >= 10 ? "Medium" : "Low");
+  const effThreshold: number   = data.threshold ?? 60;
+  const mediumThreshold: number = Math.max(10, Math.round(effThreshold * 0.6));
+  const risk = (data.risk as "High" | "Medium" | "Low") ?? (final_score >= effThreshold ? "High" : final_score >= mediumThreshold ? "Medium" : "Low");
 
   return {
     ticker: data.ticker ?? cleanId,
@@ -375,7 +376,7 @@ export async function fetchScripDetail(
     isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
     risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
     status: (data.status as "Open" | "Under review" | "Closed") ??
-            (final_score >= effThreshold ? "Open" : final_score >= 10 ? "Under review" : "Closed"),
+            (final_score >= effThreshold ? "Open" : final_score >= mediumThreshold ? "Under review" : "Closed"),
     threshold: effThreshold,
     watchlist: data.watchlist ?? (final_score >= effThreshold),
     exchange_scope: exchange,

@@ -759,38 +759,38 @@ export function SurveillanceDossierPdf({
 
             {/* 4 Ownership Executive KPIs */}
             {(() => {
-              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? 54;
-              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? 55;
-              const promoter_pct_t = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent ?? 64.2;
-              const promoter_pct_180 = shBreakdown?.promoter_pct_180 ?? 68.4;
-              const top1_pct_t = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration ?? 35.8;
-              const top1_pct_180 = shBreakdown?.top1_pct_180 ?? 31.6;
-              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? 24;
+              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d;
+              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d;
+              const promoter_pct_t = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent;
+              const promoter_pct_180 = shBreakdown?.promoter_pct_180;
+              const top1_pct_t = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration;
+              const top1_pct_180 = shBreakdown?.top1_pct_180;
+              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d;
 
               return (
                 <div className="grid grid-cols-4 gap-3 mb-3 shrink-0">
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                     <span className="text-[10px] font-semibold text-slate-500 block">Unique PANs (Day t)</span>
-                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{unique_pans_t}</div>
-                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{unique_pans_180}</strong></div>
+                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{unique_pans_t != null ? unique_pans_t : "—"}</div>
+                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{unique_pans_180 != null ? unique_pans_180 : "—"}</strong></div>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                     <span className="text-[10px] font-semibold text-slate-500 block">Avg Trading PANs (15D)</span>
-                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{avg_pans_15d}</div>
+                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{avg_pans_15d != null ? avg_pans_15d : "—"}</div>
                     <div className="text-[10px] text-slate-500">Active / Day</div>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                     <span className="text-[10px] font-semibold text-slate-500 block">Promoter Holding</span>
-                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{promoter_pct_t}%</div>
-                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{promoter_pct_180}%</strong></div>
+                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{promoter_pct_t != null ? `${promoter_pct_t}%` : "—"}</div>
+                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{promoter_pct_180 != null ? `${promoter_pct_180}%` : "—"}</strong></div>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
                     <span className="text-[10px] font-semibold text-slate-500 block">Top 1% Concentration</span>
-                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{top1_pct_t}%</div>
-                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{top1_pct_180}%</strong></div>
+                    <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{top1_pct_t != null ? `${top1_pct_t}%` : "—"}</div>
+                    <div className="text-[10px] text-slate-500">T-180: <strong className="font-mono">{top1_pct_180 != null ? `${top1_pct_180}%` : "—"}</strong></div>
                   </div>
                 </div>
               );

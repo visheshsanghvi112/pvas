@@ -27,7 +27,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Megaphone,
-  Eye
+  Eye,
+  Repeat,
+  RefreshCw
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,13 +69,14 @@ const TABS = ["Overview", "Shareholders", "Corporate Actions", "Participants"] a
 type TabType = typeof TABS[number];
 
 // ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
-function scoreZone(score: number): "High" | "Medium" | "Low" {
-  if (score >= 15) return "High";
-  if (score >= 10) return "Medium";
+function scoreZone(score: number, threshold: number = 60): "High" | "Medium" | "Low" {
+  if (score >= threshold) return "High";
+  const mediumThreshold = Math.max(10, Math.round(threshold * 0.6));
+  if (score >= mediumThreshold) return "Medium";
   return "Low";
 }
-function scoreColor(score: number) {
-  const z = scoreZone(score);
+function scoreColor(score: number, threshold: number = 60) {
+  const z = scoreZone(score, threshold);
   return z === "High" ? "text-rose-600" : z === "Medium" ? "text-amber-600" : "text-emerald-600";
 }
 
@@ -444,6 +447,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     return map;
   }, [score_breakdown]);
 
+  const activeWeights = useMemo(() => ({
+    price_rise: scoreBreakdownMap["Price Rise"]?.weight ?? 20,
+    price_z: scoreBreakdownMap["Price Z"]?.weight ?? 20,
+    volume_z: scoreBreakdownMap["Volume Z"]?.weight ?? 20,
+    band_persistence: scoreBreakdownMap["Band Persistence"]?.weight ?? 20,
+    new_high: scoreBreakdownMap["180 Day New High"]?.weight ?? 20,
+  }), [scoreBreakdownMap]);
+
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
 
@@ -770,11 +781,11 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 onExpand={() => setExpandedChart({
                   title: "5-Parameter Risk Radar Profile & Intelligence Signature",
                   subtitle: "Comprehensive 0–5 parameter score radar mapped against Risk Thresholds",
-                  chart: <ParameterRadarChart metrics={metrics} />
+                  chart: <ParameterRadarChart metrics={metrics} weights={activeWeights} />
                 })}
               />
               <div className="p-4 md:p-5">
-                <ParameterRadarChart metrics={metrics} />
+                <ParameterRadarChart metrics={metrics} weights={activeWeights} />
               </div>
             </Card>
 
@@ -796,7 +807,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
             </Card>
 
             {/* 3-Pillar Core Surveillance Statistical Deck (Preserves all 180D Price, Return Z-Score, and Volume Z-Score metrics) */}
-            <SurveillanceStatisticalDeck history={history} metrics={metrics} />
+            <SurveillanceStatisticalDeck history={history} metrics={metrics} weights={activeWeights} />
 
             <div className="space-y-4">
               {/* Days in past 15 the scrip hit 180-day high & 90% of price band */}
@@ -1190,6 +1201,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               for (const p of participants.profit_makers || []) {
                 if (p.participant && p.name) panNameMap[p.participant] = p.name;
               }
+              for (const p of participants.reversal_pairs || []) {
+                if (p.pan1 && p.name1) panNameMap[p.pan1] = p.name1;
+                if (p.pan2 && p.name2) panNameMap[p.pan2] = p.name2;
+              }
 
               return (
                 <>
@@ -1213,7 +1228,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Aggressive Buy Value <InfoTooltip text="Total rupee turnover value of aggressive buy orders lifting ask price." /></span>,
+                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Positive LTP Push (+₹) <InfoTooltip text="Gross positive price-pusher rupee impact from aggressive buy executions lifting the order book ask price." /></span>,
                             <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of upward price momentum." /></span>
                           ]}
                           rows={posList.map((p) => {
@@ -1270,7 +1285,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Aggressive Sell Value <InfoTooltip text="Total rupee turnover value of aggressive sell orders hitting bid price." /></span>,
+                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Negative LTP Pull (-₹) <InfoTooltip text="Gross negative price-dampener rupee impact from aggressive sell executions hitting the order book bid price." /></span>,
                             <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of price dampening impact." /></span>
                           ]}
                           rows={negList.map((p) => {
@@ -1415,6 +1430,172 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           ];
                         })}
                       />
+                    </Card>
+                  </div>
+
+                  {/* Row 3: Section 4.4 Trade Reversal Ratio (RTR) & Section 4.5 Circular Trading Loops */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                    {/* Section 4.4 Trade Reversal Ratio (RTR) */}
+                    <Card>
+                      <SectionHeader
+                        icon={<Repeat className="w-4 h-4 text-slate-600" />}
+                        title="Trade Reversal Ratio (RTR)"
+                        subtitle="Bilateral synchronized buy-sell reversals"
+                        info="SEBI PVASF Section 4.4: Measures reciprocal buying and selling between bilateral counterparty pairs: RTR = 2 * min(Vol_AB, Vol_BA) / (Vol_AB + Vol_BA) * 100. RTR ≥ 80% indicates synchronized wash trading designed to inflate volume."
+                      />
+                      {(!participants.reversal_pairs || participants.reversal_pairs.length === 0) ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No bilateral trade reversal anomalies detected above surveillance threshold.
+                        </div>
+                      ) : (
+                        <DataTable
+                          alignments={["left", "right", "right", "right"]}
+                          headers={[
+                            <span key="h-rtrpair" className="whitespace-nowrap">Matched Pair Entities & PANs</span>,
+                            <span key="h-rtrdir" className="inline-flex items-center gap-1 whitespace-nowrap">Directional Flow <InfoTooltip text="Traded volume from A to B vs B to A." /></span>,
+                            <span key="h-rtrvol" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Volume <InfoTooltip text="Total shares exchanged between this bilateral pair." /></span>,
+                            <span key="h-rtrpct" className="inline-flex items-center gap-1 whitespace-nowrap">Reversal Ratio <InfoTooltip text="Percentage of bilateral trade volume matched in reverse. ≥80% is flagged as synchronized wash trading." /></span>
+                          ]}
+                          rows={participants.reversal_pairs.map((p) => {
+                            const pairParts = p.pair.split(" <-> ");
+                            const p1 = p.pan1 || pairParts[0] || p.pair;
+                            const p2 = p.pan2 || pairParts[1] || "";
+                            const n1 = p.name1 || panNameMap[p1] || p1;
+                            const n2 = p.name2 || panNameMap[p2] || p2;
+                            const rtr = Number(p.reversal_ratio || 0);
+                            const isHighRisk = rtr >= 80;
+
+                            return [
+                              <div key={p.pair} className="flex flex-col gap-1 py-1">
+                                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 leading-snug">
+                                  <span className="truncate max-w-[130px]" title={n1}>{n1}</span>
+                                  <span className="text-slate-400 font-bold shrink-0">⇄</span>
+                                  <span className="truncate max-w-[130px]" title={n2}>{n2}</span>
+                                </div>
+                                <div className="inline-flex items-center gap-1 font-mono text-[11px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedPan(p1)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                    title={`Click to view Client 360 profile for ${p1}`}
+                                  >
+                                    <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
+                                    {p1}
+                                  </button>
+                                  <span className="text-slate-300 font-bold">⇄</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedPan(p2)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
+                                    title={`Click to view Client 360 profile for ${p2}`}
+                                  >
+                                    <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
+                                    {p2}
+                                  </button>
+                                </div>
+                              </div>,
+                              <div key="dir" className="text-xs font-mono tabular-nums text-slate-700 leading-tight">
+                                <div>{Number(p.vol_a_to_b || 0).toLocaleString("en-IN")} <span className="text-[10px] text-slate-400">→</span></div>
+                                <div>{Number(p.vol_b_to_a || 0).toLocaleString("en-IN")} <span className="text-[10px] text-slate-400">←</span></div>
+                              </div>,
+                              <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
+                                {Number(p.volume || 0).toLocaleString("en-IN")}
+                              </span>,
+                              <div key="rtr" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                                <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full transition-all duration-300",
+                                      isHighRisk ? "bg-rose-600" : rtr >= 50 ? "bg-amber-500" : "bg-blue-600"
+                                    )}
+                                    style={{ width: `${Math.min(100, Math.max(0, rtr))}%` }}
+                                  />
+                                </div>
+                                <span className={cn(
+                                  "font-mono font-bold tabular-nums text-xs min-w-[45px] text-right",
+                                  isHighRisk ? "text-rose-700" : "text-slate-900"
+                                )}>
+                                  {rtr.toFixed(1)}%
+                                </span>
+                                {isHighRisk && (
+                                  <span className="text-[9px] font-extrabold px-1 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-tight">
+                                    Wash
+                                  </span>
+                                )}
+                              </div>
+                            ];
+                          })}
+                        />
+                      )}
+                    </Card>
+
+                    {/* Section 4.5 Circular Trading Loops */}
+                    <Card>
+                      <SectionHeader
+                        icon={<RefreshCw className="w-4 h-4 text-slate-600" />}
+                        title="Circular Trading Loops"
+                        subtitle="Multi-party ring trading cycles (A → B → C → A)"
+                        info="SEBI PVASF Section 4.5: Directed cycle detection identifying trade flow loops where shares rotate through intermediate accounts and return to originators to create fictitious market activity."
+                      />
+                      {(!participants.circular_loops || participants.circular_loops.length === 0) ? (
+                        <div className="p-6 text-center text-xs text-slate-500">
+                          No closed circular trading rings detected in the observation window.
+                        </div>
+                      ) : (
+                        <DataTable
+                          alignments={["left", "center", "right", "right"]}
+                          headers={[
+                            <span key="h-loop" className="whitespace-nowrap">Ring Trading Flow Path</span>,
+                            <span key="h-len" className="whitespace-nowrap">Ring Size</span>,
+                            <span key="h-rvol" className="inline-flex items-center gap-1 whitespace-nowrap">Rotated Vol <InfoTooltip text="Volume successfully rotated fully around the closed ring." /></span>,
+                            <span key="h-eff" className="inline-flex items-center gap-1 whitespace-nowrap">Loop Efficiency <InfoTooltip text="Rotated volume divided by gross cycle trade volume." /></span>
+                          ]}
+                          rows={participants.circular_loops.map((c, ci) => {
+                            const nodes = c.nodes && c.nodes.length > 0 ? c.nodes : (c.loop || "").split(" -> ").filter(Boolean);
+                            const eff = Number(c.efficiency_pct || 0);
+
+                            return [
+                              <div key={ci} className="flex flex-wrap items-center gap-1.5 py-1">
+                                {nodes.map((node, ni) => (
+                                  <Fragment key={ni}>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedPan(node)}
+                                      className="px-1.5 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 hover:text-blue-800 text-blue-900 border border-blue-200/80 inline-flex items-center gap-1 font-mono font-semibold text-[11px] cursor-pointer transition-colors"
+                                      title={`Click to view Client 360 profile for ${node}`}
+                                    >
+                                      <UserCircle className="w-3 h-3 text-blue-500 shrink-0" />
+                                      <span className="font-bold">{panNameMap[node] || node}</span>
+                                    </button>
+                                    {ni < nodes.length - 1 && (
+                                      <span className="text-slate-400 font-bold text-xs">→</span>
+                                    )}
+                                  </Fragment>
+                                ))}
+                                <span className="text-amber-600 font-bold text-xs ml-0.5">↺</span>
+                              </div>,
+                              <span key="len" className="font-mono text-xs font-semibold text-slate-700 whitespace-nowrap">
+                                {nodes.length} Accounts
+                              </span>,
+                              <span key="rvol" className="font-mono text-xs font-bold text-rose-700 whitespace-nowrap tabular-nums">
+                                {Number(c.volume || 0).toLocaleString("en-IN")}
+                              </span>,
+                              <div key="eff" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
+                                <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                                  <div
+                                    className="bg-amber-500 h-full rounded-full transition-all duration-300"
+                                    style={{ width: `${Math.min(100, Math.max(0, eff))}%` }}
+                                  />
+                                </div>
+                                <div className="text-right">
+                                  <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs">{eff.toFixed(1)}%</span>
+                                  <div className="text-[10px] text-slate-400 font-mono">of {Number(c.gross_volume || 0).toLocaleString("en-IN")}</div>
+                                </div>
+                              </div>
+                            ];
+                          })}
+                        />
+                      )}
                     </Card>
                   </div>
 
