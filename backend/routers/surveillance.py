@@ -159,7 +159,18 @@ def export_scrip_excel(
 
 
 
+@router.get("/weights")
+@legacy_router.get("/weights")
+def get_weights(current_user: SysUser = Depends(get_current_user)):
+    return {
+        "status": "SUCCESS",
+        "weights": service.config.weights,
+        "threshold": service.config.threshold
+    }
+
+
 @router.post("/weights")
+@legacy_router.post("/weights")
 def update_weights(
     payload: Dict[str, Any],
     admin_user: SysUser = Depends(require_admin),

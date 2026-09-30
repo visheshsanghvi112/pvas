@@ -318,14 +318,21 @@ export function SurveillanceDossierPdf({
   const volumeZRaw = rawScoreForZ(metrics.volume_z);
   const bandRaw = rawScoreForBandDays(metrics.band_hit_days);
   const newHighRaw = rawScoreForNewHighDays(metrics.new_high_days);
+  // Calibrated model weights and points contributions from detail.score_breakdown
+  const sbMap = useMemo(() => {
+    const map: Record<string, { weight: number; contribution: number }> = {};
+    (detail?.score_breakdown || []).forEach((item) => {
+      map[item.label] = { weight: item.weight, contribution: item.contribution };
+    });
+    return map;
+  }, [detail?.score_breakdown]);
 
-  // Weighted parameter points (weight: 20% each -> score * 4 = weighted pts out of 20)
-  const wPriceRise = priceRiseRaw * 4.0;
-  const wPriceZ = priceZRaw * 4.0;
-  const wVolumeZ = volumeZRaw * 4.0;
-  const wBand = bandRaw * 4.0;
-  const wNewHigh = newHighRaw * 4.0;
-  const totalWeightedScore = wPriceRise + wPriceZ + wVolumeZ + wBand + wNewHigh;
+  const wPriceRise = sbMap["Price Rise"]?.contribution ?? (priceRiseRaw * 4.0);
+  const wPriceZ = sbMap["Price Z"]?.contribution ?? (priceZRaw * 4.0);
+  const wVolumeZ = sbMap["Volume Z"]?.contribution ?? (volumeZRaw * 4.0);
+  const wBand = sbMap["Band Persistence"]?.contribution ?? (bandRaw * 4.0);
+  const wNewHigh = sbMap["180 Day New High"]?.contribution ?? (newHighRaw * 4.0);
+  const totalWeightedScore = metrics.final_score ?? (wPriceRise + wPriceZ + wVolumeZ + wBand + wNewHigh);
 
   // 15-day window dynamics calculation
   const windowHistory = useMemo(() => {
@@ -558,31 +565,41 @@ export function SurveillanceDossierPdf({
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
                     <tr>
-                      <td className="py-1 font-medium text-slate-800">1. Price Rise %</td>
+                      <td className="py-1 font-medium text-slate-800">
+                        1. Price Rise % <span className="text-[9px] text-slate-500 font-mono">(w: {sbMap["Price Rise"]?.weight ?? 20}%)</span>
+                      </td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{metrics.price_rise_pct.toFixed(1)}%</td>
                       <td className="py-1 text-center font-mono font-bold text-blue-700">{priceRiseRaw}/5</td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{wPriceRise.toFixed(1)} pts</td>
                     </tr>
                     <tr>
-                      <td className="py-1 font-medium text-slate-800">2. Return Z-Score</td>
+                      <td className="py-1 font-medium text-slate-800">
+                        2. Return Z-Score <span className="text-[9px] text-slate-500 font-mono">(w: {sbMap["Price Z"]?.weight ?? 20}%)</span>
+                      </td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{metrics.price_z.toFixed(2)}σ</td>
                       <td className="py-1 text-center font-mono font-bold text-blue-700">{priceZRaw}/5</td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{wPriceZ.toFixed(1)} pts</td>
                     </tr>
                     <tr>
-                      <td className="py-1 font-medium text-slate-800">3. Volume Z-Score</td>
+                      <td className="py-1 font-medium text-slate-800">
+                        3. Volume Z-Score <span className="text-[9px] text-slate-500 font-mono">(w: {sbMap["Volume Z"]?.weight ?? 20}%)</span>
+                      </td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{metrics.volume_z.toFixed(2)}σ</td>
                       <td className="py-1 text-center font-mono font-bold text-blue-700">{volumeZRaw}/5</td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{wVolumeZ.toFixed(1)} pts</td>
                     </tr>
                     <tr>
-                      <td className="py-1 font-medium text-slate-800">4. Upper Circuit Hits</td>
+                      <td className="py-1 font-medium text-slate-800">
+                        4. Upper Circuit Hits <span className="text-[9px] text-slate-500 font-mono">(w: {sbMap["Band Persistence"]?.weight ?? 20}%)</span>
+                      </td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{metrics.band_hit_days} Days</td>
                       <td className="py-1 text-center font-mono font-bold text-blue-700">{bandRaw}/5</td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{wBand.toFixed(1)} pts</td>
                     </tr>
                     <tr>
-                      <td className="py-1 font-medium text-slate-800">5. 180D New Highs</td>
+                      <td className="py-1 font-medium text-slate-800">
+                        5. 180D New Highs <span className="text-[9px] text-slate-500 font-mono">(w: {sbMap["180 Day New High"]?.weight ?? 20}%)</span>
+                      </td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{metrics.new_high_days} Days</td>
                       <td className="py-1 text-center font-mono font-bold text-blue-700">{newHighRaw}/5</td>
                       <td className="py-1 text-right font-mono font-bold text-slate-900">{wNewHigh.toFixed(1)} pts</td>

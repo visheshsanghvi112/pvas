@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   BellRing,
   Database,
@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input";
 import { MetricHelp } from "@/components/ui/metric-help";
 import { useUser, type UserRole, type UserProfile } from "@/lib/user-context";
 import { cn } from "@/lib/utils";
-import { saveModelWeights } from "@/lib/api";
+import { fetchModelWeights, saveModelWeights } from "@/lib/api";
 
 const scoreRows = [
   ["Price Rise", ["Under 15%", "15% - 75%", "76% - 150%", "> 150%"], "priceRise" as const],
@@ -86,6 +86,7 @@ export default function SettingsPage() {
 
   // Thresholds state
   const [watchlistScore, setWatchlistScore] = useState(15);
+  const [loadingWeights, setLoadingWeights] = useState(true);
 
   // Save & Modal states
   const [saving, setSaving] = useState(false);
@@ -110,10 +111,32 @@ export default function SettingsPage() {
   // Audit search filter
   const [auditSearch, setAuditSearch] = useState("");
 
+  const loadWeights = useCallback(async () => {
+    try {
+      setLoadingWeights(true);
+      const data = await fetchModelWeights();
+      if (data && data.weights) {
+        setWPriceRise(data.weights.price_rise ?? 25);
+        setWPriceZ(data.weights.price_z ?? 20);
+        setWVolumeZ(data.weights.volume_z ?? 25);
+        setWBand(data.weights.band_persistence ?? 15);
+        setWHigh(data.weights.new_high ?? 15);
+      }
+      if (data && data.threshold != null) {
+        setWatchlistScore(data.threshold);
+      }
+    } catch (err) {
+      console.error("Failed to load active model weights from server:", err);
+    } finally {
+      setLoadingWeights(false);
+    }
+  }, []);
+
   useEffect(() => {
     refreshUsers();
     refreshAuditLogs();
-  }, [refreshUsers, refreshAuditLogs]);
+    loadWeights();
+  }, [refreshUsers, refreshAuditLogs, loadWeights]);
 
   const handleResetDefaults = () => {
     setWPriceRise(25);
@@ -138,11 +161,17 @@ export default function SettingsPage() {
       new_high: wHigh
     };
 
-    await saveModelWeights(weights, watchlistScore);
-    setSaving(false);
-    setSaveSuccess(true);
-    refreshAuditLogs();
-    setTimeout(() => setSaveSuccess(false), 3000);
+    try {
+      await saveModelWeights(weights, watchlistScore);
+      setSaving(false);
+      setSaveSuccess(true);
+      refreshAuditLogs();
+      await loadWeights();
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err) {
+      setSaving(false);
+      console.error("Failed to save model weights:", err);
+    }
   };
 
   const handleCreateUserSubmit = async (e: React.FormEvent) => {
@@ -296,6 +325,10 @@ export default function SettingsPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1 flex items-center gap-1">
+                      <span>Active Cutoff:</span>
+                      <strong className="font-mono text-blue-900 font-bold">≥ {watchlistScore}</strong>
+                    </span>
                     <div className="flex items-center gap-1.5 text-xs">
                       <span className="text-slate-500 font-medium">Total Weight:</span>
                       <span className={cn(

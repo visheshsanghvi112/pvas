@@ -159,22 +159,31 @@ async function runTestSuite() {
   const users = await usersRes.json();
   assert(Array.isArray(users) && users.length >= 3, `Users list returned (${users.length} registered users)`);
 
-  // Model weights update test
+  // Model weights inspection & calibration update test
+  const getWeightsRes = await fetch(`${FRONTEND_HOST}/api/v1/surveillance/weights`, { headers: authHeaders });
+  assert(getWeightsRes.ok, "GET /api/v1/surveillance/weights is 200 OK");
+  const currentWeights = await getWeightsRes.json();
+  assert(currentWeights.status === "SUCCESS", "Weights payload status is SUCCESS");
+  assert(typeof currentWeights.threshold === "number", `Threshold is number (${currentWeights.threshold})`);
+  assert(typeof currentWeights.weights === "object", "Weights dictionary present");
+
   const weightsRes = await fetch(`${FRONTEND_HOST}/api/v1/surveillance/weights`, {
     method: "POST",
     headers: authHeaders,
     body: JSON.stringify({
       weights: {
-        price_rise: 25.0,
+        price_rise: 20.0,
         price_z: 20.0,
-        volume_z: 25.0,
-        band_persistence: 15.0,
-        new_high: 15.0
+        volume_z: 20.0,
+        band_persistence: 20.0,
+        new_high: 20.0
       },
-      threshold: 15.0
+      threshold: 60.0
     })
   });
   assert(weightsRes.ok, "POST /api/v1/surveillance/weights calibration update is 200 OK");
+  const postWeightsData = await weightsRes.json();
+  assert(postWeightsData.threshold === 60.0, "Saved threshold is confirmed as 60.0");
 
   console.log("\n=======================================================");
   console.log("   ALL 5 PHASES & ALL FRONTEND CONTRACTS PASSED 100%!");

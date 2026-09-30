@@ -1,6 +1,9 @@
 import io
 import os
 import sys
+import json
+import re
+import ast
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, cast
 import numpy as np
@@ -10,6 +13,8 @@ import zlib
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+
+CONFIG_PATH = os.path.join(ROOT_DIR, "backend", "db", "model_config.json")
 
 from pv_alert_surveillance import (
     SurveillanceConfig,
@@ -76,6 +81,7 @@ class EODSurveillanceService:
 
     def __init__(self):
         self.config = SurveillanceConfig()
+        self._load_persisted_config()
         self.engine = SurveillanceEngine(self.config)
         self.calendar = MarketCalendarService()
         self._summary_cache: Dict[str, List[Dict[str, Any]]] = {}
@@ -87,6 +93,62 @@ class EODSurveillanceService:
         # Load participant trade logs from database counterparty_trade_pairs & participant_daily_trades
         db_trades = self._load_db_trades()
         self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
+
+    def _load_persisted_config(self) -> None:
+        """Loads model weights and risk threshold from disk or latest compliance audit log."""
+        try:
+            if os.path.exists(CONFIG_PATH):
+                with open(CONFIG_PATH, "r") as f:
+                    data = json.load(f)
+                    if "weights" in data and isinstance(data["weights"], dict):
+                        for k, v in data["weights"].items():
+                            if k in self.config.weights:
+                                self.config.weights[k] = float(v)
+                    if "threshold" in data and data["threshold"] is not None:
+                        self.config.threshold = float(data["threshold"])
+                    return
+        except Exception as e:
+            print(f"[surveillance_service] Warning: Failed to load config from {CONFIG_PATH}: {e}")
+
+        # Fallback: check SQLite compliance_audit_logs for most recent UPDATE_MODEL_WEIGHTS record
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import SysAuditLog
+            db = SessionLocal()
+            try:
+                log = db.query(SysAuditLog).filter(
+                    SysAuditLog.action == "UPDATE_MODEL_WEIGHTS"
+                ).order_by(SysAuditLog.id.desc()).first()
+                if log and log.details:
+                    thresh_match = re.search(r"thresholds?\s*\(([\d\.]+)\)", log.details)
+                    if thresh_match:
+                        self.config.threshold = float(thresh_match.group(1))
+                    weights_match = re.search(r"model weights\s*\((\{.*?\})\)", log.details)
+                    if weights_match:
+                        parsed_w = ast.literal_eval(weights_match.group(1))
+                        if isinstance(parsed_w, dict):
+                            for k, v in parsed_w.items():
+                                if k in self.config.weights:
+                                    self.config.weights[k] = float(v)
+                    self._save_persisted_config()
+            finally:
+                db.close()
+        except Exception as e:
+            print(f"[surveillance_service] Warning: Audit log config recovery error: {e}")
+
+    def _save_persisted_config(self) -> None:
+        """Persists current weights and threshold to disk."""
+        try:
+            os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
+            payload = {
+                "weights": self.config.weights,
+                "threshold": self.config.threshold,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            with open(CONFIG_PATH, "w") as f:
+                json.dump(payload, f, indent=2)
+        except Exception as e:
+            print(f"[surveillance_service] Warning: Failed to write {CONFIG_PATH}: {e}")
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
         """Loads EOD OHLCV data directly from daily_market_eod."""
@@ -430,12 +492,13 @@ class EODSurveillanceService:
         return pd.DataFrame(rows)
 
     def update_weights(self, weights: Dict[str, float], threshold: Optional[float] = None) -> SurveillanceConfig:
-        """Dynamically updates scoring weights w1..w5 and risk score threshold."""
+        """Dynamically updates scoring weights w1..w5 and risk score threshold, persisting to disk."""
         for k, v in weights.items():
             if k in self.config.weights:
                 self.config.weights[k] = float(v)
         if threshold is not None:
             self.config.threshold = float(threshold)
+        self._save_persisted_config()
         self.engine = SurveillanceEngine(self.config)
         self._summary_cache.clear()
         return self.config
@@ -582,6 +645,7 @@ class EODSurveillanceService:
                     "band_hit_days": effective_band_hits,
                     "new_high_days": effective_high_days,
                     "watchlist": effective_score >= self.config.threshold,
+                    "threshold": self.config.threshold,
                     "risk": risk,
                     "status": status,
                     "exchange_scope": exchange,
@@ -660,6 +724,10 @@ class EODSurveillanceService:
             "isin": ISIN_CODES.get(ticker, f"INE{abs(hash(ticker))%900000+100000}A01010"),
             "risk": risk,
             "status": status,
+            "score": round(metrics.final_score, 2),
+            "risk_score": round(metrics.final_score, 2),
+            "threshold": self.config.threshold,
+            "watchlist": metrics.final_score >= self.config.threshold,
             "price_band": price_band_val,
             "exchange_scope": exchange,
             "venue_split": {

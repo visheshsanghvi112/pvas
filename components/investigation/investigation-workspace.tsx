@@ -103,14 +103,37 @@ function rawScoreForNewHighDays(d: number): number {
   return 0;
 }
 
-function ScoreChip({ label, value, rawScore, weight }: { label: string; value: string; rawScore: number; weight: number }) {
+function ScoreChip({
+  label,
+  value,
+  rawScore,
+  weight,
+  contribution
+}: {
+  label: string;
+  value: string;
+  rawScore: number;
+  weight: number;
+  contribution?: number;
+}) {
   return (
-    <div className="flex-1 min-w-[115px] bg-white border border-slate-200/90 rounded-2xl p-3 flex flex-col justify-between gap-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs hover:border-slate-300 shadow-2xs">
-      <div className="text-xs font-semibold text-slate-500">{label}</div>
+    <div className="flex-1 min-w-[130px] bg-white border border-slate-200/90 rounded-2xl p-3 flex flex-col justify-between gap-1.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs hover:border-slate-300 shadow-2xs">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-500">{label}</span>
+        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded font-mono">
+          w = {weight}%
+        </span>
+      </div>
       <div className="text-lg font-extrabold text-slate-900 font-mono leading-none tracking-tight my-0.5">{value}</div>
-      <div className="flex items-center justify-between mt-1 pt-1 border-t border-slate-100">
-        <span className="text-[11px] font-medium text-slate-400">Wt: {weight}%</span>
-        <span className="text-[11px] font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80">Score {rawScore}/5</span>
+      <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100 text-[11px]">
+        <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80 font-mono">
+          Score {rawScore}/5
+        </span>
+        {contribution != null && (
+          <span className="font-mono font-bold text-slate-600">
+            +{contribution.toFixed(1)} pts
+          </span>
+        )}
       </div>
     </div>
   );
@@ -406,12 +429,20 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
   const { metrics, summary, history, score_breakdown, risk, company } = detail;
 
-  // Compute individual raw scores from metrics (mirrors backend scoring)
   const priceRiseRaw = rawScoreForPriceRise(metrics.price_rise_pct);
   const priceZRaw    = rawScoreForZ(metrics.price_z);
   const volumeZRaw   = rawScoreForZ(metrics.volume_z);
   const bandRaw      = rawScoreForBandDays(metrics.band_hit_days);
   const newHighRaw   = rawScoreForNewHighDays(metrics.new_high_days);
+
+  // Map calibrated model weights and points contributions from detail.score_breakdown
+  const scoreBreakdownMap = useMemo(() => {
+    const map: Record<string, { weight: number; contribution: number; score: number }> = {};
+    (score_breakdown || []).forEach((item) => {
+      map[item.label] = { weight: item.weight, contribution: item.contribution, score: item.score };
+    });
+    return map;
+  }, [score_breakdown]);
 
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
@@ -506,6 +537,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   </span>
                 )}
                 <RiskBadge risk={risk} />
+                <span className="text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                  Risk Score: <strong className="font-mono text-slate-900 font-bold">{metrics.final_score.toFixed(1)}</strong>
+                  <span className="text-slate-400 font-normal ml-1">/ Cutoff ≥ {detail.threshold ?? 60}</span>
+                </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -675,6 +710,56 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {/* TAB: OVERVIEW */}
         {activeTab === "Overview" && (
           <div className="space-y-6">
+
+            {/* 5-Parameter Calibrated Scoring Strip with Active Model Weights */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs px-0.5">
+                <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                  <Activity className="w-3.5 h-3.5 text-blue-600" />
+                  Calibrated Framework Model Scoring (Active Weights $w_1 \dots w_5$)
+                </span>
+                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-lg">
+                  Cutoff Threshold: <strong className="font-mono text-blue-950 font-bold">≥ {detail.threshold ?? 60}</strong>
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                <ScoreChip
+                  label="1. Price Rise"
+                  value={`${metrics.price_rise_pct > 0 ? "+" : ""}${metrics.price_rise_pct.toFixed(1)}%`}
+                  rawScore={priceRiseRaw}
+                  weight={scoreBreakdownMap["Price Rise"]?.weight ?? 20}
+                  contribution={scoreBreakdownMap["Price Rise"]?.contribution}
+                />
+                <ScoreChip
+                  label="2. Return Z-Score"
+                  value={`${metrics.price_z.toFixed(2)}σ`}
+                  rawScore={priceZRaw}
+                  weight={scoreBreakdownMap["Price Z"]?.weight ?? 20}
+                  contribution={scoreBreakdownMap["Price Z"]?.contribution}
+                />
+                <ScoreChip
+                  label="3. Volume Z-Score"
+                  value={`${metrics.volume_z.toFixed(2)}σ`}
+                  rawScore={volumeZRaw}
+                  weight={scoreBreakdownMap["Volume Z"]?.weight ?? 20}
+                  contribution={scoreBreakdownMap["Volume Z"]?.contribution}
+                />
+                <ScoreChip
+                  label="4. Band Persistence"
+                  value={`${metrics.band_hit_days} Days`}
+                  rawScore={bandRaw}
+                  weight={scoreBreakdownMap["Band Persistence"]?.weight ?? 20}
+                  contribution={scoreBreakdownMap["Band Persistence"]?.contribution}
+                />
+                <ScoreChip
+                  label="5. 180D New Highs"
+                  value={`${metrics.new_high_days} Days`}
+                  rawScore={newHighRaw}
+                  weight={scoreBreakdownMap["180 Day New High"]?.weight ?? 20}
+                  contribution={scoreBreakdownMap["180 Day New High"]?.contribution}
+                />
+              </div>
+            </div>
 
             {/* 5-Parameter Risk Radar Signature Command Card */}
             <Card className="bg-gradient-to-br from-white via-slate-50/60 to-blue-50/20 border-slate-200/90 shadow-xs">

@@ -1,0 +1,11 @@
+{
+  "weights": {
+    "price_rise": 20.0,
+    "price_z": 20.0,
+    "volume_z": 20.0,
+    "band_persistence": 20.0,
+    "new_high": 20.0
+  },
+  "threshold": 60.0,
+  "updated_at": "2026-09-29T10:06:56.921911"
+}

@@ -29,6 +29,7 @@ export interface ScripSummary {
   band_hit_days: number;
   new_high_days: number;
   watchlist: boolean;
+  threshold?: number;
   risk: "High" | "Medium" | "Low";
   status: "Open" | "Under review" | "Closed" | "Normal";
   isin?: string;
@@ -85,6 +86,8 @@ export interface ScripDetail {
   isin: string;
   risk: "High" | "Medium" | "Low";
   status: "Open" | "Under review" | "Closed";
+  score?: number;
+  risk_score?: number;
   price_band?: number;
   exchange_scope?: ExchangeScope;
   venue_split?: VenueSplit;
@@ -107,6 +110,8 @@ export interface ScripDetail {
   };
   shareholders?: ShareholderStats | null;
   announcements?: AnnouncementItem[];
+  threshold?: number;
+  watchlist?: boolean;
 }
 
 export interface LtpContributor {
@@ -360,7 +365,8 @@ export async function fetchScripDetail(
   const new_high_days: number  = m["new_high_days"]  ?? m["180d New Highs (15d)"] ?? 0;
   const final_score: number    = m["final_score"]    ?? m["Final Score"]    ?? 0;
 
-  const risk = final_score >= 15 ? "High" : final_score >= 10 ? "Medium" : "Low";
+  const effThreshold: number   = data.threshold ?? 15;
+  const risk = (data.risk as "High" | "Medium" | "Low") ?? (final_score >= effThreshold ? "High" : final_score >= 10 ? "Medium" : "Low");
 
   return {
     ticker: data.ticker ?? cleanId,
@@ -369,7 +375,9 @@ export async function fetchScripDetail(
     isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
     risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
     status: (data.status as "Open" | "Under review" | "Closed") ??
-            (final_score >= 15 ? "Open" : final_score >= 10 ? "Under review" : "Closed"),
+            (final_score >= effThreshold ? "Open" : final_score >= 10 ? "Under review" : "Closed"),
+    threshold: effThreshold,
+    watchlist: data.watchlist ?? (final_score >= effThreshold),
     exchange_scope: exchange,
     venue_split: data.venue_split || {
       is_dual_listed: true,
@@ -430,6 +438,15 @@ export async function fetchClient360(pan: string): Promise<ClientDetail> {
   const cleanPan = pan.toUpperCase();
   const res = await fetchWithAuth(`${CLIENTS_API_BASE}/pan/${cleanPan}`, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch client 360 for PAN ${cleanPan}`);
+  return await res.json();
+}
+
+export async function fetchModelWeights(): Promise<{
+  weights: Record<string, number>;
+  threshold: number;
+}> {
+  const res = await fetchWithAuth(`${API_BASE}/weights`, { cache: "no-store" });
+  if (!res.ok) throw new Error("Failed to fetch model weights");
   return await res.json();
 }
 

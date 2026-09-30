@@ -39,6 +39,7 @@ export interface AlertsTableProps {
   asOfDate?: string;
   windowDays?: number;
   exchange?: ExchangeScope;
+  threshold?: number;
 }
 
 const RISK_DOT: Record<string, string> = {
@@ -55,6 +56,7 @@ export function AlertsTable({
   asOfDate,
   windowDays = 15,
   exchange = "ALL",
+  threshold,
 }: AlertsTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortField, setSortField] = useState<SortField>("score");
@@ -228,12 +230,14 @@ export function AlertsTable({
     URL.revokeObjectURL(url);
   };
 
+  const effThreshold = threshold ?? scrips[0]?.threshold ?? 60;
+
   const riskCards = [
     {
       key: "High",
       label: "High Risk",
       count: scrips.filter((s) => s.risk === "High").length,
-      subtitle: "Alert Score ≥ 70",
+      subtitle: `Alert Score ≥ ${effThreshold}`,
       dot: "bg-rose-400",
       activeCardClass: "bg-rose-50/50 border-rose-300 ring-2 ring-rose-400/20 shadow-xs",
       activeBadge: "bg-rose-100/90 text-rose-800 border-rose-200/80",
@@ -244,7 +248,7 @@ export function AlertsTable({
       key: "Medium",
       label: "Medium",
       count: scrips.filter((s) => s.risk === "Medium").length,
-      subtitle: "Alert Score 40–69",
+      subtitle: effThreshold > 10 ? `Alert Score 10–${effThreshold - 1}` : `Alert Score < ${effThreshold}`,
       dot: "bg-amber-400",
       activeCardClass: "bg-amber-50/50 border-amber-300 ring-2 ring-amber-400/20 shadow-xs",
       activeBadge: "bg-amber-100/90 text-amber-800 border-amber-200/80",
@@ -255,7 +259,7 @@ export function AlertsTable({
       key: "Low",
       label: "Low",
       count: scrips.filter((s) => s.risk === "Low").length,
-      subtitle: "Alert Score < 40",
+      subtitle: "Alert Score < 10",
       dot: "bg-emerald-400",
       activeCardClass: "bg-emerald-50/50 border-emerald-300 ring-2 ring-emerald-400/20 shadow-xs",
       activeBadge: "bg-emerald-100/90 text-emerald-800 border-emerald-200/80",

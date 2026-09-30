@@ -7,12 +7,13 @@ import {
   Calendar,
   ChevronLeft,
   ChevronRight,
+  ShieldAlert,
 } from "lucide-react";
 import { AlertsTable, InfoTooltip } from "@/components/dashboard/alerts-table";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
 import { type ExchangeScope } from "@/components/ui/exchange-scope-selector";
 import { Toast } from "@/components/ui/toast";
-import { fetchWatchlist, fetchAvailableTradingDates, type ScripSummary } from "@/lib/api";
+import { fetchWatchlist, fetchAvailableTradingDates, fetchModelWeights, type ScripSummary } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 function DashboardContent() {
@@ -28,6 +29,7 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [riskFilter, setRiskFilter] = useState<string>("High");
   const [toastAlert, setToastAlert] = useState<{ show: boolean; msg: string }>({ show: false, msg: "" });
+  const [threshold, setThreshold] = useState<number>(60);
 
   // Market Date & Surveillance Window State
   const [availableDates, setAvailableDates] = useState<string[]>([]);
@@ -70,6 +72,21 @@ function DashboardContent() {
     }
     loadDates();
   }, [urlAsOfDate, router, pathname, searchParams]);
+
+  // Load active calibrated threshold from surveillance warehouse
+  useEffect(() => {
+    async function loadWeights() {
+      try {
+        const data = await fetchModelWeights();
+        if (data && data.threshold != null) {
+          setThreshold(data.threshold);
+        }
+      } catch (e) {
+        console.warn("[Dashboard] Could not fetch active model weights:", e);
+      }
+    }
+    loadWeights();
+  }, []);
 
   // Fetch watchlist data whenever selectedDate, windowDays, or exchange changes
   const loadData = useCallback(async () => {
@@ -181,6 +198,19 @@ function DashboardContent() {
           {/* Spacer pushes window badge right */}
           <div className="flex-1" />
 
+          {/* Active Watchlist Cutoff Threshold Badge */}
+          <div className="flex items-center gap-2 bg-blue-50/80 border border-blue-200 rounded-lg px-3 py-1.5 text-[12px] text-blue-900 font-semibold select-none shadow-2xs">
+            <ShieldAlert className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+            <span>
+              Watchlist Cutoff:{" "}
+              <strong className="font-mono text-blue-950 font-bold">Score ≥ {threshold}</strong>
+            </span>
+            <InfoTooltip
+              text={`Calibrated triage threshold. Only scrips with a weighted composite PVASF risk score ≥ ${threshold} are shortlisted on this watchlist.`}
+              align="right"
+            />
+          </div>
+
           {/* 15D analysis window readout */}
           <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] text-amber-900 font-semibold select-none">
             <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
@@ -208,6 +238,7 @@ function DashboardContent() {
           asOfDate={selectedDate}
           windowDays={windowDays}
           exchange={exchange}
+          threshold={threshold}
         />
       </main>
       {/* Non-Trading Day Toast Notification */}

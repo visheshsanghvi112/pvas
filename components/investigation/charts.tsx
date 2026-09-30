@@ -1615,18 +1615,20 @@ export function RiskDonut({ scrips = [] }: { scrips?: ScripSummary[] }) {
  * Score Distribution Chart — Dashboard right panel.
  * Buckets aligned to PVASF thresholds: <60 (Low), 60-74 (Medium), ≥75 (High).
  */
-export function ScoreDistributionChart({ scrips = [] }: { scrips?: ScripSummary[] }) {
+export function ScoreDistributionChart({ scrips = [], threshold }: { scrips?: ScripSummary[]; threshold?: number }) {
   if (scrips.length === 0) return <div className="text-slate-500 text-xs p-4">No data available.</div>;
+
+  const effThreshold = threshold ?? scrips[0]?.threshold ?? 60;
 
   const buckets = [
     { bucket: "< 10 (Low)", count: 0, fill: "#059669" },
-    { bucket: "10–14 (Med)", count: 0, fill: "#d97706" },
-    { bucket: "≥ 15 (High)", count: 0, fill: "#e11d48" },
+    { bucket: effThreshold > 10 ? `10–${effThreshold - 1} (Med)` : `< ${effThreshold} (Med)`, count: 0, fill: "#d97706" },
+    { bucket: `≥ ${effThreshold} (High)`, count: 0, fill: "#e11d48" },
   ];
 
   scrips.forEach((s) => {
-    if (s.score >= 15) buckets[2].count++;
-    else if (s.score >= 10) buckets[1].count++;
+    if (s.risk === "High" || s.score >= effThreshold) buckets[2].count++;
+    else if (s.risk === "Medium" || s.score >= 10) buckets[1].count++;
     else buckets[0].count++;
   });
 
