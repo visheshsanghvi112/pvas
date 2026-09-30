@@ -2,8 +2,8 @@
 ## Master System Architecture, Algorithmic Engine & Technical Manual
 
 **Document Version:** 8.0.0 (Production Master Engineering Blueprint — Code-Verified Single Source of Truth)  
-**Target Systems:** Standardized 15-Table Relational Regulatory Data Warehouse (674,012 Rows, 157 Columns) | FastAPI Surveillance Engine (26 Endpoints) | Next.js 15 Enterprise Compliance Suite | Teradata MPP Enterprise Scale  
-**Scope:** Complete System Topology, Standardized Relational Data Model (15 Tables across 8 Functional Modules, 674,012 Physical Records), 5 Core Mathematical Anomaly Metrics, Active Model Configuration Persistence Engine (`backend/db/model_config.json` with Audit Trail Recovery), Calibrated 5-Parameter Equal Scoring ($w_1\dots w_5 = 20\%$) & Triage Threshold ($60.0$), Production-Grade Universal Market EOD Ingestion Pipeline (`scripts/ingest_market_eod.py` with Non-Destructive Upserts & Index Alignment), 7 Participant Forensic Algorithms & Client 360° Demographics Intelligence, 15-Table Warehouse Physical Schemas (157 Columns), 3 Analytical Surveillance Views, Complete 26-Endpoint API Service Reference (including `GET /api/v1/surveillance/weights`), Dual Dossier Export Engines (5-Sheet Excel Workbook & Vector-Accurate A4 PDF), Clean UI/UX Blueprint with Dynamic Risk Tiers & Calibrated Cutoffs, Major Shareholders Registry with Substantial Ownership (≥ 5%) Flags, Macro-Scale P&L Beneficiaries, Clean Date Navigation, RBAC Security, Multi-Stage Automated Verification Suites (`verify_e2e.mjs` & `test_frontend_routes.mjs`), Archival Database Hygiene (`archive/database_backups/`), and Teradata Enterprise Data Warehouse Transition Architecture.  
+**Target Systems:** Standardized 15-Table Relational Regulatory Data Warehouse (862,921 Rows, 157 Columns) | FastAPI Surveillance Engine (26 Endpoints) | Next.js 15 Enterprise Compliance Suite | Teradata MPP Enterprise Scale  
+**Scope:** Complete System Topology, Standardized Relational Data Model (15 Tables across 8 Functional Modules, 862,921 Physical Records), 5 Core Mathematical Anomaly Metrics, Active Model Configuration Persistence Engine (`backend/db/model_config.json` with Audit Trail Recovery), Calibrated 5-Parameter Equal Scoring ($w_1\dots w_5 = 20\%$) & Triage Threshold ($60.0$), Production-Grade Universal Market EOD Ingestion Pipeline (`scripts/ingest_market_eod.py` with Non-Destructive Upserts & Index Alignment), Production Participant Ingestion Pipeline (`scripts/ingest_client_data.py`), 7 Participant Forensic Algorithms & Client 360° Demographics Intelligence, 15-Table Warehouse Physical Schemas (157 Columns), 3 Analytical Surveillance Views, Complete 26-Endpoint API Service Reference (including `GET /api/v1/surveillance/weights`), Dual Dossier Export Engines (5-Sheet Excel Workbook & Vector-Accurate A4 PDF), Clean UI/UX Blueprint with Dynamic Risk Tiers & Calibrated Cutoffs, Major Shareholders Registry with Substantial Ownership (≥ 5%) Flags, Macro-Scale P&L Beneficiaries, Clean Date Navigation, RBAC Security, Multi-Stage Automated Verification Suites (`verify_e2e.mjs` & `test_frontend_routes.mjs`), Archival Database Hygiene (`archive/database_backups/`), and Teradata Enterprise Data Warehouse Transition Architecture.  
 **Physical Schema References:** [`surveillance_schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/surveillance_schema.sql) | [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql)  
 **Data Request Specification:** [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md)
 
@@ -41,7 +41,7 @@
 11. [Role-Based Access Control (RBAC) & Security Architecture](#11-role-based-access-control-rbac--security-architecture)
    - 11.1 [Operational RBAC Permissions Matrix](#111-operational-rbac-permissions-matrix)
 12. [Engineering Audit, Live Verification & Scaling Architecture](#12-engineering-audit-live-verification--scaling-architecture)
-   - 12.1 [Live Physical Warehouse Scale Audit (674,012 Records)](#121-live-physical-warehouse-scale-audit-674012-records)
+   - 12.1 [Live Physical Warehouse Scale Audit (862,921 Records)](#121-live-physical-warehouse-scale-audit-862921-records)
    - 12.2 [Automated Multi-Pass Test Suites](#122-automated-multi-pass-test-suites)
    - 12.3 [Teradata Enterprise Data Warehouse Scaling Architecture](#123-teradata-enterprise-data-warehouse-scaling-architecture)
 
@@ -101,7 +101,7 @@ The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas,
 ┌─────────────────────────────────────────────▼────────────────────────────────────────────┐
 │                           15-TABLE REGULATORY DATA WAREHOUSE                             │
 │   [ 8 Functional Modules | Master DDL: backend/db/schema.sql & surveillance_schema.sql ] │
-│   [ Production/Local DB: backend/db/surveillance.db (674,012 Records, 15 Tables) | Scale: Teradata MPP ]│
+│   [ Production/Local DB: backend/db/surveillance.db (862,921 Records, 15 Tables) | Scale: Teradata MPP ]│
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -111,7 +111,7 @@ To ensure rapid operational readiness and eliminate semantic impedance mismatch,
 1. **Zero Semantic Impedance Mismatch During Sourcing**:
    By directly mirroring the enterprise warehouse entities (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`, `client_identity_master`, `client_demat_accounts`), the framework eliminates artificial schema translations. Upstream Data Engineers and DBAs immediately recognize their production table definitions, column names (`close_price`, `gross_positive_ltp_value`, `client_pan`), and primary/foreign keys without needing to decipher custom application aliases.
 2. **Local Prototype as an Executable Data Contract**:
-   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 157 columns, 674,012 physical records across 2,191 scrips). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
+   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 157 columns, 862,921 physical records across 2,191 scrips). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
 3. **Decoupled Application Boundary via Services & DTOs**:
    While the database models adhere 1:1 to institutional surveillance data nomenclature, the application routers and Next.js frontend interact strictly with sanitized Pydantic DTOs and REST contracts (`close_price`, `net_ltp_push`, `client_pan`). If the Relational Warehouse team provides data via materialized views (`v_daily_surveillance_summary`) or staging tables, only the internal SQLAlchemy ORM mapping in `backend/db/models.py` requires adjustment—the entire frontend and surveillance mathematical algorithms remain completely untouched.
 4. **Seamless Relational Warehouse Production Dialect Switch**:
@@ -205,7 +205,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql): Master 15-table production schema DDL with data contracts, constraints, foreign keys, and module annotations.
 - [`backend/db/model_config.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/model_config.json): Active persisted model configuration holding calibrated weights (`price_rise: 20`, `price_zscore: 20`, `volume_zscore: 20`, `circuit_hits: 20`, `new_high_days: 20`) and alert triage threshold (`60.0`).
 - [`backend/db/seed.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/seed.py): Deterministic synthetic data generator creating 500 exchange clients, 500 depository accounts, 260 trading days of EOD data across 15 scrips, shareholding records, corporate actions, and system users.
-- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (674,012 physical records across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
+- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (862,921 physical records across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
 
 #### Repositories Layer (`backend/repositories/`)
 - [`backend/repositories/client_identity_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/client_identity_repo.py): Data-access layer querying `client_identity_master` by legal entity PAN.
@@ -1041,28 +1041,28 @@ The platform enforces strict Role-Based Access Control across three operational 
 
 A rigorous, multi-pass engineering audit was executed across all layers of the codebase to guarantee that this architecture guide represents an authoritative, 100% verified blueprint.
 
-### 12.1 Live Physical Warehouse Scale Audit (674,012 Records)
+### 12.1 Live Physical Warehouse Scale Audit (862,921 Records)
 
-The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **674,012 physical records** across all 15 normalized tables, spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
+The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **862,921 physical records** across all 15 normalized tables, spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
 
 | # | Table Name | Module Alignment | Physical Row Count | Columns | Key Surveillance Role |
 | :-: | :--- | :--- | :---: | :---: | :--- |
 | 1 | `daily_market_eod` | Module 2: Market Prices | **333,974** | 20 | Consolidated OHLCV, circuit bands, delivery volumes |
 | 2 | `market_baseline_stats` | Module 2: Baseline Stats | **333,974** | 9 | 180-day rolling return/volume mean, std dev, rolling highs |
-| 3 | `participant_daily_trades` | Module 3: Participant Conduct | **2,400** | 17 | Client trade executions, Gross Positive/Negative LTP push |
-| 4 | `broker_daily_summary` | Module 7: Broker Totals | **900** | 9 | Trading member turnover, buy/sell volumes, wash volume |
-| 5 | `counterparty_trade_pairs` | Module 4: Counterparty Network| **750** | 15 | Matched buyer-seller pairs, pairwise LTP impact, wash trades |
-| 6 | `client_identity_master` | Module 1: Client KYC | **500** | 7 | Exchange client legal entities, PAN master, risk grades |
-| 7 | `client_demat_accounts` | Module 1: Demat Registry | **500** | 9 | Depository BO accounts, DP IDs, joint holders, active POA |
+| 3 | `participant_daily_trades` | Module 3: Participant Conduct | **61,298** | 17 | Client trade executions, Gross Positive/Negative LTP push |
+| 4 | `client_identity_master` | Module 1: Client KYC | **59,397** | 7 | Exchange client legal entities, PAN master, risk grades |
+| 5 | `client_demat_accounts` | Module 1: Demat Registry | **59,387** | 9 | Depository BO accounts, DP IDs, joint holders, active POA |
+| 6 | `counterparty_trade_pairs` | Module 4: Counterparty Network| **12,953** | 15 | Matched buyer-seller pairs, pairwise LTP impact, wash trades |
+| 7 | `broker_daily_summary` | Module 7: Broker Totals | **900** | 9 | Trading member turnover, buy/sell volumes, wash volume |
 | 8 | `trading_session_calendar` | Module 7: Market Calendar | **426** | 4 | Authoritative exchange trading sessions and market holidays |
 | 9 | `large_shareholders_registry`| Module 5: Large Holdings | **228** | 9 | Granular promoter holdings, $\ge 5\%$ substantial ownership |
 | 10 | `shareholding_summary` | Module 5: Shareholder Stats | **171** | 11 | Quarterly float summaries, promoter vs public category float |
-| 11 | `compliance_audit_logs` | Module 8: Audit Trail | **152** | 8 | Immutable regulatory security log, model calibrations |
-| 12 | `price_dilution_factors` | Module 6: Corporate Actions | **15** | 5 | Stock split / bonus dilution multipliers for baseline pricing |
-| 13 | `surveillance_alert_cases` | Module 8: Alert Cases | **15** | 14 | Triage cases, 5 anomaly scores, investigation status |
+| 11 | `compliance_audit_logs` | Module 8: Audit Trail | **163** | 8 | Immutable regulatory security log, model calibrations |
+| 12 | `surveillance_alert_cases` | Module 8: Alert Cases | **28** | 14 | Triage cases, 5 anomaly scores, investigation status |
+| 13 | `price_dilution_factors` | Module 6: Corporate Actions | **15** | 5 | Stock split / bonus dilution multipliers for baseline pricing |
 | 14 | `portal_user_accounts` | Module 8: Officer Auth | **4** | 10 | Surveillance officers, PBKDF2 credentials, RBAC tiers |
 | 15 | `corporate_events_feed` | Module 6: Corporate Events | **3** | 10 | Material exchange disclosures, AGMs, dividend notices |
-| **Σ** | **15 Normalized Tables** | **8 Functional Modules** | **674,012** | **157** | **Authoritative Relational Regulatory Data Warehouse** |
+| **Σ** | **15 Normalized Tables** | **8 Functional Modules** | **862,921** | **157** | **Authoritative Relational Regulatory Data Warehouse** |
 
 #### Operational Scale Benchmarks
 - **Watchlist Triage Query Latency**: **193.83 ms** across 2,117 active scrips evaluated against the calibrated 60.0 threshold.

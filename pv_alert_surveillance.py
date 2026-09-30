@@ -618,20 +618,30 @@ class SurveillanceEngine:
         # --- 4.5 Circular Trade Loops Detection ---
         # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)
         # where volume is rotated across multiple mule/surrogate accounts to evade 2-party filters.
+        # Production optimization: Filter search to significant high-volume flow edges (top 300)
+        # and bound traversal steps to maintain sub-second response times on massive real datasets.
+        top_flow_items = sorted(flows.items(), key=lambda x: x[1], reverse=True)[:300]
         adj = {}
-        for (A, B), vol in flows.items():
+        for (A, B), vol in top_flow_items:
             if vol > 0:
                 if A not in adj:
                     adj[A] = set()
                 adj[A].add(B)
 
         detected_loops = []
+        max_loops_target = 25
         
         def find_cycles(start_node):
             path = [start_node]
             visited = {start_node}
+            step_count = 0
+            max_steps = 500
             
             def backtrack(u):
+                nonlocal step_count
+                if len(detected_loops) >= max_loops_target or step_count >= max_steps:
+                    return
+                step_count += 1
                 if len(path) > 5:
                     return
                 if u in adj:
@@ -652,6 +662,8 @@ class SurveillanceEngine:
             backtrack(start_node)
 
         for node in adj.keys():
+            if len(detected_loops) >= max_loops_target:
+                break
             find_cycles(node)
             
         loop_results = []

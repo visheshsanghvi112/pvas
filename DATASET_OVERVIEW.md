@@ -1,6 +1,6 @@
-# Market Data Overview: Part 1 & Part 2
+# Market & Participant Data Overview
 
-This document provides a simple, factual summary of the historical EOD market data received in [`result_part1.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part1.xlsx) and [`result_part2.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part2.xlsx).
+This document provides a simple, factual summary of the historical market and participant datasets received in [`result_part1.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part1.xlsx), [`result_part2.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part2.xlsx), and [`client_data.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/client_data.xlsx).
 
 ---
 
@@ -94,4 +94,74 @@ print(f'Date Range:              {df[\"TRADE_DATE\"].min().strftime(\"%Y-%m-%d\"
 counts = df['SCRIP_SYMBOL'].value_counts()
 print(f'Scrips with all 179 days:{ (counts == 179).sum():,}')
 "
+```
+
+---
+
+## 6. Participant Trade Data (`client_data.xlsx`)
+
+In addition to market EOD prices, [`client_data.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/client_data.xlsx) provides the **participant-level trade execution records** for shortlisted surveillance targets.
+
+### Quick Numbers
+
+| Metric | Measured Value |
+| :--- | :--- |
+| **File Size** | **4.28 MB** |
+| **Total Rows** | **58,898 execution records** |
+| **Target Scrips** | **3 Scrips** (`TDPOWERSYS`, `SKMEGGPROD`, `GUJRAFFIA`) |
+| **Unique Client PANs** | **58,896 unique entities** (100% valid Indian PAN format) |
+| **Trading Members (Brokers)** | **453 brokerage firms** |
+| **Date Range** | **14-Oct-2025 to 03-Nov-2025** (Active 15D analysis window) |
+| **Total Turnover** | **₹2,772.18 Crore** (Buy: ₹1,342.13 Cr \| Sell: ₹1,430.06 Cr) |
+| **Module Alignment** | **Module 3** (`participant_daily_trades`) & **Module 1** (`client_identity_master`) |
+
+### Scrip Breakdown & Trading Session Status
+
+| Symbol | Rows | Trading Sessions | Date Span | Turnover | Trading Status Context |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **`TDPOWERSYS`** | 55,893 | 14 days | 14-Oct to 03-Nov-2025 | ₹2,742.04 Cr | 14 of 15 trading days in window (query started 14-Oct; captures 93.4% of total market volume) |
+| **`SKMEGGPROD`** | 1,770 | 1 day | 03-Nov-2025 | ₹26.43 Cr | 100% complete; stock was dormant for 4.5 months and only traded on 03-Nov |
+| **`GUJRAFFIA`** | 1,235 | 6 days | 14-Oct to 21-Oct-2025 | ₹3.71 Cr | 100% complete; exchange halted/suspended trading after 21-Oct (+109% surge) |
+
+### Fields in `client_data.xlsx` (14 Columns)
+
+| # | Column Name | Format | Target Database Field | Surveillance Role |
+| :-: | :--- | :--- | :--- | :--- |
+| 1 | `symbol` | Text | `participant_daily_trades.symbol` | Security ticker |
+| 2 | `trade_date` | Datetime | `participant_daily_trades.trade_date` | Session date |
+| 3 | `client_pan` | Text | `participant_daily_trades.client_pan` | Client PAN |
+| 4 | `client_legal_name` | Text | `participant_daily_trades.client_legal_name` | Registered legal entity name |
+| 5 | `trading_member_id` | Integer | `participant_daily_trades.trading_member_id` | Clearing broker ID |
+| 6 | `client_category` | Integer | `participant_daily_trades.client_category` | Entity category (Retail, Corporate, FPI) |
+| 7 | `BUY_QUANTITY` | Integer | `participant_daily_trades.buy_quantity` | Total buy volume |
+| 8 | `SELL_QUANTITY` | Integer | `participant_daily_trades.sell_quantity` | Total sell volume |
+| 9 | `BUY_TURNOVER_VALUE` | Decimal | `participant_daily_trades.buy_turnover_value` | Buy turnover value (INR) |
+| 10 | `SELL_TURNOVER_VALUE` | Decimal | `participant_daily_trades.sell_turnover_value` | Sell turnover value (INR) |
+| 11 | `AGGRESSOR_BUY_QUANTITY` | Integer | `participant_daily_trades.aggressor_buy_quantity` | Aggressive buy orders lifting ask |
+| 12 | `AGGRESSOR_SELL_QUANTITY` | Integer | `participant_daily_trades.aggressor_sell_quantity` | Aggressive sell orders hitting bid |
+| 13 | `GROSS_POSITIVE_LTP_VALUE` | Decimal | `participant_daily_trades.gross_positive_ltp_value` | **Price Pusher Metric (+₹)** |
+| 14 | `GROSS_NEGATIVE_LTP_VALUE` | Decimal | `participant_daily_trades.gross_negative_ltp_value` | **Price Suppressor Metric (-₹)** |
+
+### How to Verify Manually in Terminal
+
+```bash
+python3 -c "
+import pandas as pd
+df = pd.read_excel('client_data.xlsx')
+print(f'Total Rows:      {len(df):,}')
+print(f'Unique PANs:     {df[\"client_pan\"].nunique():,}')
+print(f'Unique Brokers:  {df[\"trading_member_id\"].nunique():,}')
+print(f'Date Range:      {df[\"trade_date\"].min().strftime(\"%Y-%m-%d\")} to {df[\"trade_date\"].max().strftime(\"%Y-%m-%d\")}')
+print(f'Total Turnover:  ₹{(df[\"BUY_TURNOVER_VALUE\"].sum() + df[\"SELL_TURNOVER_VALUE\"].sum()) / 1e7:,.2f} Cr')
+for sym, g in df.groupby('symbol'):
+    print(f'  - {sym:<12}: {len(g):>6,} rows | {g[\"trade_date\"].nunique()} days | ₹{(g[\"BUY_TURNOVER_VALUE\"].sum() + g[\"SELL_TURNOVER_VALUE\"].sum()) / 1e7:,.2f} Cr')
+"
+```
+
+### Ingestion Pipeline Command
+
+To ingest and index `client_data.xlsx` into `backend/db/surveillance.db` (`client_identity_master`, `client_demat_accounts`, `participant_daily_trades`, and `counterparty_trade_pairs`):
+
+```bash
+python3 scripts/ingest_client_data.py
 ```
