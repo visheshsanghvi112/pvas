@@ -6,24 +6,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 
-# ── Curated Security & Company Lookups ──
-COMPANY_LOOKUP: Dict[str, Tuple[str, str]] = {
-    "NOVAENERGY": ("Nova Energy Ltd", "INE752716A01"),
-    "ALPHATECH": ("Alpha Technologies Ltd", "INE001A01010"),
-    "ZENITHBIO": ("Zenith Bio-Tech Ltd", "INE003C01030"),
-    "ORBITCEM": ("Orbit Cement Ltd", "INE004D01040"),
-    "TCS": ("Tata Consultancy Services Ltd", "INE467B01029"),
-    "SBIN": ("State Bank of India", "INE062A01020"),
-    "ICICIBANK": ("ICICI Bank Ltd", "INE090A01021"),
-    "AXISBANK": ("Axis Bank Ltd", "INE238A01034"),
-    "RELIANCE": ("Reliance Industries Ltd", "INE002A01018"),
-    "HDFCBANK": ("HDFC Bank Ltd", "INE040A01034"),
-    "INFY": ("Infosys Ltd", "INE009A01021"),
-    "WIPRO": ("Wipro Ltd", "INE075A01022"),
-    "BAJFINANCE": ("Bajaj Finance Ltd", "INE296A01024"),
-    "MARUTI": ("Maruti Suzuki India Ltd", "INE585B01010"),
-    "SUNPHARMA": ("Sun Pharma Industries Ltd", "INE044A01036"),
-}
+
 
 
 # ── Typography & Palette (Institutional / Bloomberg-grade) ──
@@ -82,7 +65,7 @@ def _format_sheet(ws, explicit_widths: Dict[str, float]):
 
 def _raw_score_price(pct: float) -> int:
     if pct > 150: return 5
-    if pct >= 76: return 3
+    if pct > 75: return 3
     if pct >= 15: return 1
     return 0
 
@@ -125,22 +108,27 @@ def build_surveillance_dossier_excel(
     symbol = (detail.get("symbol") or detail.get("ticker") or detail.get("scrip") or "SCRIP").upper()
     
     # Resolve real company name and ISIN
-    lookup_info = COMPANY_LOOKUP.get(symbol)
     raw_company = detail.get("company")
-    if raw_company and raw_company.upper() != symbol:
-        company = raw_company
-    elif lookup_info:
-        company = lookup_info[0]
-    else:
-        company = f"{symbol.title()} Ltd"
-
     raw_isin = detail.get("isin")
-    if raw_isin and raw_isin != "N/A":
-        isin = raw_isin
-    elif lookup_info:
-        isin = lookup_info[1]
-    else:
-        isin = f"INE{abs(hash(symbol)) % 1000000000:09d}"
+    if not raw_company or not raw_isin or raw_company.upper() == symbol or raw_isin == "N/A":
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import DailyMarketEod
+            _db = SessionLocal()
+            row = _db.query(DailyMarketEod.company_name, DailyMarketEod.isin).filter(
+                DailyMarketEod.symbol == symbol
+            ).first()
+            if row:
+                if not raw_company or raw_company.upper() == symbol:
+                    raw_company = row[0]
+                if not raw_isin or raw_isin == "N/A":
+                    raw_isin = row[1]
+            _db.close()
+        except Exception:
+            pass
+
+    company = raw_company or f"{symbol.title()} Ltd"
+    isin = raw_isin if raw_isin and raw_isin != "N/A" else "—"
 
     metrics = detail.get("metrics") or {}
     summary = detail.get("summary") or {}
@@ -291,7 +279,7 @@ def build_surveillance_dossier_excel(
     c4.border = BORDER_CELL
 
     # KPI 5: Composite Score (Standardized out of 100)
-    score_display = f"{final_score:.1f} / 100" if final_score > 25.0 else f"{final_score * 4.0:.1f} / 100"
+    score_display = f"{final_score:.1f} / 100"
     ws1.cell(row=cur_row, column=5, value=kpi_labels[4]).font = FONT_KPI_LBL
     ws1.cell(row=cur_row, column=5).fill = FILL_CARD
     ws1.cell(row=cur_row, column=5).alignment = ALIGN_CENTER
@@ -341,11 +329,11 @@ def build_surveillance_dossier_excel(
         cell.border = BORDER_CELL
         cell.alignment = ALIGN_RIGHT if c_idx >= 3 else ALIGN_LEFT
 
-    s_price = _raw_score_price(float(metrics.get("price_rise_pct", 0.0)))
-    s_pz = _raw_score_z(float(metrics.get("price_z", 0.0)))
-    s_vz = _raw_score_z(float(metrics.get("volume_z", 0.0)))
-    s_band = _raw_score_band(int(metrics.get("band_hit_days", 0)))
-    s_high = _raw_score_high(int(metrics.get("new_high_days", 0)))
+    s_price = int(metrics.get("price_rise_score", _raw_score_price(float(metrics.get("price_rise_pct", 0.0)))))
+    s_pz = int(metrics.get("price_z_score", _raw_score_z(float(metrics.get("price_z", 0.0)))))
+    s_vz = int(metrics.get("volume_z_score", _raw_score_z(float(metrics.get("volume_z", 0.0)))))
+    s_band = int(metrics.get("band_score", _raw_score_band(int(metrics.get("band_hit_days", 0)))))
+    s_high = int(metrics.get("new_high_score", _raw_score_high(int(metrics.get("new_high_days", 0)))))
 
     matrix_rows = [
         ("1. Price Rise %", "Net percentage price change over window", f"{float(metrics.get('price_rise_pct', 0.0)):.2f}%", s_price, 0.20, s_price * 4.0),
@@ -654,15 +642,15 @@ def build_surveillance_dossier_excel(
     s3_kpi_hdr.font = FONT_SEC_HEADER
     s3_kpi_hdr.fill = FILL_SUBHEADER
 
-    p_pct = float(sh_breakdown.get("promoter_pct_t", sh_stats.get("promoter_percent", 64.20))) if (sh_breakdown and isinstance(sh_breakdown, dict)) else 64.20
-    t1_pct = float(sh_breakdown.get("top1_pct_t", sh_stats.get("top_1pct_concentration", 35.80))) if (sh_breakdown and isinstance(sh_breakdown, dict)) else 35.80
+    p_pct = float(sh_breakdown.get("promoter_pct_t", sh_stats.get("promoter_percent", 0.0))) if (sh_breakdown and isinstance(sh_breakdown, dict) and sh_breakdown.get("promoter_pct_t") is not None) else (float(sh_stats.get("promoter_percent", 0.0)) if sh_stats.get("promoter_percent") is not None else None)
+    t1_pct = float(sh_breakdown.get("top1_pct_t", sh_stats.get("top_1pct_concentration", 0.0))) if (sh_breakdown and isinstance(sh_breakdown, dict) and sh_breakdown.get("top1_pct_t") is not None) else (float(sh_stats.get("top_1pct_concentration", 0.0)) if sh_stats.get("top_1pct_concentration") is not None else None)
 
     sh_kpis = [
-        ("Unique PANs (Day t)", sh_stats.get("unique_pans_holding_t", 54), FMT_INT),
-        ("Unique PANs (T-180)", sh_stats.get("unique_pans_holding_180", 55), FMT_INT),
-        ("Avg Trading PANs (15D)", sh_stats.get("avg_trading_pans_15d", 24), FMT_INT),
-        ("Promoter Holding %", p_pct / 100.0, FMT_PERCENT),
-        ("Top 1% Concentration", t1_pct / 100.0, FMT_PERCENT),
+        ("Unique PANs (Day t)", sh_stats.get("unique_pans_holding_t"), FMT_INT),
+        ("Unique PANs (T-180)", sh_stats.get("unique_pans_holding_180"), FMT_INT),
+        ("Avg Trading PANs (15D)", sh_stats.get("avg_trading_pans_15d"), FMT_INT),
+        ("Promoter Holding %", (p_pct / 100.0) if p_pct is not None else None, FMT_PERCENT),
+        ("Top 1% Concentration", (t1_pct / 100.0) if t1_pct is not None else None, FMT_PERCENT),
     ]
     ws3.row_dimensions[4].height = 17
     ws3.row_dimensions[5].height = 22
@@ -673,9 +661,10 @@ def build_surveillance_dossier_excel(
         c_lbl.alignment = ALIGN_CENTER
         c_lbl.border = BORDER_CELL
 
-        c_val = ws3.cell(row=5, column=i, value=val)
+        c_val = ws3.cell(row=5, column=i, value=val if val is not None else "—")
         c_val.font = FONT_BOLD
-        c_val.number_format = fmt
+        if val is not None:
+            c_val.number_format = fmt
         c_val.fill = FILL_CARD
         c_val.alignment = ALIGN_CENTER
         c_val.border = BORDER_CELL
@@ -697,91 +686,117 @@ def build_surveillance_dossier_excel(
         cell.border = BORDER_CELL
         cell.alignment = ALIGN_RIGHT if c_idx in [2, 3, 4, 5] else ALIGN_LEFT
 
-    sh_categories = [
-        ("Promoter & Promoter Group", 64200000, 0.6420, 0, 0.0, "Quarterly Filing"),
-        ("Public - Institutional (Mutual Funds & DIIs)", 14350000, 0.1435, None, None, "Quarterly Filing"),
-        ("Public - Foreign Portfolio Investors (FPI / FII)", 11450000, 0.1145, None, None, "Quarterly Filing"),
-        ("Public - Non-Institutional & Retail", 10000000, 0.1000, None, None, "Quarterly Filing"),
-    ]
+    promoter_shares = sh_breakdown.get("promoter_shares_t") if (sh_breakdown and isinstance(sh_breakdown, dict)) else None
+    has_sh_data = (p_pct is not None and p_pct > 0) or (promoter_shares is not None and promoter_shares > 0)
 
-    r_sh = 8
-    start_sh_row = 9
-    for idx, r in enumerate(sh_categories, start=1):
+    if has_sh_data:
+        if promoter_shares is not None and p_pct is not None and p_pct > 0:
+            total_shares = int(promoter_shares / (p_pct / 100.0))
+            public_shares = max(0, total_shares - promoter_shares)
+            public_pct_val = round(100.0 - p_pct, 2)
+        else:
+            total_shares = None
+            public_shares = None
+            public_pct_val = round(100.0 - p_pct, 2) if p_pct is not None else None
+
+        sh_categories = [
+            ("Promoter & Promoter Group", promoter_shares, (p_pct / 100.0) if p_pct is not None else None, 0, 0.0, "Quarterly Filing"),
+            ("Public & Non-Promoter", public_shares, (public_pct_val / 100.0) if public_pct_val is not None else None, None, None, "Quarterly Filing"),
+        ]
+
+        r_sh = 8
+        start_sh_row = 9
+        for idx, r in enumerate(sh_categories, start=1):
+            r_sh += 1
+            ws3.row_dimensions[r_sh].height = 19
+            zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+
+            ws3.cell(row=r_sh, column=1, value=r[0]).font = FONT_REGULAR
+            ws3.cell(row=r_sh, column=1).fill = zebra_fill
+            ws3.cell(row=r_sh, column=1).border = BORDER_CELL
+
+            c_shares = ws3.cell(row=r_sh, column=2, value=r[1] if r[1] is not None else "—")
+            c_shares.font = FONT_REGULAR
+            if r[1] is not None:
+                c_shares.number_format = FMT_INT
+            c_shares.fill = zebra_fill
+            c_shares.border = BORDER_CELL
+
+            c_pct = ws3.cell(row=r_sh, column=3, value=r[2] if r[2] is not None else "—")
+            c_pct.font = FONT_BOLD
+            if r[2] is not None:
+                c_pct.number_format = FMT_PERCENT
+            c_pct.fill = zebra_fill
+            c_pct.border = BORDER_CELL
+
+            c_pl = ws3.cell(row=r_sh, column=4, value=r[3] if r[3] is not None else "—")
+            c_pl.font = FONT_REGULAR
+            if r[3] is not None:
+                c_pl.number_format = FMT_INT
+            else:
+                c_pl.alignment = ALIGN_CENTER
+            c_pl.fill = zebra_fill
+            c_pl.border = BORDER_CELL
+
+            c_pl_pct = ws3.cell(row=r_sh, column=5, value=r[4] if r[4] is not None else "—")
+            c_pl_pct.font = FONT_REGULAR
+            if r[4] is not None:
+                c_pl_pct.number_format = FMT_PERCENT
+            else:
+                c_pl_pct.alignment = ALIGN_CENTER
+            c_pl_pct.fill = zebra_fill
+            c_pl_pct.border = BORDER_CELL
+
+            c_hz = ws3.cell(row=r_sh, column=6, value=r[5])
+            c_hz.font = FONT_REGULAR
+            c_hz.fill = zebra_fill
+            c_hz.border = BORDER_CELL
+
+        end_sh_row = r_sh
         r_sh += 1
-        ws3.row_dimensions[r_sh].height = 19
-        zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+        ws3.row_dimensions[r_sh].height = 20
+        ws3.cell(row=r_sh, column=1, value="Total Issued Capital").font = FONT_BOLD
+        ws3.cell(row=r_sh, column=1).fill = FILL_SUBHEADER
+        ws3.cell(row=r_sh, column=1).border = BORDER_TOP_DOUBLE
 
-        ws3.cell(row=r_sh, column=1, value=r[0]).font = FONT_REGULAR
-        ws3.cell(row=r_sh, column=1).fill = zebra_fill
-        ws3.cell(row=r_sh, column=1).border = BORDER_CELL
-
-        c_shares = ws3.cell(row=r_sh, column=2, value=r[1])
-        c_shares.font = FONT_REGULAR
-        c_shares.number_format = FMT_INT
-        c_shares.fill = zebra_fill
-        c_shares.border = BORDER_CELL
-
-        c_pct = ws3.cell(row=r_sh, column=3, value=r[2])
-        c_pct.font = FONT_BOLD
-        c_pct.number_format = FMT_PERCENT
-        c_pct.fill = zebra_fill
-        c_pct.border = BORDER_CELL
-
-        c_pl = ws3.cell(row=r_sh, column=4, value=r[3] if r[3] is not None else "—")
-        c_pl.font = FONT_REGULAR
-        if r[3] is not None:
-            c_pl.number_format = FMT_INT
+        if total_shares is not None:
+            c_tot_sh = ws3.cell(row=r_sh, column=2, value=f"=SUM(B{start_sh_row}:B{end_sh_row})")
+            c_tot_sh.number_format = FMT_INT
         else:
-            c_pl.alignment = ALIGN_CENTER
-        c_pl.fill = zebra_fill
-        c_pl.border = BORDER_CELL
+            c_tot_sh = ws3.cell(row=r_sh, column=2, value="—")
+        c_tot_sh.font = FONT_BOLD
+        c_tot_sh.fill = FILL_SUBHEADER
+        c_tot_sh.border = BORDER_TOP_DOUBLE
 
-        c_pl_pct = ws3.cell(row=r_sh, column=5, value=r[4] if r[4] is not None else "—")
-        c_pl_pct.font = FONT_REGULAR
-        if r[4] is not None:
-            c_pl_pct.number_format = FMT_PERCENT
-        else:
-            c_pl_pct.alignment = ALIGN_CENTER
-        c_pl_pct.fill = zebra_fill
-        c_pl_pct.border = BORDER_CELL
+        c_tot_pct = ws3.cell(row=r_sh, column=3, value=1.0)
+        c_tot_pct.font = FONT_BOLD
+        c_tot_pct.number_format = FMT_PERCENT
+        c_tot_pct.fill = FILL_SUBHEADER
+        c_tot_pct.border = BORDER_TOP_DOUBLE
 
-        c_hz = ws3.cell(row=r_sh, column=6, value=r[5])
-        c_hz.font = FONT_REGULAR
-        c_hz.fill = zebra_fill
-        c_hz.border = BORDER_CELL
+        ws3.cell(row=r_sh, column=4, value="—").alignment = ALIGN_CENTER
+        ws3.cell(row=r_sh, column=4).font = FONT_BOLD
+        ws3.cell(row=r_sh, column=4).fill = FILL_SUBHEADER
+        ws3.cell(row=r_sh, column=4).border = BORDER_TOP_DOUBLE
 
-    end_sh_row = r_sh
-    r_sh += 1
-    ws3.row_dimensions[r_sh].height = 20
-    ws3.cell(row=r_sh, column=1, value="Total Issued Capital").font = FONT_BOLD
-    ws3.cell(row=r_sh, column=1).fill = FILL_SUBHEADER
-    ws3.cell(row=r_sh, column=1).border = BORDER_TOP_DOUBLE
+        ws3.cell(row=r_sh, column=5, value="—").alignment = ALIGN_CENTER
+        ws3.cell(row=r_sh, column=5).font = FONT_BOLD
+        ws3.cell(row=r_sh, column=5).fill = FILL_SUBHEADER
+        ws3.cell(row=r_sh, column=5).border = BORDER_TOP_DOUBLE
 
-    c_tot_sh = ws3.cell(row=r_sh, column=2, value=f"=SUM(B{start_sh_row}:B{end_sh_row})")
-    c_tot_sh.font = FONT_BOLD
-    c_tot_sh.number_format = FMT_INT
-    c_tot_sh.fill = FILL_SUBHEADER
-    c_tot_sh.border = BORDER_TOP_DOUBLE
-
-    c_tot_pct = ws3.cell(row=r_sh, column=3, value=f"=SUM(C{start_sh_row}:C{end_sh_row})")
-    c_tot_pct.font = FONT_BOLD
-    c_tot_pct.number_format = FMT_PERCENT
-    c_tot_pct.fill = FILL_SUBHEADER
-    c_tot_pct.border = BORDER_TOP_DOUBLE
-
-    ws3.cell(row=r_sh, column=4, value=0).number_format = FMT_INT
-    ws3.cell(row=r_sh, column=4).font = FONT_BOLD
-    ws3.cell(row=r_sh, column=4).fill = FILL_SUBHEADER
-    ws3.cell(row=r_sh, column=4).border = BORDER_TOP_DOUBLE
-
-    ws3.cell(row=r_sh, column=5, value=0.0).number_format = FMT_PERCENT
-    ws3.cell(row=r_sh, column=5).font = FONT_BOLD
-    ws3.cell(row=r_sh, column=5).fill = FILL_SUBHEADER
-    ws3.cell(row=r_sh, column=5).border = BORDER_TOP_DOUBLE
-
-    ws3.cell(row=r_sh, column=6, value="SEBI Reg 31 Standard").font = FONT_BOLD
-    ws3.cell(row=r_sh, column=6).fill = FILL_SUBHEADER
-    ws3.cell(row=r_sh, column=6).border = BORDER_TOP_DOUBLE
+        ws3.cell(row=r_sh, column=6, value="SEBI Reg 31 Standard").font = FONT_BOLD
+        ws3.cell(row=r_sh, column=6).fill = FILL_SUBHEADER
+        ws3.cell(row=r_sh, column=6).border = BORDER_TOP_DOUBLE
+    else:
+        r_sh = 9
+        ws3.row_dimensions[r_sh].height = 22
+        ws3.merge_cells(f"A{r_sh}:F{r_sh}")
+        c_no_sh = ws3[f"A{r_sh}"]
+        c_no_sh.value = "No statutory shareholding filing records available for this scrip"
+        c_no_sh.font = FONT_MUTED
+        c_no_sh.alignment = ALIGN_CENTER
+        c_no_sh.fill = FILL_CARD
+        c_no_sh.border = BORDER_CELL
 
     # Significant Shareholders Register (>=1%)
     r_major = r_sh + 2
@@ -804,44 +819,47 @@ def build_surveillance_dossier_excel(
 
     major_list = sh_breakdown.get("major_shareholders", []) if (sh_breakdown and isinstance(sh_breakdown, dict)) else []
     if not major_list:
-        major_list = [
-            {"client_name": "Apex Holdings Corp", "category": "Corporate Body", "shares": 3850000, "holding_pct": 3.85},
-            {"client_name": "Bluecrest Growth Fund", "category": "Mutual Fund", "shares": 2940000, "holding_pct": 2.94},
-            {"client_name": "Sentinel Institutional Trust", "category": "FPI Category I", "shares": 2100000, "holding_pct": 2.10},
-            {"client_name": "Pioneer Wealth Advisors", "category": "Resident Individual", "shares": 1450000, "holding_pct": 1.45}
-        ]
+        r_major += 1
+        ws3.row_dimensions[r_major].height = 20
+        ws3.merge_cells(f"A{r_major}:E{r_major}")
+        c_empty = ws3[f"A{r_major}"]
+        c_empty.value = "Standard institutional holdings recorded under regular disclosure limits."
+        c_empty.font = FONT_MUTED
+        c_empty.alignment = ALIGN_CENTER
+        c_empty.fill = FILL_CARD
+        c_empty.border = BORDER_CELL
+    else:
+        for idx, sh in enumerate(major_list, start=r_major + 1):
+            ws3.row_dimensions[idx].height = 19
+            pct = float(sh.get("holding_pct", 0.0))
+            is_sub = pct >= 5.0
+            zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
 
-    for idx, sh in enumerate(major_list, start=r_major + 1):
-        ws3.row_dimensions[idx].height = 19
-        pct = float(sh.get("holding_pct", 0.0))
-        is_sub = pct >= 5.0
-        zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+            ws3.cell(row=idx, column=1, value=sh.get("client_name") or sh.get("name") or "Shareholder").font = FONT_REGULAR
+            ws3.cell(row=idx, column=1).fill = zebra_fill
+            ws3.cell(row=idx, column=1).border = BORDER_CELL
 
-        ws3.cell(row=idx, column=1, value=sh.get("client_name") or sh.get("name") or "Shareholder").font = FONT_REGULAR
-        ws3.cell(row=idx, column=1).fill = zebra_fill
-        ws3.cell(row=idx, column=1).border = BORDER_CELL
+            ws3.cell(row=idx, column=2, value=sh.get("category") or "Public").font = FONT_REGULAR
+            ws3.cell(row=idx, column=2).fill = zebra_fill
+            ws3.cell(row=idx, column=2).border = BORDER_CELL
 
-        ws3.cell(row=idx, column=2, value=sh.get("category") or "Public").font = FONT_REGULAR
-        ws3.cell(row=idx, column=2).fill = zebra_fill
-        ws3.cell(row=idx, column=2).border = BORDER_CELL
+            c_sh_held = ws3.cell(row=idx, column=3, value=int(sh.get("shares", 0)))
+            c_sh_held.font = FONT_REGULAR
+            c_sh_held.number_format = FMT_INT
+            c_sh_held.fill = zebra_fill
+            c_sh_held.border = BORDER_CELL
 
-        c_sh_held = ws3.cell(row=idx, column=3, value=int(sh.get("shares", 0)))
-        c_sh_held.font = FONT_REGULAR
-        c_sh_held.number_format = FMT_INT
-        c_sh_held.fill = zebra_fill
-        c_sh_held.border = BORDER_CELL
+            c_sh_pct = ws3.cell(row=idx, column=4, value=pct / 100.0)
+            c_sh_pct.font = FONT_BOLD
+            c_sh_pct.number_format = FMT_PERCENT
+            c_sh_pct.fill = zebra_fill
+            c_sh_pct.border = BORDER_CELL
 
-        c_sh_pct = ws3.cell(row=idx, column=4, value=pct / 100.0)
-        c_sh_pct.font = FONT_BOLD
-        c_sh_pct.number_format = FMT_PERCENT
-        c_sh_pct.fill = zebra_fill
-        c_sh_pct.border = BORDER_CELL
-
-        c_flag = ws3.cell(row=idx, column=5, value="Substantial (≥ 5.0%)" if is_sub else "Standard")
-        c_flag.font = FONT_ALERT_RED if is_sub else FONT_REGULAR
-        c_flag.fill = FILL_ALERT_RED if is_sub else zebra_fill
-        c_flag.alignment = ALIGN_CENTER
-        c_flag.border = BORDER_CELL
+            c_flag = ws3.cell(row=idx, column=5, value="Substantial (≥ 5.0%)" if is_sub else "Standard")
+            c_flag.font = FONT_ALERT_RED if is_sub else FONT_REGULAR
+            c_flag.fill = FILL_ALERT_RED if is_sub else zebra_fill
+            c_flag.alignment = ALIGN_CENTER
+            c_flag.border = BORDER_CELL
 
     _format_sheet(ws3, {"A": 38, "B": 18, "C": 15, "D": 18, "E": 15, "F": 22})
 
@@ -896,49 +914,46 @@ def build_surveillance_dossier_excel(
         cell.alignment = ALIGN_CENTER if c_idx in [1, 4, 5] else ALIGN_LEFT
 
     if not ca_list:
-        ca_list = [
-            {"action_date": as_of_date, "action_type": "Financial Results", "description": "Submission of Unaudited Financial Results for the quarter ended.", "sentiment": "Positive", "price_impact": "+2.8% surge"},
-            {"action_date": as_of_date, "action_type": "Board Meeting", "description": "Outcome of the Board Meeting to consider interim dividend.", "sentiment": "Neutral", "price_impact": "None"},
-            {"action_date": as_of_date, "action_type": "Investor Meet", "description": "Schedule of Analysts / Institutional Investors meeting.", "sentiment": "Neutral", "price_impact": "None"}
-        ]
+        r_ca += 1
+        ws4.row_dimensions[r_ca].height = 20
+        ws4.merge_cells(f"A{r_ca}:E{r_ca}")
+        c_empty = ws4[f"A{r_ca}"]
+        c_empty.value = "No material corporate disclosures filed during surveillance window."
+        c_empty.font = FONT_MUTED
+        c_empty.alignment = ALIGN_CENTER
+        c_empty.fill = FILL_CARD
+        c_empty.border = BORDER_CELL
+    else:
+        for idx, ca in enumerate(ca_list, start=r_ca + 1):
+            ws4.row_dimensions[idx].height = 20
+            sent = ca.get("sentiment", "Neutral")
+            zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
 
-    for idx, ca in enumerate(ca_list, start=r_ca + 1):
-        ws4.row_dimensions[idx].height = 20
-        sent = ca.get("sentiment", "Neutral")
-        zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+            c_dt = ws4.cell(row=idx, column=1, value=ca.get("action_date") or ca.get("date") or as_of_date)
+            c_dt.font = FONT_REGULAR
+            c_dt.fill = zebra_fill
+            c_dt.border = BORDER_CELL
+            c_dt.alignment = ALIGN_CENTER
 
-        c_dt = ws4.cell(row=idx, column=1, value=ca.get("action_date") or ca.get("date") or as_of_date)
-        c_dt.font = FONT_REGULAR
-        c_dt.fill = zebra_fill
-        c_dt.border = BORDER_CELL
-        c_dt.alignment = ALIGN_CENTER
+            ws4.cell(row=idx, column=2, value=ca.get("action_type") or ca.get("type") or "Filing").font = FONT_REGULAR
+            ws4.cell(row=idx, column=2).fill = zebra_fill
+            ws4.cell(row=idx, column=2).border = BORDER_CELL
 
-        ws4.cell(row=idx, column=2, value=ca.get("action_type") or ca.get("type") or "Filing").font = FONT_REGULAR
-        ws4.cell(row=idx, column=2).fill = zebra_fill
-        ws4.cell(row=idx, column=2).border = BORDER_CELL
+            ws4.cell(row=idx, column=3, value=ca.get("description") or ca.get("headline") or "Disclosure filed under SEBI LODR.").font = FONT_REGULAR
+            ws4.cell(row=idx, column=3).fill = zebra_fill
+            ws4.cell(row=idx, column=3).border = BORDER_CELL
 
-        ws4.cell(row=idx, column=3, value=ca.get("description") or ca.get("headline") or "Disclosure filed under SEBI LODR.").font = FONT_REGULAR
-        ws4.cell(row=idx, column=3).fill = zebra_fill
-        ws4.cell(row=idx, column=3).border = BORDER_CELL
+            c_sent = ws4.cell(row=idx, column=4, value=sent)
+            c_sent.alignment = ALIGN_CENTER
+            c_sent.font = FONT_ALERT_GREEN if sent == "Positive" else FONT_ALERT_RED if sent == "Negative" else FONT_REGULAR
+            c_sent.fill = FILL_ALERT_GREEN if sent == "Positive" else FILL_ALERT_RED if sent == "Negative" else zebra_fill
+            c_sent.border = BORDER_CELL
 
-        c_sent = ws4.cell(row=idx, column=4, value=sent)
-        c_sent.alignment = ALIGN_CENTER
-        c_sent.border = BORDER_CELL
-        if sent == "Positive":
-            c_sent.fill = FILL_ALERT_GREEN
-            c_sent.font = FONT_ALERT_GREEN
-        elif sent == "Negative":
-            c_sent.fill = FILL_ALERT_RED
-            c_sent.font = FONT_ALERT_RED
-        else:
-            c_sent.fill = zebra_fill
-            c_sent.font = FONT_REGULAR
-
-        c_imp = ws4.cell(row=idx, column=5, value=ca.get("price_impact") or "None")
-        c_imp.font = FONT_REGULAR
-        c_imp.alignment = ALIGN_CENTER
-        c_imp.fill = zebra_fill
-        c_imp.border = BORDER_CELL
+            c_imp = ws4.cell(row=idx, column=5, value=ca.get("price_impact") or "None")
+            c_imp.font = FONT_REGULAR
+            c_imp.fill = zebra_fill
+            c_imp.border = BORDER_CELL
+            c_imp.alignment = ALIGN_CENTER
 
     _format_sheet(ws4, {"A": 15, "B": 24, "C": 52, "D": 18, "E": 20})
 
@@ -976,50 +991,52 @@ def build_surveillance_dossier_excel(
 
     volume_share = participants.get("volume_share", []) if (participants and isinstance(participants, dict)) else []
     if not volume_share:
-        volume_share = [
-            {"participant": "AAACP1234K", "name": "Institutional Alpha Trading LLC", "volume": 1245000, "share_pct": 14.8},
-            {"participant": "BBLCK9876M", "name": "Zenith Capital Investments", "volume": 895000, "share_pct": 10.6},
-            {"participant": "CCDEJ4567P", "name": "Vanguard High-Frequency Desk", "volume": 680000, "share_pct": 8.1},
-            {"participant": "DDMNQ8912R", "name": "Premier Arbitrage Fund", "volume": 520000, "share_pct": 6.2},
-            {"participant": "EEPLR3456T", "name": "Kite Private Wealth Advisory", "volume": 310000, "share_pct": 3.7},
-        ]
+        r_part += 1
+        ws5.row_dimensions[r_part].height = 20
+        ws5.merge_cells(f"A{r_part}:E{r_part}")
+        c_empty = ws5[f"A{r_part}"]
+        c_empty.value = "No individual participant exceeded statutory concentration limits during the window."
+        c_empty.font = FONT_MUTED
+        c_empty.alignment = ALIGN_CENTER
+        c_empty.fill = FILL_CARD
+        c_empty.border = BORDER_CELL
+    else:
+        for idx, client in enumerate(volume_share, start=r_part + 1):
+            ws5.row_dimensions[idx].height = 19
+            sh_pct = float(client.get("share_pct", 0.0))
+            is_alert = sh_pct >= 5.0
+            zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
 
-    for idx, client in enumerate(volume_share, start=r_part + 1):
-        ws5.row_dimensions[idx].height = 19
-        sh_pct = float(client.get("share_pct", 0.0))
-        is_alert = sh_pct >= 5.0
-        zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+            c_pan = ws5.cell(row=idx, column=1, value=client.get("participant", "PAN_UNKNOWN"))
+            c_pan.font = FONT_REGULAR
+            c_pan.fill = zebra_fill
+            c_pan.border = BORDER_CELL
+            c_pan.alignment = ALIGN_CENTER
 
-        c_pan = ws5.cell(row=idx, column=1, value=client.get("participant", "PAN_UNKNOWN"))
-        c_pan.font = FONT_REGULAR
-        c_pan.fill = zebra_fill
-        c_pan.border = BORDER_CELL
-        c_pan.alignment = ALIGN_CENTER
+            ws5.cell(row=idx, column=2, value=client.get("name") or "Market Participant").font = FONT_REGULAR
+            ws5.cell(row=idx, column=2).fill = zebra_fill
+            ws5.cell(row=idx, column=2).border = BORDER_CELL
 
-        ws5.cell(row=idx, column=2, value=client.get("name") or "Market Participant").font = FONT_REGULAR
-        ws5.cell(row=idx, column=2).fill = zebra_fill
-        ws5.cell(row=idx, column=2).border = BORDER_CELL
+            c_v = ws5.cell(row=idx, column=3, value=int(client.get("volume", 0)))
+            c_v.font = FONT_REGULAR
+            c_v.number_format = FMT_INT
+            c_v.fill = zebra_fill
+            c_v.border = BORDER_CELL
 
-        c_v = ws5.cell(row=idx, column=3, value=int(client.get("volume", 0)))
-        c_v.font = FONT_REGULAR
-        c_v.number_format = FMT_INT
-        c_v.fill = zebra_fill
-        c_v.border = BORDER_CELL
+            c_sh = ws5.cell(row=idx, column=4, value=sh_pct / 100.0)
+            c_sh.font = FONT_BOLD
+            c_sh.number_format = FMT_PERCENT
+            c_sh.fill = zebra_fill
+            c_sh.border = BORDER_CELL
 
-        c_sh = ws5.cell(row=idx, column=4, value=sh_pct / 100.0)
-        c_sh.font = FONT_BOLD
-        c_sh.number_format = FMT_PERCENT
-        c_sh.fill = zebra_fill
-        c_sh.border = BORDER_CELL
-
-        c_fl = ws5.cell(row=idx, column=5, value="Alert (≥ 5.0% Volume Share)" if is_alert else "Normal")
-        c_fl.font = FONT_ALERT_RED if is_alert else FONT_REGULAR
-        c_fl.fill = FILL_ALERT_RED if is_alert else zebra_fill
-        c_fl.alignment = ALIGN_CENTER
-        c_fl.border = BORDER_CELL
+            c_fl = ws5.cell(row=idx, column=5, value="Alert (≥ 5.0% Volume Share)" if is_alert else "Normal")
+            c_fl.font = FONT_ALERT_RED if is_alert else FONT_REGULAR
+            c_fl.fill = FILL_ALERT_RED if is_alert else zebra_fill
+            c_fl.alignment = ALIGN_CENTER
+            c_fl.border = BORDER_CELL
 
     # Synchronized Counterparty Trade Pairs Table
-    r_pairs = r_part + len(volume_share) + 2
+    r_pairs = r_part + (len(volume_share) if volume_share else 1) + 2
     ws5.row_dimensions[r_pairs].height = 20
     ws5.merge_cells(f"A{r_pairs}:F{r_pairs}")
     s5_pr_hdr = ws5[f"A{r_pairs}"]
@@ -1039,72 +1056,79 @@ def build_surveillance_dossier_excel(
 
     counter_pairs = participants.get("counterparty_pairs", []) if (participants and isinstance(participants, dict)) else []
     if not counter_pairs:
-        counter_pairs = [
-            {"pair": "PAIR-001", "name1": "AAACP1234K (Alpha)", "name2": "BBLCK9876M (Zenith)", "volume": 412000, "share_pct": 4.9},
-            {"pair": "PAIR-002", "name1": "CCDEJ4567P (Vanguard)", "name2": "DDMNQ8912R (Premier)", "volume": 295000, "share_pct": 3.5}
-        ]
+        r_pairs += 1
+        ws5.row_dimensions[r_pairs].height = 20
+        ws5.merge_cells(f"A{r_pairs}:F{r_pairs}")
+        c_empty = ws5[f"A{r_pairs}"]
+        c_empty.value = "No synchronized bilateral counterparty trading detected during surveillance window."
+        c_empty.font = FONT_MUTED
+        c_empty.alignment = ALIGN_CENTER
+        c_empty.fill = FILL_CARD
+        c_empty.border = BORDER_CELL
+    else:
+        start_pair_row = r_pairs + 1
+        for idx, pair in enumerate(counter_pairs, start=start_pair_row):
+            ws5.row_dimensions[idx].height = 19
+            sh_pct = float(pair.get("share_pct", 0.0))
+            is_synced = sh_pct >= 3.0
+            zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
 
-    start_pair_row = r_pairs + 1
-    for idx, pair in enumerate(counter_pairs, start=start_pair_row):
-        ws5.row_dimensions[idx].height = 19
-        sh_pct = float(pair.get("share_pct", 0.0))
-        is_synced = sh_pct >= 3.0
-        zebra_fill = FILL_WHITE if idx % 2 == 1 else FILL_ZEBRA
+            c_p = ws5.cell(row=idx, column=1, value=pair.get("pair", f"PAIR-{idx:03d}"))
+            c_p.font = FONT_REGULAR
+            c_p.fill = zebra_fill
+            c_p.border = BORDER_CELL
+            c_p.alignment = ALIGN_CENTER
 
-        c_p = ws5.cell(row=idx, column=1, value=pair.get("pair", f"PAIR-{idx:03d}"))
-        c_p.font = FONT_REGULAR
-        c_p.fill = zebra_fill
-        c_p.border = BORDER_CELL
-        c_p.alignment = ALIGN_CENTER
+            ws5.cell(row=idx, column=2, value=pair.get("name1") or pair.get("pan1") or "Counterparty A").font = FONT_REGULAR
+            ws5.cell(row=idx, column=2).fill = zebra_fill
+            ws5.cell(row=idx, column=2).border = BORDER_CELL
 
-        ws5.cell(row=idx, column=2, value=pair.get("name1") or pair.get("pan1") or "Counterparty A").font = FONT_REGULAR
-        ws5.cell(row=idx, column=2).fill = zebra_fill
-        ws5.cell(row=idx, column=2).border = BORDER_CELL
+            ws5.cell(row=idx, column=3, value=pair.get("name2") or pair.get("pan2") or "Counterparty B").font = FONT_REGULAR
+            ws5.cell(row=idx, column=3).fill = zebra_fill
+            ws5.cell(row=idx, column=3).border = BORDER_CELL
 
-        ws5.cell(row=idx, column=3, value=pair.get("name2") or pair.get("pan2") or "Counterparty B").font = FONT_REGULAR
-        ws5.cell(row=idx, column=3).fill = zebra_fill
-        ws5.cell(row=idx, column=3).border = BORDER_CELL
+            c_mv = ws5.cell(row=idx, column=4, value=int(pair.get("volume", 0)))
+            c_mv.font = FONT_BOLD
+            c_mv.number_format = FMT_INT
+            c_mv.fill = zebra_fill
+            c_mv.border = BORDER_CELL
 
-        c_mv = ws5.cell(row=idx, column=4, value=int(pair.get("volume", 0)))
-        c_mv.font = FONT_BOLD
-        c_mv.number_format = FMT_INT
-        c_mv.fill = zebra_fill
-        c_mv.border = BORDER_CELL
+            c_ms = ws5.cell(row=idx, column=5, value=sh_pct / 100.0)
+            c_ms.font = FONT_REGULAR
+            c_ms.number_format = FMT_PERCENT
+            c_ms.fill = zebra_fill
+            c_ms.border = BORDER_CELL
 
-        c_ms = ws5.cell(row=idx, column=5, value=sh_pct / 100.0)
-        c_ms.font = FONT_REGULAR
-        c_ms.number_format = FMT_PERCENT
-        c_ms.fill = zebra_fill
-        c_ms.border = BORDER_CELL
+            c_rf = ws5.cell(row=idx, column=6, value="Potential Synchronized Trade" if is_synced else "Inspection Clear")
+            c_rf.font = FONT_ALERT_AMBER if is_synced else FONT_REGULAR
+            c_rf.fill = FILL_ALERT_AMBER if is_synced else zebra_fill
+            c_rf.alignment = ALIGN_CENTER
+            c_rf.border = BORDER_CELL
 
-        c_rf = ws5.cell(row=idx, column=6, value="Potential Synchronized Trade" if is_synced else "Inspection Clear")
-        c_rf.font = FONT_ALERT_AMBER if is_synced else FONT_REGULAR
-        c_rf.fill = FILL_ALERT_AMBER if is_synced else zebra_fill
-        c_rf.alignment = ALIGN_CENTER
-        c_rf.border = BORDER_CELL
+        end_pair_row = r_pairs + len(counter_pairs)
+        r_pair_tot = end_pair_row + 1
+        ws5.row_dimensions[r_pair_tot].height = 20
+        ws5.cell(row=r_pair_tot, column=1, value="Total Matched Trade Volume").font = FONT_BOLD
+        ws5.cell(row=r_pair_tot, column=1).fill = FILL_SUBHEADER
+        ws5.cell(row=r_pair_tot, column=1).border = BORDER_TOP_DOUBLE
 
-    end_pair_row = r_pairs + len(counter_pairs)
-    r_pair_tot = end_pair_row + 1
-    ws5.row_dimensions[r_pair_tot].height = 20
-    ws5.cell(row=r_pair_tot, column=1, value="Total Matched Trade Volume").font = FONT_BOLD
-    ws5.cell(row=r_pair_tot, column=1).fill = FILL_SUBHEADER
-    ws5.cell(row=r_pair_tot, column=1).border = BORDER_TOP_DOUBLE
+        for c_i in range(2, 4):
+            ws5.cell(row=r_pair_tot, column=c_i, value="—").alignment = ALIGN_CENTER
+            ws5.cell(row=r_pair_tot, column=c_i).fill = FILL_SUBHEADER
+            ws5.cell(row=r_pair_tot, column=c_i).border = BORDER_TOP_DOUBLE
 
-    for c_i in range(2, 4):
-        ws5.cell(row=r_pair_tot, column=c_i, value="—").alignment = ALIGN_CENTER
-        ws5.cell(row=r_pair_tot, column=c_i).fill = FILL_SUBHEADER
-        ws5.cell(row=r_pair_tot, column=c_i).border = BORDER_TOP_DOUBLE
+        c_tot_pair_vol = ws5.cell(row=r_pair_tot, column=4, value=f"=SUM(D{start_pair_row}:D{end_pair_row})")
+        c_tot_pair_vol.font = FONT_BOLD
+        c_tot_pair_vol.number_format = FMT_INT
+        c_tot_pair_vol.fill = FILL_SUBHEADER
+        c_tot_pair_vol.border = BORDER_TOP_DOUBLE
 
-    c_tot_pair_vol = ws5.cell(row=r_pair_tot, column=4, value=f"=SUM(D{start_pair_row}:D{end_pair_row})")
-    c_tot_pair_vol.font = FONT_BOLD
-    c_tot_pair_vol.number_format = FMT_INT
-    c_tot_pair_vol.fill = FILL_SUBHEADER
-    c_tot_pair_vol.border = BORDER_TOP_DOUBLE
+        for c_i in range(5, 7):
+            ws5.cell(row=r_pair_tot, column=c_i, value="—").alignment = ALIGN_CENTER
+            ws5.cell(row=r_pair_tot, column=c_i).fill = FILL_SUBHEADER
+            ws5.cell(row=r_pair_tot, column=c_i).border = BORDER_TOP_DOUBLE
 
-    for c_i in range(5, 7):
-        ws5.cell(row=r_pair_tot, column=c_i, value="—").alignment = ALIGN_CENTER
-        ws5.cell(row=r_pair_tot, column=c_i).fill = FILL_SUBHEADER
-        ws5.cell(row=r_pair_tot, column=c_i).border = BORDER_TOP_DOUBLE
+
 
     _format_sheet(ws5, {"A": 22, "B": 28, "C": 28, "D": 20, "E": 18, "F": 26})
 

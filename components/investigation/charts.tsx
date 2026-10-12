@@ -58,67 +58,17 @@ import {
   X
 } from "lucide-react";
 
-/** Interactive click-to-toggle popover for framework explanations */
-export function InfoTooltip({ text }: { text: string }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const popoverRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIsOpen(false);
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
-
-  return (
-    <span ref={popoverRef} className="relative inline-flex items-center ml-1 align-middle">
-      <button
-        type="button"
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsOpen((prev) => !prev);
-        }}
-        className={cn(
-          "p-0.5 rounded-md transition-colors cursor-pointer focus:outline-none",
-          isOpen ? "text-blue-600 bg-blue-100 ring-1 ring-blue-400" : "text-slate-400 hover:text-slate-700 hover:bg-slate-200/70"
-        )}
-        title="Click for explanation"
-        aria-label="Toggle explanation"
-      >
-        <Info className="w-3 h-3 shrink-0" />
-      </button>
-
-      {isOpen && (
-        <span
-          onClick={(e) => e.stopPropagation()}
-          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-50 w-72 max-w-[calc(100vw-32px)] whitespace-normal break-words rounded-xl bg-slate-900/95 backdrop-blur-md p-3 text-[11px] font-normal leading-relaxed text-white shadow-2xl border border-slate-700 pointer-events-auto select-text text-left"
-        >
-          {text}
-          <span className="absolute bottom-full left-1/2 -translate-x-1/2 border-4 border-transparent border-b-slate-900/95" />
-        </span>
-      )}
-    </span>
-  );
-}
+import { InfoTooltip } from "@/components/ui/info-tooltip";
+export { InfoTooltip };
 
 /** Format volume values into M/K strings */
 function formatVolumeNum(val: number): string {
-  if (!val || isNaN(val)) return "0";
-  if (val >= 1_000_000) return `${(val / 1_000_000).toFixed(2)}M`;
-  if (val >= 1_000) return `${(val / 1_000).toFixed(1)}K`;
-  return val.toLocaleString("en-IN");
+  if (val == null || isNaN(val) || !isFinite(val)) return "0";
+  const abs = Math.abs(val);
+  const sign = val < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(2)}M`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1)}K`;
+  return `${sign}${Math.round(abs).toLocaleString("en-IN")}`;
 }
 
 const CustomPriceTooltip = ({ active, payload, label }: any) => {
@@ -226,10 +176,15 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 
 /** Compute simple moving average for a numeric array. Returns null for insufficient data. */
 function computeMA(values: number[], period: number): (number | null)[] {
+  if (!values || !values.length || period <= 0) return [];
   return values.map((_, i) => {
     if (i < period - 1) return null;
     const slice = values.slice(i - period + 1, i + 1);
-    return Math.round((slice.reduce((a, b) => a + b, 0) / period) * 100) / 100;
+    const sum = slice.reduce((a, b) => {
+      const num = Number(b);
+      return a + (isFinite(num) ? num : 0);
+    }, 0);
+    return Math.round((sum / period) * 100) / 100;
   });
 }
 
@@ -254,19 +209,21 @@ export function UnifiedPriceVolumeChart({
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No price/volume data available.</div>;
 
-  const closes = history.map((h) => h.close);
-  const volumes = history.map((h) => h.volume);
+  const closes = history.map((h) => Number(h.close) || 0);
+  const volumes = history.map((h) => Number(h.volume) || 0);
   const computedMA20 = computeMA(closes, 20);
   const computedMA50 = computeMA(closes, 50);
   const computedMA15Vol = computeMA(volumes, 15);
 
-  const baselineClose = history[0]?.close || 1;
+  const baselineClose = closes[0] > 0 ? closes[0] : 1;
 
   const enriched = history.map((h, i) => {
+    const close = Number(h.close) || 0;
+    const vol = Number(h.volume) || 0;
     const ma20Val = h.ma20 ?? computedMA20[i];
-    const pctFromBaseline = Math.round(((h.close - baselineClose) / baselineClose) * 1000) / 10;
-    const ma15Vol = computedMA15Vol[i] || h.volume;
-    const surgeRatio = ma15Vol > 0 ? Math.round((h.volume / ma15Vol) * 10) / 10 : 1;
+    const pctFromBaseline = baselineClose > 0 ? Math.round(((close - baselineClose) / baselineClose) * 1000) / 10 : 0;
+    const ma15Vol = computedMA15Vol[i] || vol;
+    const surgeRatio = ma15Vol > 0 ? Math.round((vol / ma15Vol) * 10) / 10 : 1;
 
     let barColor = "#93c5fd";
     let surgeLabel = "Normal Volume";
@@ -297,7 +254,7 @@ export function UnifiedPriceVolumeChart({
 
   const recentStart = enriched.length >= 15 ? enriched[enriched.length - 15].date : enriched[0]?.date;
   const recentEnd = enriched[enriched.length - 1]?.date;
-  const max180High = Math.max(...history.map((h) => h.high ?? h.close));
+  const max180High = Math.max(...history.map((h) => Number(h.high) || Number(h.close) || 0));
 
   const activePoint = hoverData || enriched[enriched.length - 1];
 
@@ -402,7 +359,7 @@ export function UnifiedPriceVolumeChart({
                 cursor={{ stroke: "#64748b", strokeDasharray: "3 3" }}
               />
               
-              {showWindow && recentStart && recentEnd && timeRange === "ALL" && (
+              {showWindow && recentStart && recentEnd && recentStart !== recentEnd && timeRange === "ALL" && (
                 <ReferenceArea
                   x1={recentStart}
                   x2={recentEnd}
@@ -499,7 +456,7 @@ export function UnifiedPriceVolumeChart({
  * Highlights the last 15 trading days (the PVASF "recent window").
  * Includes time horizon filters (15D, 30D, 90D, ALL), interactive brush slider, and live data inspector.
  */
-export function PriceChart({ history = [], isExpanded = false }: { history?: PricePoint[]; isExpanded?: boolean }) {
+export function PriceChart({ history = [], isExpanded = false, metrics }: { history?: PricePoint[]; isExpanded?: boolean; metrics?: any }) {
   const [timeRange, setTimeRange] = useState<"15D" | "30D" | "90D" | "ALL">("ALL");
   const [showMA20, setShowMA20] = useState(true);
   const [showMA50, setShowMA50] = useState(true);
@@ -509,15 +466,16 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No price data available.</div>;
 
-  const closes = history.map((h) => h.close);
+  const closes = history.map((h) => Number(h.close) || 0);
   const computedMA20 = computeMA(closes, 20);
   const computedMA50 = computeMA(closes, 50);
 
-  const baselineClose = history[0]?.close || 1;
+  const baselineClose = closes[0] > 0 ? closes[0] : 1;
 
   const enriched = history.map((h, i) => {
+    const close = Number(h.close) || 0;
     const ma20Val = h.ma20 ?? computedMA20[i];
-    const pctFromBaseline = Math.round(((h.close - baselineClose) / baselineClose) * 1000) / 10;
+    const pctFromBaseline = baselineClose > 0 ? Math.round(((close - baselineClose) / baselineClose) * 1000) / 10 : 0;
 
     return {
       ...h,
@@ -534,25 +492,28 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
 
   const recentStart = enriched.length >= 15 ? enriched[enriched.length - 15].date : enriched[0]?.date;
   const recentEnd = enriched[enriched.length - 1]?.date;
-  const max180High = Math.max(...history.map((h) => h.high ?? h.close));
+  const max180High = Math.max(...history.map((h) => Number(h.high) || Number(h.close) || 0));
 
   const activePoint = hoverData || enriched[enriched.length - 1];
 
   const formatDateTick = (d: string) => {
     if (!d) return "";
-    const parts = d.split("-");
+    const clean = String(d).split("T")[0];
+    const parts = clean.split(/[-/]/);
     if (parts.length === 3) {
       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
       const mIdx = parseInt(parts[1], 10) - 1;
       return `${parts[2]} ${months[mIdx] || parts[1]}`;
     }
-    return d;
+    return String(d);
   };
 
-  const startPrice = history[0]?.close || 1;
-  const currentPrice = history[history.length - 1]?.close || startPrice;
-  const netGainPct = Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10;
-  const isHighRiskGain = netGainPct >= 75.0;
+  const startPrice = Number(history[0]?.close) || 1;
+  const currentPrice = Number(history[history.length - 1]?.close) || startPrice;
+  const netGainPct = startPrice > 0 ? Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10 : 0;
+  const priceRisePct = metrics?.price_rise_pct ?? (metrics?.["Price Rise %"] ?? netGainPct);
+  const isHighRiskGain = priceRisePct >= 75.0;
+  const priceRiseScore = metrics?.price_rise_score ?? (metrics?.["Price Rise Score"] ?? (priceRisePct > 150 ? 5 : priceRisePct >= 76 ? 3 : priceRisePct >= 15 ? 1 : 0));
 
   return (
     <div className="w-full flex flex-col gap-2.5 min-w-0 font-sans">
@@ -572,8 +533,8 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
           </span>
           <span className="font-bold font-mono text-blue-700 text-sm flex items-center gap-1">
             ₹{currentPrice.toFixed(2)}
-            <span className={cn("text-[10px] font-semibold px-1.5 py-0.2 rounded font-sans", isHighRiskGain ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800")}>
-              {netGainPct >= 0 ? "+" : ""}{netGainPct}% Rise
+            <span className={cn("text-[10px] font-semibold px-1.5 py-0.2 rounded font-sans", netGainPct >= 75 ? "bg-rose-100 text-rose-800" : "bg-emerald-100 text-emerald-800")}>
+              {netGainPct >= 0 ? "+" : ""}{netGainPct}% C-C
             </span>
           </span>
         </div>
@@ -587,10 +548,10 @@ export function PriceChart({ history = [], isExpanded = false }: { history?: Pri
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Price Rise Score
-            <InfoTooltip text="Scoring band: Under 15% (0), 15–75% (1), 76–150% (3), >150% (5)." />
+            <InfoTooltip text="Score based on 6-month price rise: under 15% (0 pts), 15–75% (1 pt), 76–150% (3 pts), and over 150% (5 pts)." />
           </span>
           <span className={cn("font-bold font-mono text-sm", isHighRiskGain ? "text-rose-700" : "text-slate-800")}>
-            +{netGainPct}% ({isHighRiskGain ? "Score 3/5" : "Score 1/5"})
+            +{priceRisePct}% (Score {priceRiseScore}/5)
           </span>
         </div>
       </div>
@@ -712,12 +673,14 @@ export function VolumeChart({ history = [], isExpanded = false }: { history?: Pr
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No volume data available.</div>;
 
-  const volumes = history.map((h) => h.volume);
-  const rolling15 = computeMA(volumes, 15);
+  const volumes = history.map((h) => Number(h.volume) || 0);
+  const validVolumes = volumes.filter((v) => typeof v === "number" && isFinite(v));
+  const rolling15 = computeMA(validVolumes, 15);
 
   const enriched = history.map((h, i) => {
-    const ma15 = rolling15[i] || h.volume;
-    const surgeRatio = ma15 > 0 ? Math.round((h.volume / ma15) * 10) / 10 : 1;
+    const vol = validVolumes[i] ?? 0;
+    const ma15 = rolling15[i] || vol;
+    const surgeRatio = ma15 > 0 ? Math.round((vol / ma15) * 10) / 10 : 1;
     let barColor = "#3b82f6";
     let surgeLabel = "Normal Volume";
 
@@ -731,6 +694,7 @@ export function VolumeChart({ history = [], isExpanded = false }: { history?: Pr
 
     return {
       ...h,
+      volume: vol,
       rolling15d: ma15,
       surgeRatio,
       barColor,
@@ -822,22 +786,26 @@ export function VolumeChart({ history = [], isExpanded = false }: { history?: Pr
  * Rolling 15-Day Average Volume (Module 2 — Section 5 of PVASF spec).
  * Shows volume bars with gradient MA area overlay, range filter, and live hover inspector.
  */
-export function RollingVolumeChart({ history = [], isExpanded = false }: { history?: PricePoint[]; isExpanded?: boolean }) {
+export function RollingVolumeChart({ history = [], isExpanded = false, metrics }: { history?: PricePoint[]; isExpanded?: boolean; metrics?: any }) {
   const [timeRange, setTimeRange] = useState<"15D" | "30D" | "90D" | "ALL">("15D");
   const [hoverData, setHoverData] = useState<any | null>(null);
 
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No volume data available.</div>;
 
-  const volumes = history.map((h) => h.volume);
-  const meanVol180 = volumes.length > 0 ? volumes.reduce((a, b) => a + b, 0) / volumes.length : 0;
-  const varianceVol180 = volumes.length > 0
-    ? volumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / volumes.length
-    : 1;
-  const stdDevVol180 = Math.sqrt(varianceVol180) || 1;
-  const zVolAlert = Math.round(meanVol180 + 1.645 * stdDevVol180);
+  const volumes = history.map((h) => Number(h.volume) || 0);
+  const validVolumes = volumes.filter((v) => typeof v === "number" && isFinite(v));
+  const meanVol180 = metrics?.volume_mean != null && isFinite(Number(metrics.volume_mean))
+    ? Number(metrics.volume_mean)
+    : (validVolumes.length > 0 ? validVolumes.reduce((a, b) => a + b, 0) / validVolumes.length : 0);
+  const stdDevVol180 = metrics?.volume_std != null && Number(metrics.volume_std) > 0 && isFinite(Number(metrics.volume_std))
+    ? Number(metrics.volume_std)
+    : (validVolumes.length > 0 ? Math.sqrt(validVolumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / validVolumes.length) || 1 : 1);
+  const zVolAlert = metrics?.volume_threshold_95 != null && isFinite(Number(metrics.volume_threshold_95))
+    ? Number(metrics.volume_threshold_95)
+    : Math.round(meanVol180 + 1.645 * stdDevVol180);
 
-  const rolling15 = computeMA(volumes, 15);
+  const rolling15 = computeMA(validVolumes, 15);
 
   const enriched = history.map((h, i) => {
     const ma15 = rolling15[i] || h.volume;
@@ -906,7 +874,7 @@ export function RollingVolumeChart({ history = [], isExpanded = false }: { histo
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Surge Alert Threshold (95th %ile)
-            <InfoTooltip text="Statistical threshold (95th percentile, Z ≥ 1.645): Daily volume exceeding this level indicates a statistically significant surge." />
+            <InfoTooltip text="Daily trading volume level marking a surge (top 5% of typical trading days)." />
           </span>
           <span className="font-bold font-mono text-amber-700 text-sm flex items-center gap-1">
             <span className="w-2 h-0.5 bg-amber-500 rounded inline-block" />
@@ -1094,10 +1062,12 @@ const CustomPriceReturnTooltip = ({ active, payload, label }: any) => {
  */
 export function RollingPriceReturnChart({
   history = [],
-  isExpanded = false
+  isExpanded = false,
+  metrics,
 }: {
   history?: PricePoint[];
   isExpanded?: boolean;
+  metrics?: any;
 }) {
   const [timeRange, setTimeRange] = useState<"15D" | "30D" | "90D" | "ALL">("15D");
   const [hoverData, setHoverData] = useState<any | null>(null);
@@ -1105,19 +1075,20 @@ export function RollingPriceReturnChart({
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No price return data available.</div>;
 
-  const closes = history.map((h) => h.close);
-  const returns: (number | null)[] = closes.map((c, i) => {
+  const closes = history.map((h) => Number(h.close) || 0);
+  const returns: number[] = closes.map((c, i) => {
     if (i === 0) return 0;
     const prev = closes[i - 1] || 1;
-    return Math.round(((c - prev) / prev) * 10000) / 100;
+    return prev > 0 && isFinite(c) ? Math.round(((c - prev) / prev) * 10000) / 100 : 0;
   });
 
-  const validReturns = returns.filter((r): r is number => r !== null);
-  const mean180 = validReturns.length > 0 ? validReturns.reduce((a, b) => a + b, 0) / validReturns.length : 0;
-  const variance180 = validReturns.length > 0
-    ? validReturns.reduce((a, b) => a + Math.pow(b - mean180, 2), 0) / validReturns.length
-    : 1;
-  const stdDev180 = Math.sqrt(variance180) || 1;
+  const validReturns = returns.filter((r) => typeof r === "number" && isFinite(r));
+  const mean180 = metrics?.price_mean != null && isFinite(Number(metrics.price_mean))
+    ? Number(metrics.price_mean)
+    : (validReturns.length > 0 ? validReturns.reduce((a, b) => a + b, 0) / validReturns.length : 0);
+  const stdDev180 = metrics?.price_std != null && Number(metrics.price_std) > 0 && isFinite(Number(metrics.price_std))
+    ? Number(metrics.price_std)
+    : (validReturns.length > 0 ? Math.sqrt(validReturns.reduce((a, b) => a + Math.pow(b - mean180, 2), 0) / validReturns.length) || 1 : 1);
 
   const rolling15 = computeMA(validReturns, 15);
 
@@ -1155,8 +1126,8 @@ export function RollingPriceReturnChart({
   const recentEnd = enriched[enriched.length - 1]?.date;
   const activePoint = hoverData || enriched[enriched.length - 1];
 
-  const zAlert = Math.round((mean180 + 1.645 * stdDev180) * 100) / 100;
-  const zCritical = Math.round((mean180 + 2.33 * stdDev180) * 100) / 100;
+  const zAlert = metrics?.price_threshold_95 != null ? Number(metrics.price_threshold_95) : Math.round((mean180 + 1.645 * stdDev180) * 100) / 100;
+  const zCritical = metrics?.price_threshold_99 != null ? Number(metrics.price_threshold_99) : Math.round((mean180 + 2.33 * stdDev180) * 100) / 100;
 
   const formatDateTick = (d: string) => {
     if (!d) return "";
@@ -1195,7 +1166,7 @@ export function RollingPriceReturnChart({
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Alert Thresholds (Percentiles)
-            <InfoTooltip text="Statistical confidence thresholds: 95th percentile (Z ≥ 1.645, Alert) and 99th percentile (Z ≥ 2.33, Critical) indicating abnormal price movement." />
+            <InfoTooltip text="Thresholds marking unusually large daily price moves: Alert (top 5% of moves) and Critical (top 1% of moves)." />
           </span>
           <span className="font-bold font-mono text-xs flex items-center gap-2 mt-0.5">
             <span className="text-amber-700 flex items-center gap-0.5">
@@ -1211,7 +1182,7 @@ export function RollingPriceReturnChart({
         <div className="flex flex-col">
           <span className="text-[11px] text-slate-500 font-medium flex items-center">
             Abnormal Move Days
-            <InfoTooltip text="Count of days in the 15-day analysis window exceeding the 95th percentile statistical threshold (Z ≥ 1.645)." />
+            <InfoTooltip text="Number of days in the 15-day window where the price move exceeded normal fluctuations (top 5% threshold)." />
           </span>
           <span className={cn("font-bold font-mono text-sm flex items-center gap-1", breachCount >= 3 ? "text-rose-700" : "text-slate-800")}>
             {breachCount} / 15 days
@@ -1347,12 +1318,15 @@ export function AnomalyEventMatrixChart({
   const dayRecords = history.map((h, i) => {
     const lookbackStart = Math.max(0, i - 180);
     const lookbackSlice = history.slice(lookbackStart, i);
+    const high = Number(h.high) || Number(h.close) || 0;
     const prevHigh = lookbackSlice.length > 0
-      ? Math.max(...lookbackSlice.map((p) => p.high ?? p.close))
-      : (history[0]?.high ?? history[0]?.close ?? 0);
-    const high = h.high ?? h.close;
-    const prevClose = i > 0 ? (history[i - 1]?.close || h.close) : h.close;
-    const highPct = prevClose > 0 ? ((high - prevClose) / prevClose) : 0;
+      ? Math.max(...lookbackSlice.map((p) => {
+          const val = Number(p.high);
+          return isFinite(val) && val > 0 ? val : (Number(p.close) || 0);
+        }))
+      : (Number(history[0]?.high) || Number(history[0]?.close) || 0);
+    const prevClose = i > 0 ? (Number(history[i - 1]?.close) || Number(h.close) || 1) : (Number(h.close) || 1);
+    const highPct = prevClose > 0 && isFinite(high) ? ((high - prevClose) / prevClose) : 0;
     return {
       hit180High: i > 0 && high > prevHigh,
       hitPriceBand: highPct >= bandThresholdFraction,
@@ -1370,33 +1344,48 @@ export function AnomalyEventMatrixChart({
     : `Days in past 15 where the scrip exceeded its prior peak across available ${historyDays} sessions`;
 
   const Stat = ({
-    count, label, sub, color
-  }: { count: number; label: string; sub: string; color: "rose" | "amber" }) => {
+    count, label, sub, color, score, scoreTooltip
+  }: { count: number; label: string; sub: string; color: "rose" | "amber"; score?: number; scoreTooltip?: string }) => {
     const isAlert = count >= 3;
     const colorMap = {
       rose: {
         num: isAlert ? "text-rose-700" : "text-slate-800",
-        bg: isAlert ? "bg-rose-50 border-rose-200" : "bg-slate-50 border-slate-200",
+        bg: isAlert ? "bg-rose-50/80 border-rose-200" : "bg-slate-50 border-slate-200",
         dot: isAlert ? "bg-rose-500" : "bg-slate-300",
+        badge: isAlert ? "bg-rose-100 text-rose-800 border-rose-300" : "bg-slate-100 text-slate-700 border-slate-200",
       },
       amber: {
         num: isAlert ? "text-amber-700" : "text-slate-800",
-        bg: isAlert ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200",
+        bg: isAlert ? "bg-amber-50/80 border-amber-200" : "bg-slate-50 border-slate-200",
         dot: isAlert ? "bg-amber-400" : "bg-slate-300",
+        badge: isAlert ? "bg-amber-100 text-amber-800 border-amber-300" : "bg-slate-100 text-slate-700 border-slate-200",
       },
     }[color];
 
     return (
       <div className={cn("flex-1 border rounded-xl p-4 space-y-2", colorMap.bg)}>
-        <div className="flex items-center gap-2">
-          <span className={cn("w-2 h-2 rounded-full shrink-0", colorMap.dot)} />
-          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{label}</span>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={cn("w-2 h-2 rounded-full shrink-0", colorMap.dot)} />
+            <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">{label}</span>
+          </div>
+          {score !== undefined && (
+            <span
+              className={cn("text-[10px] font-bold px-2 py-0.5 rounded border font-mono", colorMap.badge)}
+              title={scoreTooltip}
+            >
+              Score {score}/5 pts
+            </span>
+          )}
         </div>
         <div className="flex items-baseline gap-2">
           <span className={cn("text-2xl font-bold font-mono", colorMap.num)}>{count}</span>
           <span className="text-xs font-medium text-slate-500">/ 15 days</span>
         </div>
-        <div className="text-xs text-slate-500 leading-normal">{sub}</div>
+        <div className="text-xs text-slate-500 leading-normal flex items-center justify-between">
+          <span>{sub}</span>
+          {scoreTooltip && <InfoTooltip text={scoreTooltip} />}
+        </div>
       </div>
     );
   };
@@ -1408,12 +1397,16 @@ export function AnomalyEventMatrixChart({
         label={peakStatLabel}
         sub={peakStatSub}
         color="rose"
+        score={metrics?.new_high_score}
+        scoreTooltip="Score based on new highs: 0 days (0 pts), 1–4 days (1 pt), 5–9 days (3 pts), 10 or more days (5 pts)."
       />
       <Stat
         count={totalBandHits}
         label="Hit ≥90% of price band"
         sub={`Days in past 15 where the scrip moved ≥90% of its ${displayBandPct}% daily exchange price band`}
         color="amber"
+        score={metrics?.band_score}
+        scoreTooltip="Score based on circuit hits: 0–2 days (0 pts), 3–5 days (1 pt), 6–9 days (3 pts), 10 or more days (5 pts)."
       />
     </div>
   );
@@ -1465,7 +1458,12 @@ export function LtpChart({
             content={({ active, payload }) => {
               if (!active || !payload || payload.length === 0) return null;
               const data = payload[0].payload;
-              const isPos = (data.net_val ?? data.contribution ?? 0) >= 0;
+              if (!data) return null;
+              const contrib = Number(data.contribution) || 0;
+              const netVal = data.net_val != null && isFinite(Number(data.net_val)) ? Number(data.net_val) : undefined;
+              const posVal = data.pos_val != null && isFinite(Number(data.pos_val)) ? Number(data.pos_val) : undefined;
+              const negVal = data.neg_val != null && isFinite(Number(data.neg_val)) ? Number(data.neg_val) : undefined;
+              const isPos = (netVal ?? contrib) >= 0;
               return (
                 <div className="bg-white/95 backdrop-blur-sm border border-slate-200 shadow-xl rounded-lg p-3 text-xs min-w-[200px]">
                   <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-1.5 mb-2">
@@ -1484,28 +1482,28 @@ export function LtpChart({
                     <div className="flex justify-between">
                       <span className="text-slate-500">Contribution:</span>
                       <span className={cn("font-bold", isPos ? "text-emerald-700" : "text-rose-700")}>
-                        {data.contribution >= 0 ? `+${data.contribution.toFixed(2)}%` : `${data.contribution.toFixed(2)}%`}
+                        {contrib >= 0 ? `+${contrib.toFixed(2)}%` : `${contrib.toFixed(2)}%`}
                       </span>
                     </div>
-                    {data.pos_val !== undefined && (
+                    {posVal !== undefined && (
                       <div className="flex justify-between text-slate-600">
                         <span className="text-slate-500">Pos Push (↑):</span>
-                        <span className="text-emerald-600">+₹{data.pos_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-emerald-600">+₹{posVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
                     )}
-                    {data.neg_val !== undefined && (
+                    {negVal !== undefined && (
                       <div className="flex justify-between text-slate-600">
                         <span className="text-slate-500">Neg Push (↓):</span>
-                        <span className="text-rose-600">-₹{data.neg_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                        <span className="text-rose-600">-₹{negVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                       </div>
                     )}
-                    {data.net_val !== undefined && (
+                    {netVal !== undefined && (
                       <div className="flex justify-between border-t border-slate-100 pt-1">
                         <span className="text-slate-700 font-semibold">Net Push:</span>
                         <span className={cn("font-bold", isPos ? "text-emerald-700" : "text-rose-700")}>
-                          {data.net_val >= 0
-                            ? `+₹${data.net_val.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                            : `-₹${Math.abs(data.net_val).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          {netVal >= 0
+                            ? `+₹${netVal.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : `-₹${Math.abs(netVal).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         </span>
                       </div>
                     )}
@@ -1549,16 +1547,18 @@ export function AlertDriversChart({ breakdown = [] }: { breakdown?: Array<{ labe
     <div className="w-full space-y-3">
       {breakdown.map((b) => {
         const meta = PARAM_METADATA[b.label] || { color: "text-slate-700", bg: "bg-slate-50", border: "border-slate-200", bar: "bg-slate-600" };
-        const contribution = Math.round((b.weight * b.score) / 5 * 10) / 10;
-        const pctFill = (b.score / 5) * 100;
+        const score = Number(b.score) || 0;
+        const weight = Number(b.weight) || 0;
+        const contribution = Math.round((weight * score) / 5 * 10) / 10;
+        const pctFill = Math.min(100, Math.max(0, (score / 5) * 100));
 
         return (
           <div key={b.label} className={cn("p-3 rounded-xl border flex flex-col gap-2 transition-colors", meta.bg, meta.border)}>
             <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
               <span className={cn("font-bold text-sm", meta.color)}>{b.label}</span>
               <div className="flex items-center gap-3 font-mono text-xs">
-                <span className="text-slate-500">Weight: <strong>{b.weight}%</strong></span>
-                <span className="text-slate-500">Score: <strong>{b.score}/5</strong></span>
+                <span className="text-slate-500">Weight: <strong>{weight}%</strong></span>
+                <span className="text-slate-500">Score: <strong>{score}/5</strong></span>
                 <span className={cn("font-bold text-sm", meta.color)}>+{contribution} pts</span>
               </div>
             </div>
@@ -1579,14 +1579,14 @@ export function AlertDriversChart({ breakdown = [] }: { breakdown?: Array<{ labe
  * Risk Donut — Dashboard right panel.
  */
 export function RiskDonut({ scrips = [] }: { scrips?: ScripSummary[] }) {
-  const high = scrips.filter((s) => s.risk === "High").length;
-  const med = scrips.filter((s) => s.risk === "Medium").length;
-  const low = scrips.filter((s) => s.risk === "Low").length;
+  const high = scrips.filter((s) => s.risk === "High" || (Number(s.score) || 0) >= 60).length;
+  const med = scrips.filter((s) => (s.risk === "Medium" || ((Number(s.score) || 0) >= 30 && (Number(s.score) || 0) < 60)) && s.risk !== "High").length;
+  const low = scrips.filter((s) => s.risk === "Low" || (Number(s.score) || 0) < 30).length;
 
   const data = [
-    { risk: "High (≥15)", count: high, fill: "#e11d48" },
-    { risk: "Medium (10–14)", count: med, fill: "#d97706" },
-    { risk: "Low (<10)", count: low, fill: "#059669" },
+    { risk: "High (≥60)", count: high, fill: "#e11d48" },
+    { risk: "Medium (30–59)", count: med, fill: "#d97706" },
+    { risk: "Low (<30)", count: low, fill: "#059669" },
   ];
 
   if (scrips.length === 0) return <div className="text-slate-500 text-xs p-4">No data available.</div>;
@@ -1613,7 +1613,7 @@ export function RiskDonut({ scrips = [] }: { scrips?: ScripSummary[] }) {
 
 /**
  * Score Distribution Chart — Dashboard right panel.
- * Buckets aligned to PVASF thresholds: <60 (Low), 60-74 (Medium), ≥75 (High).
+ * Buckets aligned to PVASF thresholds: <30 (Low), 30-59 (Medium), ≥60 (High).
  */
 export function ScoreDistributionChart({ scrips = [], threshold }: { scrips?: ScripSummary[]; threshold?: number }) {
   if (scrips.length === 0) return <div className="text-slate-500 text-xs p-4">No data available.</div>;
@@ -1621,14 +1621,15 @@ export function ScoreDistributionChart({ scrips = [], threshold }: { scrips?: Sc
   const effThreshold = threshold ?? scrips[0]?.threshold ?? 60;
 
   const buckets = [
-    { bucket: "< 10 (Low)", count: 0, fill: "#059669" },
-    { bucket: effThreshold > 10 ? `10–${effThreshold - 1} (Med)` : `< ${effThreshold} (Med)`, count: 0, fill: "#d97706" },
+    { bucket: "< 30 (Low)", count: 0, fill: "#059669" },
+    { bucket: effThreshold > 30 ? `30–${effThreshold - 1} (Med)` : `< ${effThreshold} (Med)`, count: 0, fill: "#d97706" },
     { bucket: `≥ ${effThreshold} (High)`, count: 0, fill: "#e11d48" },
   ];
 
   scrips.forEach((s) => {
-    if (s.risk === "High" || s.score >= effThreshold) buckets[2].count++;
-    else if (s.risk === "Medium" || s.score >= 10) buckets[1].count++;
+    const sc = Number(s.score) || 0;
+    if (s.risk === "High" || sc >= effThreshold) buckets[2].count++;
+    else if (s.risk === "Medium" || sc >= 30) buckets[1].count++;
     else buckets[0].count++;
   });
 
@@ -1711,11 +1712,11 @@ export function ParameterRadarChart({
     return 0;
   }
 
-  const sPrice = scorePriceRise(metrics.price_rise_pct || 0);
-  const sPriceZ = scoreZ(metrics.price_z || 0);
-  const sVolZ = scoreZ(metrics.volume_z || 0);
-  const sBand = scoreBand(metrics.band_hit_days || 0);
-  const sHigh = scoreNewHigh(metrics.new_high_days || 0);
+  const sPrice = scorePriceRise(Number(metrics.price_rise_pct) || 0);
+  const sPriceZ = scoreZ(Number(metrics.price_z) || 0);
+  const sVolZ = scoreZ(Number(metrics.volume_z) || 0);
+  const sBand = scoreBand(Number(metrics.band_hit_days) || 0);
+  const sHigh = scoreNewHigh(Number(metrics.new_high_days) || 0);
 
   const series = [
     {
@@ -1737,7 +1738,7 @@ export function ParameterRadarChart({
   ];
 
   const radar = {
-    metrics: ['Price Rise', 'Price Z', 'Volume Z', 'Band Hits', '180D Highs'],
+    metrics: ['Price Rise', 'Price Z-Score', 'Volume Z-Score', 'Band Persistence', '180D New Highs'],
     max: 5,
   };
 
@@ -1754,14 +1755,14 @@ export function ParameterRadarChart({
   };
 
   const leftCards = [
-    { label: "Price Rise %", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: weights?.price_rise ?? 20 },
+    { label: "Price Rise", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: weights?.price_rise ?? 20 },
     { label: "Price Z-Score", score: sPriceZ, rawVal: `${Number(metrics.price_z || 0).toFixed(2)}σ`, wt: weights?.price_z ?? 20 },
     { label: "Volume Z-Score", score: sVolZ, rawVal: `${Number(metrics.volume_z || 0).toFixed(2)}σ`, wt: weights?.volume_z ?? 20 },
   ];
 
   const rightCards = [
-    { label: "Band Hits", score: sBand, rawVal: `${metrics.band_hit_days || 0}d`, wt: weights?.band_persistence ?? 20 },
-    { label: "180D New Highs", score: sHigh, rawVal: `${metrics.new_high_days || 0}d`, wt: weights?.new_high ?? 20 },
+    { label: "Price Band Persistence", score: sBand, rawVal: `${metrics.band_hit_days || 0}d`, wt: weights?.band_persistence ?? 20 },
+    { label: "180D New High Breakout", score: sHigh, rawVal: `${metrics.new_high_days || 0}d`, wt: weights?.new_high ?? 20 },
   ];
 
   const renderParameterCard = (item: typeof leftCards[0]) => {
@@ -1859,7 +1860,9 @@ export function ParameterRadarChart({
 
           {/* Dynamic Risk Summary Indicator Card */}
           {(() => {
-            const compositeScore = metrics.final_score ?? Math.round((sPrice * 0.25 + sPriceZ * 0.20 + sVolZ * 0.25 + sBand * 0.15 + sHigh * 0.15) * 20);
+            const compositeScore = metrics.final_score != null && isFinite(Number(metrics.final_score))
+              ? Number(metrics.final_score)
+              : Math.round((sPrice + sPriceZ + sVolZ + sBand + sHigh) * 4.0);
             const isHigh = compositeScore >= 60;
             const isMed = compositeScore >= 30 && compositeScore < 60;
             const riskText = isHigh ? "High Risk" : isMed ? "Medium Risk" : "Normal";
@@ -1915,20 +1918,25 @@ export function ParameterRadarChart({
 
 const formatTooltipDate = (d: string) => {
   if (!d) return "";
-  const parts = d.split("-");
+  const clean = String(d).split("T")[0];
+  const parts = clean.split(/[-/]/);
   if (parts.length === 3) {
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
     const mIdx = parseInt(parts[1], 10) - 1;
     const day = parseInt(parts[2], 10);
-    const yr = parts[0].slice(-2);
+    const yr = parts[0].length === 4 ? parts[0].slice(-2) : parts[0];
     return `${day} ${months[mIdx] || parts[1]} '${yr}`;
   }
-  return d;
+  return String(d);
 };
 
 const CustomScreenerTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     const data = payload[0].payload;
+    if (!data) return null;
+
+    const closeVal = typeof data.close === 'number' && isFinite(data.close) ? data.close : null;
+    const dailyReturnVal = typeof data.dailyReturn === 'number' && isFinite(data.dailyReturn) ? data.dailyReturn : null;
 
     return (
       <div className="rounded-xl border border-slate-300/90 bg-white/98 backdrop-blur-md px-3.5 py-2.5 shadow-2xl min-w-[210px] text-left font-sans pointer-events-none select-none">
@@ -1947,30 +1955,30 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
         {/* Close Price + Daily Return */}
         <div className="flex items-baseline justify-between mb-1.5">
           <span className="text-slate-950 font-black text-base font-mono">
-            ₹{data.close != null ? data.close.toFixed(2) : "--"}
+            ₹{closeVal != null ? closeVal.toFixed(2) : "--"}
           </span>
-          {data.dailyReturn != null && (
+          {dailyReturnVal != null && (
             <span className={cn(
               "text-[11px] font-bold font-mono px-1.5 py-0.2 rounded",
-              data.dailyReturn >= 0 ? "bg-emerald-50 text-emerald-800 border border-emerald-200/60" : "bg-rose-50 text-rose-800 border border-rose-200/60"
+              dailyReturnVal >= 0 ? "bg-emerald-50 text-emerald-800 border border-emerald-200/60" : "bg-rose-50 text-rose-800 border border-rose-200/60"
             )}>
-              {data.dailyReturn >= 0 ? "+" : ""}{data.dailyReturn.toFixed(2)}%
+              {dailyReturnVal >= 0 ? "+" : ""}{dailyReturnVal.toFixed(2)}%
             </span>
           )}
         </div>
 
         {/* Metrics Grid */}
         <div className="space-y-1.5 text-[11px] font-mono border-t border-slate-100 pt-1.5 text-slate-700">
-          {data.open != null && (
+          {(data.open != null || data.high != null || data.low != null) && (
             <div className="flex items-center justify-between text-slate-600 text-[10px] bg-slate-50/90 px-2 py-1 rounded-md border border-slate-100">
-              <span><strong className="text-slate-700 font-semibold">O:</strong> ₹{data.open.toFixed(1)}</span>
+              <span><strong className="text-slate-700 font-semibold">O:</strong> ₹{typeof data.open === 'number' && isFinite(data.open) ? data.open.toFixed(1) : "--"}</span>
               <span className="text-slate-300">•</span>
-              <span><strong className="text-slate-700 font-semibold">H:</strong> ₹{data.high?.toFixed(1)}</span>
+              <span><strong className="text-slate-700 font-semibold">H:</strong> ₹{typeof data.high === 'number' && isFinite(data.high) ? data.high.toFixed(1) : "--"}</span>
               <span className="text-slate-300">•</span>
-              <span><strong className="text-slate-700 font-semibold">L:</strong> ₹{data.low?.toFixed(1)}</span>
+              <span><strong className="text-slate-700 font-semibold">L:</strong> ₹{typeof data.low === 'number' && isFinite(data.low) ? data.low.toFixed(1) : "--"}</span>
             </div>
           )}
-          {data.dma20 != null && (
+          {typeof data.dma20 === 'number' && isFinite(data.dma20) && (
             <div className="flex items-center justify-between text-sky-900 font-semibold">
               <span className="font-sans flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#0284c7]" />
@@ -1979,7 +1987,7 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
               <span>₹{data.dma20.toFixed(2)}</span>
             </div>
           )}
-          {data.dma50 != null && (
+          {typeof data.dma50 === 'number' && isFinite(data.dma50) && (
             <div className="flex items-center justify-between text-amber-900 font-semibold">
               <span className="font-sans flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#d97706]" />
@@ -1988,7 +1996,7 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
               <span>₹{data.dma50.toFixed(2)}</span>
             </div>
           )}
-          {data.bbUpper != null && data.bbLower != null && (
+          {typeof data.bbUpper === 'number' && typeof data.bbLower === 'number' && isFinite(data.bbUpper) && isFinite(data.bbLower) && (
             <div className="flex items-center justify-between text-indigo-900 font-medium text-[10px]">
               <span className="font-sans">BB [±2σ]:</span>
               <span>₹{data.bbLower.toFixed(0)} - ₹{data.bbUpper.toFixed(0)}</span>
@@ -1998,18 +2006,24 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
             <div className="flex items-center justify-between text-blue-900 font-semibold pt-1 border-t border-slate-100">
               <span className="font-sans text-[10px] text-slate-500 font-normal">Vol:</span>
               <span className="flex items-center gap-1">
-                <span>{data.volume >= 1000000 ? `${(data.volume / 1000000).toFixed(2)}M` : data.volume >= 1000 ? `${Math.round(data.volume / 1000)}k` : data.volume}</span>
-                <span className="text-slate-500 font-normal text-[10px] bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80">
-                  D: {data.deliveryPct}%
-                </span>
+                <span>{formatVolumeNum(data.volume)}</span>
+                {typeof data.deliveryPct === 'number' && isFinite(data.deliveryPct) && (
+                  <span className="text-slate-500 font-normal text-[10px] bg-slate-100 px-1.5 py-0.2 rounded border border-slate-200/80">
+                    D: {data.deliveryPct}%
+                  </span>
+                )}
               </span>
             </div>
           )}
           {/* Helpful Subtitle Guide */}
           <div className="text-[9px] text-slate-400 font-sans pt-1 border-t border-slate-100 text-center flex items-center justify-center gap-1">
             <span>DMA = Moving Avg</span>
-            <span>•</span>
-            <span>D: = Delivery %</span>
+            {data.deliveryPct != null && (
+              <>
+                <span>•</span>
+                <span>D: = Delivery %</span>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -2126,11 +2140,11 @@ export function ChartGuideButton() {
 }
 
 export function CombinedMarketChart({
-  history,
+  history = [],
   metrics,
   isExpanded = false
 }: {
-  history: PricePoint[];
+  history?: PricePoint[];
   metrics?: any;
   isExpanded?: boolean;
 }) {
@@ -2150,9 +2164,7 @@ export function CombinedMarketChart({
   // Precompute moving averages, delivery %, and volume within 180D baseline
   const processedData = useMemo(() => {
     if (!history || history.length === 0) return [];
-    const sorted = [...history].sort((a, b) => (a.date > b.date ? 1 : -1));
-
-    let rollingHigh = 0;
+    const sorted = [...history].sort((a, b) => (String(a.date) > String(b.date) ? 1 : -1));
 
     return sorted.map((pt, idx, arr) => {
       const close = Number(pt.close) || 0;
@@ -2181,19 +2193,24 @@ export function CombinedMarketChart({
 
       // Daily Return %
       const prevClose = idx > 0 ? (Number(arr[idx - 1].close) || close) : close;
-      const dailyReturn = idx > 0 ? ((close - prevClose) / prevClose) * 100 : 0;
+      const dailyReturn = (idx > 0 && prevClose > 0 && isFinite(close)) ? ((close - prevClose) / prevClose) * 100 : 0;
 
       // True sliding lookback window (up to 180 prior sessions)
       const lookbackSlice = arr.slice(Math.max(0, idx - 180), idx);
       const lookbackDays = lookbackSlice.length;
-      const priorHigh = lookbackDays > 0 ? Math.max(...lookbackSlice.map((p) => Number(p.high) || Number(p.close))) : 0;
+      const priorHigh = lookbackDays > 0 ? Math.max(...lookbackSlice.map((p) => {
+        const h = Number(p.high);
+        return isFinite(h) && h > 0 ? h : (Number(p.close) || 0);
+      })) : 0;
 
       const isBreakout = idx > 0 && high > priorHigh;
       const isGenuine180High = isBreakout && lookbackDays >= 170;
       const isEarlyPeak = isBreakout && lookbackDays < 170;
 
-      // Synthetic Deliverable Volume % for Screener-grade inspection
-      const deliveryPct = Math.min(85, Math.max(28, 45 + ((idx * 13 + Math.round(close)) % 36)));
+      // Real Deliverable Volume % if available in market feed
+      const deliveryPct = (pt as any).delivery_pct != null && isFinite(Number((pt as any).delivery_pct))
+        ? Number((pt as any).delivery_pct)
+        : undefined;
 
       return {
         date: String(pt.date),
@@ -2204,11 +2221,11 @@ export function CombinedMarketChart({
         volume,
         deliveryPct,
         dailyReturn,
-        is180High: idx >= arr.length - 15 && isGenuine180High,
-        isNewHigh: idx >= arr.length - 15 && isEarlyPeak,
+        is180High: idx >= Math.max(0, arr.length - 15) && isGenuine180High,
+        isNewHigh: idx >= Math.max(0, arr.length - 15) && isEarlyPeak,
         lookbackDays,
-        dma20: dma20 != null ? Number(Number(dma20).toFixed(2)) : undefined,
-        dma50: dma50 != null ? Number(Number(dma50).toFixed(2)) : undefined,
+        dma20: dma20 != null && isFinite(Number(dma20)) ? Number(Number(dma20).toFixed(2)) : undefined,
+        dma50: dma50 != null && isFinite(Number(dma50)) ? Number(Number(dma50).toFixed(2)) : undefined,
       };
     });
   }, [history]);
@@ -2229,7 +2246,7 @@ export function CombinedMarketChart({
 
   // First baseline point for timeframe % change calculation
   const basePoint = displayData.length > 0 ? displayData[0] : null;
-  const priceChangePct = (basePoint && activeStats && basePoint.close > 0)
+  const priceChangePct = (basePoint && activeStats && typeof basePoint.close === 'number' && basePoint.close > 0 && typeof activeStats.close === 'number' && isFinite(activeStats.close))
     ? ((activeStats.close - basePoint.close) / basePoint.close) * 100
     : 0;
 
@@ -2237,32 +2254,33 @@ export function CombinedMarketChart({
   const priceMin = useMemo(() => {
     const vals: number[] = [];
     displayData.forEach(d => {
-      if (typeof d.close === 'number' && !isNaN(d.close) && d.close > 0) vals.push(d.close);
-      if (typeof d.low === 'number' && !isNaN(d.low) && d.low > 0) vals.push(d.low);
-      if (show20DMA && typeof d.dma20 === 'number' && !isNaN(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
-      if (show50DMA && typeof d.dma50 === 'number' && !isNaN(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
+      if (typeof d.close === 'number' && isFinite(d.close) && d.close > 0) vals.push(d.close);
+      if (typeof d.low === 'number' && isFinite(d.low) && d.low > 0) vals.push(d.low);
+      if (show20DMA && typeof d.dma20 === 'number' && isFinite(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
+      if (show50DMA && typeof d.dma50 === 'number' && isFinite(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
     });
     if (!vals.length) return 0;
-    return Math.floor(Math.min(...vals) * 0.94);
+    return Math.max(0, Math.floor(Math.min(...vals) * 0.94));
   }, [displayData, show20DMA, show50DMA]);
 
   const priceMax = useMemo(() => {
     const vals: number[] = [];
     displayData.forEach(d => {
-      if (typeof d.close === 'number' && !isNaN(d.close) && d.close > 0) vals.push(d.close);
-      if (typeof d.high === 'number' && !isNaN(d.high) && d.high > 0) vals.push(d.high);
-      if (show20DMA && typeof d.dma20 === 'number' && !isNaN(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
-      if (show50DMA && typeof d.dma50 === 'number' && !isNaN(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
+      if (typeof d.close === 'number' && isFinite(d.close) && d.close > 0) vals.push(d.close);
+      if (typeof d.high === 'number' && isFinite(d.high) && d.high > 0) vals.push(d.high);
+      if (show20DMA && typeof d.dma20 === 'number' && isFinite(d.dma20) && d.dma20 > 0) vals.push(d.dma20);
+      if (show50DMA && typeof d.dma50 === 'number' && isFinite(d.dma50) && d.dma50 > 0) vals.push(d.dma50);
     });
     if (!vals.length) return 100;
-    return Math.ceil(Math.max(...vals) * 1.06);
-  }, [displayData, show20DMA, show50DMA]);
+    const calcMax = Math.ceil(Math.max(...vals) * 1.06);
+    return calcMax <= priceMin ? priceMin + 10 : calcMax;
+  }, [displayData, show20DMA, show50DMA, priceMin]);
 
   // Dynamic volume bound (anchored to bottom 30% of canvas)
   const volMax = useMemo(() => {
-    const vols = displayData.map(d => d.volume).filter(v => typeof v === 'number' && !isNaN(v) && v > 0);
+    const vols = displayData.map(d => d.volume).filter(v => typeof v === 'number' && isFinite(v) && v > 0);
     if (!vols.length) return 100000;
-    return Math.ceil(Math.max(...vols) * 3.4);
+    return Math.max(100, Math.ceil(Math.max(...vols) * 3.4));
   }, [displayData]);
 
   // 15-Day Surveillance Window Coordinates
@@ -2271,25 +2289,27 @@ export function CombinedMarketChart({
 
   const formatDateTick = (d: string) => {
     if (!d) return "";
-    const parts = d.split("-");
+    const clean = String(d).split("T")[0];
+    const parts = clean.split(/[-/]/);
     if (parts.length === 3) {
       const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
       const mIdx = parseInt(parts[1], 10) - 1;
       const day = parseInt(parts[2], 10);
-      if (timeframe === "15D" || timeframe === "1M") {
+      if (timeframe === "15D" || timeframe === "1M" || timeframe === "3M") {
         return `${day} ${months[mIdx] || parts[1]}`;
       }
-      return `${months[mIdx] || parts[1]} '${parts[0].slice(-2)}`;
+      return `${months[mIdx] || parts[1]} '${parts[0].length === 4 ? parts[0].slice(-2) : parts[0]}`;
     }
-    return d;
+    return String(d);
   };
 
-  const hasAnomaly = (metrics?.score ?? metrics?.risk_score ?? metrics?.final_score ?? 0) >= 15.0 || metrics?.risk === "High";
+  const hasAnomaly = (metrics?.final_score ?? metrics?.risk_score ?? metrics?.score ?? 0) >= 60.0 || metrics?.risk === "High";
 
   if (!history || history.length === 0) {
     return (
-      <div className="w-full h-[400px] flex items-center justify-center text-slate-400 text-xs font-semibold">
-        Loading surveillance chart data...
+      <div className="w-full h-[400px] flex flex-col items-center justify-center text-slate-400 text-xs font-semibold gap-2">
+        <BarChart2 className="w-8 h-8 text-slate-300" />
+        <span>No surveillance price/volume history available.</span>
       </div>
     );
   }
@@ -2363,29 +2383,31 @@ export function CombinedMarketChart({
             <div className="flex items-center gap-1.5">
               <span className="text-slate-500">Price:</span>
               <span className="font-bold text-slate-900 text-sm">
-                ₹{activeStats.close?.toFixed(2)}
+                ₹{typeof activeStats.close === 'number' && isFinite(activeStats.close) ? activeStats.close.toFixed(2) : "--"}
               </span>
-              <span className={cn(
-                "text-[11px] font-bold px-1.5 py-0.2 rounded font-mono ml-0.5",
-                priceChangePct >= 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50"
-              )}>
-                {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(2)}%
-              </span>
+              {isFinite(priceChangePct) && (
+                <span className={cn(
+                  "text-[11px] font-bold px-1.5 py-0.2 rounded font-mono ml-0.5",
+                  priceChangePct >= 0 ? "text-emerald-700 bg-emerald-50" : "text-rose-700 bg-rose-50"
+                )}>
+                  {priceChangePct >= 0 ? "+" : ""}{priceChangePct.toFixed(2)}%
+                </span>
+              )}
             </div>
 
-            {activeStats.dma20 != null && show20DMA && (
+            {typeof activeStats.dma20 === 'number' && isFinite(activeStats.dma20) && show20DMA && (
               <div className="flex items-center gap-1 text-slate-600">
                 <span className="w-2 h-2 rounded-full bg-[#0284c7]" />
                 <span className="font-semibold text-sky-900">20 DMA:</span>
-                <span className="font-bold text-slate-800">₹{activeStats.dma20?.toFixed(2)}</span>
+                <span className="font-bold text-slate-800">₹{activeStats.dma20.toFixed(2)}</span>
               </div>
             )}
 
-            {activeStats.dma50 != null && show50DMA && (
+            {typeof activeStats.dma50 === 'number' && isFinite(activeStats.dma50) && show50DMA && (
               <div className="flex items-center gap-1 text-slate-600">
                 <span className="w-2 h-2 rounded-full bg-[#d97706]" />
                 <span className="font-semibold text-amber-900">50 DMA:</span>
-                <span className="font-bold text-slate-800">₹{activeStats.dma50?.toFixed(2)}</span>
+                <span className="font-bold text-slate-800">₹{activeStats.dma50.toFixed(2)}</span>
               </div>
             )}
           </div>
@@ -2395,15 +2417,18 @@ export function CombinedMarketChart({
               <span className="w-2 h-2 rounded-full bg-[#60a5fa]" />
               <span className="font-semibold text-blue-900">Vol:</span>
               <span className="font-bold text-slate-800 font-mono">
-                {activeStats.volume >= 1000 ? `${Math.round(activeStats.volume / 1000)}k` : activeStats.volume}
+                {formatVolumeNum(activeStats.volume)}
               </span>
-              <span className="text-[11px] text-slate-500 font-normal">
-                (D: {activeStats.deliveryPct}%)
-              </span>
+              {typeof activeStats.deliveryPct === 'number' && isFinite(activeStats.deliveryPct) && (
+                <span className="text-[11px] text-slate-500 font-normal">
+                  (D: {activeStats.deliveryPct}%)
+                </span>
+              )}
             </div>
           )}
         </div>
       )}
+
 
       {/* ------------------------------------------------------------- */}
       {/* Main Dual-Axis Chart Canvas */}
@@ -2492,7 +2517,7 @@ export function CombinedMarketChart({
             />
 
             {/* 15-Day Surveillance Window Highlight */}
-            {show15DWindow && win15Start && win15End && timeframe !== "15D" && (
+            {show15DWindow && win15Start && win15End && win15Start !== win15End && timeframe !== "15D" && (
               <ReferenceArea
                 yAxisId="right"
                 x1={win15Start}
@@ -2601,10 +2626,10 @@ export function CombinedMarketChart({
           )}>
             {show20DMA && <Check className="w-3 h-3 stroke-[3]" />}
           </span>
-          <span>20 DMA (§5.1.1)</span>
+          <span>20 DMA</span>
         </label>
 
-        {/* 50 DMA Toggle (§5.1.1) */}
+        {/* 50 DMA Toggle */}
         <label className="flex items-center gap-2 cursor-pointer select-none text-slate-800 hover:text-amber-900 transition-colors">
           <input
             type="checkbox"
@@ -2618,7 +2643,7 @@ export function CombinedMarketChart({
           )}>
             {show50DMA && <Check className="w-3 h-3 stroke-[3]" />}
           </span>
-          <span>50 DMA (§5.1.1)</span>
+          <span>50 DMA</span>
         </label>
 
         {/* Volume Toggle */}
@@ -2682,59 +2707,99 @@ export function SurveillanceStatisticalDeck({
   if (!history || history.length === 0) return null;
 
   // 1. Price Growth Metrics (PVASF 2.1)
-  const startPrice = history[0]?.close || 1;
-  const currentPrice = history[history.length - 1]?.close || startPrice;
-  const netGainPct = Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10;
-  const max180High = Math.max(...history.map((h) => h.high ?? h.close));
-  const isHighRiskGain = netGainPct >= 75.0;
-  const priceRiseScore = metrics?.price_rise_score ?? (netGainPct > 150 ? 5 : netGainPct >= 76 ? 3 : netGainPct >= 15 ? 1 : 0);
+  const startPrice = Number(history[0]?.close) || 1;
+  const currentPrice = Number(history[history.length - 1]?.close) || startPrice;
+  const netGainPct = startPrice > 0 ? Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10 : 0;
+  const priceRisePct = metrics?.price_rise_pct ?? (metrics?.["Price Rise %"] ?? netGainPct);
+  const highVals = history.map((h) => Number(h.high) || Number(h.close) || 0).filter(v => v > 0);
+  const max180High = highVals.length > 0 ? Math.max(...highVals) : currentPrice;
+  const last15HighVals = history.slice(-15).map((h) => Number(h.high) || Number(h.close) || 0).filter(v => v > 0);
+  const max15High = last15HighVals.length > 0 ? Math.max(...last15HighVals) : currentPrice;
+  const isHighRiskGain = priceRisePct >= 75.0;
+  const priceRiseScore = metrics?.price_rise_score ?? (metrics?.["Price Rise Score"] ?? (priceRisePct > 150 ? 5 : priceRisePct > 75 ? 3 : priceRisePct >= 15 ? 1 : 0));
 
   // 2. Price Return & Momentum Z-Score Metrics (PVASF 2.2)
   const returns = history.map((h, i) => {
     if (i === 0) return 0;
-    const prev = history[i - 1]?.close || 1;
-    return ((h.close - prev) / prev) * 100;
+    const prev = Number(history[i - 1]?.close) || 1;
+    const curr = Number(h.close) || prev;
+    return prev > 0 ? ((curr - prev) / prev) * 100 : 0;
   });
-  const mean180Return = returns.length > 0 ? returns.reduce((a, b) => a + b, 0) / returns.length : 0;
-  const varianceReturn = returns.length > 0
-    ? returns.reduce((a, b) => a + Math.pow(b - mean180Return, 2), 0) / returns.length
-    : 1;
-  const stdDevReturn = Math.sqrt(varianceReturn) || 1;
-  const zAlertReturn = Math.round((mean180Return + 1.645 * stdDevReturn) * 100) / 100;
-  const zCriticalReturn = Math.round((mean180Return + 2.33 * stdDevReturn) * 100) / 100;
+  const validReturns = returns.filter((r) => typeof r === "number" && isFinite(r));
+  const rolling15Returns = computeMA(validReturns, 15);
 
-  const rolling15Returns = computeMA(returns, 15);
+  // Authoritative rolling 15-day return distribution baseline from backend metrics
+  const mean180Return = metrics?.price_mean != null && isFinite(Number(metrics.price_mean))
+    ? Number(metrics.price_mean)
+    : (validReturns.length > 0 ? validReturns.reduce((a, b) => a + b, 0) / validReturns.length : 0);
+  const stdDevReturn = metrics?.price_std != null && Number(metrics.price_std) > 0 && isFinite(Number(metrics.price_std))
+    ? Number(metrics.price_std)
+    : (validReturns.length > 0 ? Math.sqrt(validReturns.reduce((a, b) => a + Math.pow(b - mean180Return, 2), 0) / validReturns.length) || 1 : 1);
+  const zAlertReturn = metrics?.price_threshold_95 != null && isFinite(Number(metrics.price_threshold_95))
+    ? Number(metrics.price_threshold_95)
+    : Math.round((mean180Return + 1.645 * stdDevReturn) * 100) / 100;
+  const zCriticalReturn = metrics?.price_threshold_99 != null && isFinite(Number(metrics.price_threshold_99))
+    ? Number(metrics.price_threshold_99)
+    : Math.round((mean180Return + 2.33 * stdDevReturn) * 100) / 100;
+  const zExtremeReturn = metrics?.price_threshold_999 != null && isFinite(Number(metrics.price_threshold_999))
+    ? Number(metrics.price_threshold_999)
+    : Math.round((mean180Return + 3.09 * stdDevReturn) * 100) / 100;
+
   const enrichedReturns = history.map((h, i) => {
-    const dailyRet = returns[i];
+    const dailyRet = validReturns[i] ?? 0;
     const ma15 = rolling15Returns[i] != null ? rolling15Returns[i]! : dailyRet;
     const zScore = stdDevReturn > 0 ? Math.round(((ma15 - mean180Return) / stdDevReturn) * 100) / 100 : 0;
     return { ...h, dailyReturn: dailyRet, rolling15dReturn: ma15, zScore };
   });
   const last15Returns = enrichedReturns.slice(-15);
   const latest15MeanReturn = last15Returns.length > 0 ? last15Returns.reduce((a, b) => a + b.dailyReturn, 0) / last15Returns.length : 0;
-  const returnSurgeMultiple = mean180Return > 0 ? Math.round((latest15MeanReturn / mean180Return) * 10) / 10 : (latest15MeanReturn > 0 ? 5.0 : 1.0);
+  const returnSurgeMultiple = mean180Return > 0 && isFinite(mean180Return)
+    ? Math.round((latest15MeanReturn / mean180Return) * 10) / 10
+    : (latest15MeanReturn > 0 ? 5.0 : 1.0);
   const abnormalMoveDays = last15Returns.filter((d) => d.zScore >= 1.645).length;
   const criticalMoveDays = last15Returns.filter((d) => d.zScore >= 2.33).length;
+  const priceZVal = metrics?.price_z != null && isFinite(Number(metrics.price_z))
+    ? Number(metrics.price_z)
+    : (enrichedReturns[enrichedReturns.length - 1]?.zScore || 0);
+  const priceZScore = metrics?.price_z_score ?? (metrics?.["Price Z Score"] ?? (priceZVal >= 3.09 ? 5 : priceZVal >= 2.33 ? 3 : priceZVal >= 1.645 ? 1 : 0));
 
   // 3. Volume & Liquidity Burst Metrics (PVASF 2.3)
-  const volumes = history.map((h) => h.volume);
-  const meanVol180 = volumes.length > 0 ? volumes.reduce((a, b) => a + b, 0) / volumes.length : 0;
-  const varianceVol = volumes.length > 0
-    ? volumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / volumes.length
-    : 1;
-  const stdDevVol = Math.sqrt(varianceVol) || 1;
-  const zVolAlert = Math.round(meanVol180 + 1.645 * stdDevVol);
+  const volumes = history.map((h) => Number(h.volume) || 0);
+  const validVolumes = volumes.filter((v) => typeof v === "number" && isFinite(v));
+  const rolling15Vol = computeMA(validVolumes, 15);
 
-  const rolling15Vol = computeMA(volumes, 15);
+  // Authoritative rolling 15-day volume distribution baseline from backend metrics
+  const meanVol180 = metrics?.volume_mean != null && isFinite(Number(metrics.volume_mean))
+    ? Number(metrics.volume_mean)
+    : (validVolumes.length > 0 ? validVolumes.reduce((a, b) => a + b, 0) / validVolumes.length : 0);
+  const stdDevVol = metrics?.volume_std != null && Number(metrics.volume_std) > 0 && isFinite(Number(metrics.volume_std))
+    ? Number(metrics.volume_std)
+    : (validVolumes.length > 0 ? Math.sqrt(validVolumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / validVolumes.length) || 1 : 1);
+  const zVolAlert = metrics?.volume_threshold_95 != null && isFinite(Number(metrics.volume_threshold_95))
+    ? Number(metrics.volume_threshold_95)
+    : Math.round(meanVol180 + 1.645 * stdDevVol);
+  const zVolCritical = metrics?.volume_threshold_99 != null && isFinite(Number(metrics.volume_threshold_99))
+    ? Number(metrics.volume_threshold_99)
+    : Math.round(meanVol180 + 2.33 * stdDevVol);
+  const zVolExtreme = metrics?.volume_threshold_999 != null && isFinite(Number(metrics.volume_threshold_999))
+    ? Number(metrics.volume_threshold_999)
+    : Math.round(meanVol180 + 3.09 * stdDevVol);
+
   const enrichedVol = history.map((h, i) => {
-    const ma15 = rolling15Vol[i] || h.volume;
-    const surgeRatio = ma15 > 0 ? Math.round((h.volume / ma15) * 10) / 10 : 1;
-    return { ...h, rolling15d: ma15, surgeRatio };
+    const vol = validVolumes[i] ?? 0;
+    const ma15 = rolling15Vol[i] || vol;
+    const zScore = stdDevVol > 0 ? Math.round(((ma15 - meanVol180) / stdDevVol) * 100) / 100 : 0;
+    const surgeRatio = ma15 > 0 ? Math.round((vol / ma15) * 10) / 10 : 1;
+    return { ...h, volume: vol, rolling15d: ma15, surgeRatio, zScore };
   });
   const last15Vol = enrichedVol.slice(-15);
   const latest15Vol = last15Vol.length > 0 ? last15Vol.reduce((a, b) => a + b.volume, 0) / last15Vol.length : 0;
-  const volSurgeMultiple = meanVol180 > 0 ? Math.round((latest15Vol / meanVol180) * 10) / 10 : 1.0;
+  const volSurgeMultiple = meanVol180 > 0 && isFinite(meanVol180) ? Math.round((latest15Vol / meanVol180) * 10) / 10 : 1.0;
   const volSpikeDays = last15Vol.filter((d) => d.surgeRatio >= 1.5).length;
+  const volumeZVal = metrics?.volume_z != null && isFinite(Number(metrics.volume_z))
+    ? Number(metrics.volume_z)
+    : (enrichedVol[enrichedVol.length - 1]?.zScore || 0);
+  const volumeZScore = metrics?.volume_z_score ?? (metrics?.["Volume Z Score"] ?? (volumeZVal >= 3.09 ? 5 : volumeZVal >= 2.33 ? 3 : volumeZVal >= 1.645 ? 1 : 0));
 
   const historyDays = history.length;
   const isFull180 = historyDays >= 170;
@@ -2759,7 +2824,7 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Rise
-              <InfoTooltip text={`Compares the absolute percentage growth of the stock's price in the last 15 days vis-à-vis price at baseline start (contributes ${weights?.price_rise ?? 20}% to the total risk score).`} />
+              <InfoTooltip text={`Compares price growth over the last 15 days against the baseline price from 6 months ago (accounts for ${weights?.price_rise ?? 20}% of total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               {weights?.price_rise ?? 20}% of Score
@@ -2797,27 +2862,36 @@ export function SurveillanceStatisticalDeck({
                 "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
                 netGainPct >= 75 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
               )}>
-                {netGainPct >= 0 ? "+" : ""}{netGainPct}% Rise
+                {netGainPct >= 0 ? "+" : ""}{netGainPct}% C-C
               </span>
             </div>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              {peakHighLabel}
-              <InfoTooltip text={peakHighTooltip} />
+              15-Day Peak High
+              <InfoTooltip text={`Highest intraday price reached during the 15-day observation window, used as numerator in the PVASF §2.1 Price Rise formula. ${isFull180 ? "180-day" : `${historyDays}-day`} overall high is ₹${max180High.toFixed(2)}.`} />
             </span>
             <span className="font-extrabold font-mono text-rose-700 text-base mt-1 block">
-              ₹{max180High.toFixed(2)}
+              ₹{max15High.toFixed(2)}
             </span>
+            {max180High > max15High ? (
+              <span className="text-[10px] text-slate-500 font-mono block mt-0.5" title={`Historical peak outside observation window`}>
+                {isFull180 ? "180d" : `${historyDays}d`} Peak: ₹{max180High.toFixed(2)}
+              </span>
+            ) : (
+              <span className="text-[10px] text-emerald-600 font-medium block mt-0.5">
+                Equals {isFull180 ? "180d" : `${historyDays}d`} Peak
+              </span>
+            )}
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Price Rise Severity & Score
-              <InfoTooltip text="Scoring criteria: Under 15% rise (0 pts), 15–75% (1 pt), 76–150% (3 pts), over 150% (5 pts)." />
+              <InfoTooltip text={`PVASF §2.1 formula: (15-Day Peak High ₹${max15High.toFixed(2)} − Baseline Close ₹${startPrice.toFixed(2)}) / Baseline Close ₹${startPrice.toFixed(2)} × 100 = ${priceRisePct >= 0 ? "+" : ""}${Number(priceRisePct).toFixed(2)}%. Scoring: <15% (0 pts), 15–75% (1 pt), 76–150% (3 pts), >150% (5 pts).`} />
             </span>
             <div className="flex items-center gap-2 mt-1">
               <span className={cn("font-extrabold font-mono text-base", isHighRiskGain ? "text-rose-700" : "text-slate-900")}>
-                +{netGainPct}%
+                {priceRisePct >= 0 ? "+" : ""}{Number(priceRisePct).toFixed(2)}%
               </span>
               <span className={cn(
                 "text-[10px] font-bold px-1.5 py-0.5 rounded border font-sans",
@@ -2837,10 +2911,16 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Z-Score
-              <InfoTooltip text={`Measures if average price movement over the last 15 days is statistically abnormal compared to rolling 15-day behaviour over 180 trading days (contributes ${weights?.price_z ?? 20}% to total risk score).`} />
+              <InfoTooltip text={`Measures how unusually fast the stock's price moved over the last 15 days compared to normal 6-month fluctuations (accounts for ${weights?.price_z ?? 20}% of total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
               {weights?.price_z ?? 20}% of Score
+            </span>
+            <span className={cn(
+              "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
+              priceZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+            )}>
+              Z = {priceZVal.toFixed(2)}σ (Score {priceZScore}/5)
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
@@ -2850,17 +2930,17 @@ export function SurveillanceStatisticalDeck({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Historical Mean (μ)
-              <InfoTooltip text="Historical Mean (μ): Calculates the 15-day average price movement for every rolling 15-day window over the preceding 180 trading days." />
+              Historical Baseline (μ, σ)
+              <InfoTooltip text={`Average daily return (μ = ${mean180Return.toFixed(2)}%) and standard deviation (σ = ${stdDevReturn.toFixed(2)}%) across rolling 15-day windows over the past 6 months.`} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
-              {mean180Return.toFixed(2)}% / day
+              μ = {mean180Return.toFixed(2)}% <span className="text-xs font-normal text-slate-500 font-mono">(σ = {stdDevReturn.toFixed(2)}%)</span>
             </span>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Current 15-Day Average (X̄)
-              <InfoTooltip text="Current Value (X̄): The average close-to-close (C-C) price movement over the most recent 15 days (T to T-15)." />
+              <InfoTooltip text="Average daily percentage price change over the most recent 15 trading days." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-indigo-700 text-base">
@@ -2874,21 +2954,24 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Statistical Thresholds
-              <InfoTooltip text="Statistical thresholds: Z ≥ 1.645 (95th percentile, Score 1), Z ≥ 2.33 (99th percentile, Score 3), Z ≥ 3.09 (99.9th percentile, Score 5)." />
+              <InfoTooltip text="Abnormal move scoring: top 5% of moves (1 pt), top 1% (3 pts), and top 0.1% extreme moves (5 pts)." />
             </span>
-            <div className="flex items-center gap-2 mt-1 font-mono text-xs font-bold">
-              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+            <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px] font-bold">
+              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="95th Percentile (Z ≥ 1.645, Score 1/5)">
                 ≥{zAlertReturn}% (95th)
               </span>
-              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" title="99th Percentile (Z ≥ 2.33, Score 3/5)">
                 ≥{zCriticalReturn}% (99th)
+              </span>
+              <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="99.9th Percentile (Z ≥ 3.09, Score 5/5)">
+                ≥{zExtremeReturn}% (99.9th)
               </span>
             </div>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Outlier Days (Z ≥ 1.645σ)
-              <InfoTooltip text="Number of days in the 15-day analysis window where price movement exceeded normal statistical variance (Z ≥ 1.645)." />
+              <InfoTooltip text="Number of days in the 15-day window where the daily price move spiked into the top 5% of historical moves." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-slate-900 text-base">
@@ -2911,10 +2994,16 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-cyan-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Volume Z-Score
-              <InfoTooltip text={`Measures if the stock's trading volume over the last 15 days is statistically abnormal compared to its typical 15-day volume behaviour over 6 months (contributes ${weights?.volume_z ?? 20}% to total risk score).`} />
+              <InfoTooltip text={`Measures how unusually high the trading volume was over the last 15 days compared to normal 6-month trading (accounts for ${weights?.volume_z ?? 20}% of total risk score).`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
               {weights?.volume_z ?? 20}% of Score
+            </span>
+            <span className={cn(
+              "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
+              volumeZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-cyan-50 text-cyan-700 border-cyan-200"
+            )}>
+              Z = {volumeZVal.toFixed(2)}σ (Score {volumeZScore}/5)
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
@@ -2924,17 +3013,17 @@ export function SurveillanceStatisticalDeck({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Historical Mean Volume (μ)
-              <InfoTooltip text="Historical Mean (μ): Calculates the 15-day average volume for every rolling 15-day window over the preceding 180 trading days." />
+              Historical Baseline (μ, σ)
+              <InfoTooltip text={`Average daily volume (μ = ${formatVolumeNum(meanVol180)}) and standard deviation (σ = ${formatVolumeNum(stdDevVol)}) across rolling 15-day windows over the past 6 months.`} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
-              {formatVolumeNum(meanVol180)} / day
+              μ = {formatVolumeNum(meanVol180)} <span className="text-xs font-normal text-slate-500 font-mono">(σ = {formatVolumeNum(stdDevVol)})</span>
             </span>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Current 15-Day Average (X̄)
-              <InfoTooltip text="Current Value (X̄): The average daily volume over the most recent 15 trading days (T to T-15)." />
+              <InfoTooltip text="Average daily shares traded over the most recent 15 trading days." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-blue-700 text-base">
@@ -2947,17 +3036,25 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Statistical Threshold (95th %ile)
-              <InfoTooltip text="Statistical threshold: Volume level corresponding to Z ≥ 1.645 (95th percentile of historical rolling 15-day volume variance)." />
+              Statistical Thresholds
+              <InfoTooltip text="Volume surge scoring: top 5% of volume days (1 pt), top 1% (3 pts), and top 0.1% extreme spikes (5 pts)." />
             </span>
-            <span className="font-extrabold font-mono text-amber-700 text-base mt-1 block">
-              ≥ {formatVolumeNum(zVolAlert)} / day
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px] font-bold">
+              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="95th Percentile (Z ≥ 1.645, Score 1/5)">
+                ≥{formatVolumeNum(zVolAlert)} (95th)
+              </span>
+              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" title="99th Percentile (Z ≥ 2.33, Score 3/5)">
+                ≥{formatVolumeNum(zVolCritical)} (99th)
+              </span>
+              <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="99.9th Percentile (Z ≥ 3.09, Score 5/5)">
+                ≥{formatVolumeNum(zVolExtreme)} (99.9th)
+              </span>
+            </div>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Volume Surge Days
-              <InfoTooltip text="Flags periods where sustained trading activity over a 15-day period has surged significantly beyond the stock's established normal variance." />
+              <InfoTooltip text="Number of days in the 15-day window where trading volume spiked at least 1.5 times above recent average volume." />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
               {volSpikeDays} / 15 days <span className="text-xs text-slate-500 font-normal">(≥1.5x surge)</span>

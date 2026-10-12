@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type ScripSummary, type ExchangeScope } from "@/lib/api";
+import { InfoTooltip } from "@/components/ui/info-tooltip";
 
 type SortField =
   | "score"
@@ -393,31 +394,31 @@ export function AlertsTable({
                 active={filterPriceSpike}
                 onClick={() => setFilterPriceSpike(!filterPriceSpike)}
                 label="Price ≥ 15%"
-                info="Shows stocks whose price grew by more than 15% in the last 15 days compared to 6 months ago."
+                info="Filters for stocks that gained 15% or more over their 6-month baseline price."
               />
               <TriggerPill
                 active={filterPriceZ}
                 onClick={() => setFilterPriceZ(!filterPriceZ)}
                 label="Price Z ≥ 1.65σ"
-                info="Shows stocks moving abnormally faster than 95% of their typical daily price movement."
+                info="Filters for stocks whose recent price climb is unusually sharp compared to their normal 6-month history."
               />
               <TriggerPill
                 active={filterVolZ}
                 onClick={() => setFilterVolZ(!filterVolZ)}
                 label="Vol Z ≥ 1.65σ"
-                info="Shows stocks trading volume abnormally higher than 95% of their past 6-month average."
+                info="Filters for stocks experiencing a sudden volume surge far above their typical daily activity."
               />
               <TriggerPill
                 active={filterCircuitHits}
                 onClick={() => setFilterCircuitHits(!filterCircuitHits)}
                 label="Circuit ≥ 3d"
-                info="Shows stocks that hit or came within 90% of their upper circuit limit for 3 or more days."
+                info="Filters for stocks that touched or neared their maximum daily price limit on 3 or more days."
               />
               <TriggerPill
                 active={filterNewHighs}
                 onClick={() => setFilterNewHighs(!filterNewHighs)}
                 label="180D Highs ≥ 1"
-                info="Shows stocks that hit brand new 6-month record high prices in the last 15 days."
+                info="Filters for stocks that broke past their previous 6-month record high at least once in the past 15 days."
               />
             </div>
           </div>
@@ -456,7 +457,7 @@ export function AlertsTable({
               >
                 <span className="inline-flex items-center gap-1.5">
                   Security
-                  <InfoTooltip text="Stock ticker symbol, company name, and ISIN code." placement="bottom" align="left" />
+                  <InfoTooltip text="Stock ticker symbol, company name, and ISIN code." />
                   <SortIcon field="symbol" current={sortField} order={sortOrder} />
                 </span>
               </th>
@@ -464,7 +465,7 @@ export function AlertsTable({
               <ThSort
                 field="score"
                 label="PVASF Score"
-                info={`Overall risk score from 0 to 100. Higher scores mean potential price manipulation. Scores ${effThreshold}+ are flagged as High Risk.`}
+                info={`Composite surveillance risk score (0–100) combining price rally, momentum, volume burst, circuit hits, and new 6-month highs. Scores ${effThreshold} and above are shortlisted as High Risk.`}
                 width="16%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -473,7 +474,7 @@ export function AlertsTable({
               <ThSort
                 field="price_rise_pct"
                 label="Price Rise %"
-                info="How much the price jumped over the last 15 days compared to where it was 6 months ago."
+                info="Highest price reached in the past 15 days compared to where the stock stood 6 months ago, adjusted for splits or bonus shares."
                 width="14%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -482,7 +483,7 @@ export function AlertsTable({
               <ThSort
                 field="price_z"
                 label="Price Z"
-                info="Measures if recent price gains are an unusual statistical spike compared to normal daily movement."
+                info="Measures how unusual the stock's recent price climb is compared to its normal 6-month fluctuations. Values above 1.65 indicate an abnormal spike."
                 width="12%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -491,7 +492,7 @@ export function AlertsTable({
               <ThSort
                 field="volume_z"
                 label="Volume Z"
-                info="Measures if recent trading volume is an unusual spike compared to normal 6-month trading activity."
+                info="Measures how unusual the stock's recent trading volume is compared to its normal 6-month turnover. Values above 1.65 indicate a heavy volume surge."
                 width="12%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -500,7 +501,7 @@ export function AlertsTable({
               <ThSort
                 field="band_hit_days"
                 label="Circuit Hits"
-                info="Number of days in the last 15 days the stock touched or neared its upper circuit limit."
+                info="Number of days in the past 15 sessions where the stock hit or came within 90% of its daily upper circuit limit."
                 width="11%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -509,8 +510,7 @@ export function AlertsTable({
               <ThSort
                 field="new_high_days"
                 label="180D Highs"
-                info="Number of days in the last 15 days where the stock hit a fresh 6-month high price."
-                infoAlign="right"
+                info="Number of days in the past 15 sessions where the stock broke past its previous 6-month record to set a fresh high."
                 width="11%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -523,12 +523,12 @@ export function AlertsTable({
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-slate-200/70 bg-white">
+          <tbody className="divide-y divide-slate-200 bg-white">
             {loading ? (
               Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className="animate-pulse">
+                <tr key={i} className="animate-pulse border-b border-slate-200">
                   {Array.from({ length: 8 }).map((_, j) => (
-                    <td key={j} className="px-5 py-3.5">
+                    <td key={j} className="px-5 py-4">
                       <div className="h-4 rounded bg-slate-200" style={{ width: j === 0 ? 140 : 64 }} />
                     </td>
                   ))}
@@ -536,7 +536,7 @@ export function AlertsTable({
               ))
             ) : page.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-6 py-16 text-center bg-white">
+                <td colSpan={8} className="px-6 py-16 text-center bg-white border-b border-slate-200">
                   <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
                   <div className="text-slate-700 font-bold text-sm">No scrips match filters</div>
                   <p className="text-xs text-slate-400 mt-1">Try resetting the search keyword or risk filters</p>
@@ -555,13 +555,10 @@ export function AlertsTable({
               page.map((s, idx) => (
                 <tr
                   key={s.symbol}
-                  className={cn(
-                    "transition-colors duration-75 border-b border-slate-100",
-                    idx % 2 === 0 ? "bg-white hover:bg-slate-50" : "bg-slate-50/40 hover:bg-slate-100/60"
-                  )}
+                  className="transition-colors duration-75 border-b border-slate-200 hover:bg-slate-50/80 bg-white"
                 >
                   {/* Security */}
-                  <td className="px-5 py-3.5">
+                  <td className="px-5 py-4">
                     <div className="flex items-start gap-2.5">
                       <div className={cn("w-2.5 h-2.5 rounded-full mt-1 shrink-0", RISK_DOT[s.risk] || "bg-slate-300")} />
                       <div className="min-w-0">
@@ -583,9 +580,9 @@ export function AlertsTable({
                   </td>
 
                   {/* PVASF Score */}
-                  <td className="px-4 py-3.5">
+                  <td className="px-4 py-4">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black tabular-nums text-slate-900">{Number(s.score || 0).toFixed(0)}</span>
+                      <span className="text-sm font-black tabular-nums text-slate-900">{Number(s.score || 0).toFixed(1)}</span>
                       <div className="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200/60">
                         <div
                           className={cn(
@@ -611,61 +608,45 @@ export function AlertsTable({
                   </td>
 
                   {/* Price Rise */}
-                  <td className="px-4 py-3.5">
-                    <span
-                      className={cn(
-                        "text-sm font-bold tabular-nums",
-                        Number(s.price_rise_pct || 0) > 0 ? "text-emerald-700" : Number(s.price_rise_pct || 0) < 0 ? "text-rose-600" : "text-slate-800"
-                      )}
-                    >
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
                       {Number(s.price_rise_pct || 0) > 0 ? "+" : ""}
                       {Number(s.price_rise_pct || 0).toFixed(1)}%
                     </span>
-                    <div className="text-[11px] text-slate-400 mt-0.5">vs 6M baseline</div>
                   </td>
 
                   {/* Price Z */}
-                  <td className="px-4 py-3.5">
-                    <span className="text-sm font-bold tabular-nums text-slate-800">
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
                       {Number(s.price_z || 0).toFixed(2)}σ
                     </span>
-                    {Number(s.price_z || 0) >= 1.645 ? (
-                      <div className="text-[10px] font-bold text-rose-600 mt-0.5">▲ significant</div>
-                    ) : (
-                      <div className="text-[10px] text-slate-400 mt-0.5">normal</div>
-                    )}
                   </td>
 
                   {/* Volume Z */}
-                  <td className="px-4 py-3.5">
-                    <span className="text-sm font-bold tabular-nums text-slate-800">
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
                       {Number(s.volume_z || 0).toFixed(2)}σ
                     </span>
-                    {Number(s.volume_z || 0) >= 1.645 ? (
-                      <div className="text-[10px] font-bold text-amber-700 mt-0.5">▲ surge</div>
-                    ) : (
-                      <div className="text-[10px] text-slate-400 mt-0.5">normal</div>
-                    )}
                   </td>
 
                   {/* Circuit Hits */}
-                  <td className="px-4 py-3.5">
-                    <span className={cn("text-sm font-bold tabular-nums", s.band_hit_days >= 3 ? "text-rose-600" : "text-slate-800")}>
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
                       {s.band_hit_days}
                     </span>
                     <span className="text-xs text-slate-500 font-normal ml-1">days</span>
                   </td>
 
                   {/* 180D Highs */}
-                  <td className="px-4 py-3.5">
-                    <span className={cn("text-sm font-bold tabular-nums", s.new_high_days >= 1 ? "text-blue-700" : "text-slate-800")}>
+                  <td className="px-4 py-4">
+                    <span className="text-sm font-semibold tabular-nums text-slate-900">
                       {s.new_high_days}
                     </span>
                     <span className="text-xs text-slate-500 font-normal ml-1">days</span>
                   </td>
 
                   {/* Action */}
-                  <td className="px-4 py-3.5 text-right">
+                  <td className="px-4 py-4 text-right">
                     <Link
                       href={`/analysis/${s.symbol}?${new URLSearchParams({
                         ...(asOfDate ? { asOfDate } : {}),
@@ -788,98 +769,7 @@ export function AlertsTable({
   );
 }
 
-export function InfoTooltip({
-  text,
-  className,
-  placement = "bottom",
-  align = "center",
-}: {
-  text: string;
-  className?: string;
-  placement?: "top" | "bottom";
-  align?: "left" | "center" | "right";
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const containerRef = React.useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    return () => document.removeEventListener("mousedown", handleOutsideClick);
-  }, [isOpen]);
-
-  return (
-    <span
-      ref={containerRef}
-      className={cn("relative inline-flex items-center align-middle cursor-pointer", className)}
-      onClick={(e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        setIsOpen((prev) => !prev);
-      }}
-    >
-      <button
-        type="button"
-        className={cn(
-          "p-0.5 rounded transition-colors cursor-pointer focus:outline-none flex items-center justify-center",
-          isOpen ? "text-blue-600 bg-blue-50" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
-        )}
-        aria-label="Toggle explanation"
-      >
-        <Info className="w-3.5 h-3.5 shrink-0" />
-      </button>
-
-      {isOpen && (
-        <span
-          onClick={(e) => e.stopPropagation()}
-          className={cn(
-            "absolute z-50 w-72 max-w-[calc(100vw-32px)] whitespace-normal break-words rounded-xl border border-slate-700/80 bg-slate-900/95 backdrop-blur-md p-3 text-[11px] font-normal normal-case leading-relaxed text-slate-100 shadow-[0_12px_28px_rgba(0,0,0,0.28),0_2px_8px_rgba(0,0,0,0.18)] transition-all animate-in fade-in-0 zoom-in-95 text-left pointer-events-auto select-text",
-            placement === "top" ? "bottom-full mb-2" : "top-full mt-2",
-            align === "left"
-              ? "left-0"
-              : align === "right"
-              ? "right-0"
-              : "left-1/2 -translate-x-1/2"
-          )}
-        >
-          <div className="flex items-center justify-between gap-2 mb-1">
-            <span className="font-bold text-blue-400 text-[10px] uppercase tracking-wider block">Quick Explanation</span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsOpen(false);
-              }}
-              className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
-              aria-label="Close"
-            >
-              <X className="w-3 h-3" />
-            </button>
-          </div>
-          <div>{text}</div>
-          <span
-            className={cn(
-              "absolute border-4 border-transparent",
-              placement === "top"
-                ? "top-full border-t-slate-900/95"
-                : "bottom-full border-b-slate-900/95",
-              align === "left"
-                ? "left-2.5"
-                : align === "right"
-                ? "right-2.5"
-                : "left-1/2 -translate-x-1/2"
-            )}
-          />
-        </span>
-      )}
-    </span>
-  );
-}
+export { InfoTooltip } from "@/components/ui/info-tooltip";
 
 function SortIcon({ field, current, order }: { field: string; current: string; order: SortOrder }) {
   if (field !== current) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
@@ -894,7 +784,6 @@ function ThSort({
   field,
   label,
   info,
-  infoAlign = "center",
   width,
   sortField,
   sortOrder,
@@ -903,7 +792,6 @@ function ThSort({
   field: SortField;
   label: string;
   info?: string;
-  infoAlign?: "left" | "center" | "right";
   width?: string;
   sortField: SortField;
   sortOrder: SortOrder;
@@ -917,7 +805,7 @@ function ThSort({
     >
       <span className="inline-flex items-center gap-1.5">
         {label}
-        {info && <InfoTooltip text={info} placement="bottom" align={infoAlign} />}
+        {info && <InfoTooltip text={info} />}
         <SortIcon field={field} current={sortField} order={sortOrder} />
       </span>
     </th>

@@ -165,3 +165,36 @@ To ingest and index `client_data.xlsx` into `backend/db/surveillance.db` (`clien
 ```bash
 python3 scripts/ingest_client_data.py
 ```
+
+---
+
+## 5. Counterparty Matched Trades (`PAN_PAIR_*.xlsx`)
+
+The exchange provided bilateral counterparty matched trade logs for the top alert scrips in two dedicated Excel files:
+
+| File Name | Scrip Symbol | Rows | Trading Sessions | Date Span | Total Matched Volume |
+| :--- | :--- | :---: | :---: | :---: | :---: |
+| [`PAN_PAIR_GUJRAFFIA.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PAN_PAIR_GUJRAFFIA.xlsx) | **`GUJRAFFIA`** | **2,713** | 6 days | 14-Oct to 21-Oct-2025 | 702,408 shares |
+| [`PAN_PAIR_SKMEGGPROD.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PAN_PAIR_SKMEGGPROD.xlsx) | **`SKMEGGPROD`** | **3,987** | 1 day | 03-Nov-2025 | 3,061,684 shares |
+| **Combined** | **2 Alert Scrips** | **6,700** | **7 days** | **14-Oct to 03-Nov-2025** | **3,764,092 shares** |
+
+### Fields in `PAN_PAIR_*.xlsx` (13 Columns)
+
+| # | Column Name | Format | Target Database Field | Surveillance Role |
+| :-: | :--- | :--- | :--- | :--- |
+| 1 | `SYMBOL` | Text | `counterparty_trade_pairs.symbol` | Security ticker |
+| 2 | `TRADE_DATE` | Datetime | `counterparty_trade_pairs.trade_date` | Trade execution date |
+| 3 | `BUYER_PAN` | Text | `counterparty_trade_pairs.buyer_pan` | Buyer 10-char PAN |
+| 4 | `BUYER_NAME` | Text | `counterparty_trade_pairs.buyer_client_name` | Buyer legal name (KYC) |
+| 5 | `BUYER_BROKER_ID` | Integer | `counterparty_trade_pairs.buyer_tm_id` | Buying broker clearing ID |
+| 6 | `SELLER_PAN` | Text | `counterparty_trade_pairs.seller_pan` | Seller 10-char PAN |
+| 7 | `SELLER_NAME` | Text | `counterparty_trade_pairs.seller_client_name` | Seller legal name (KYC) |
+| 8 | `SELLER_BROKER_ID` | Integer | `counterparty_trade_pairs.seller_tm_id` | Selling broker clearing ID |
+| 9 | `MATCHED_QUANTITY` | Integer | `counterparty_trade_pairs.matched_quantity` | **Bilateral Matched Volume** (used for Volume & Ring loops) |
+| 10 | `MATCHED_TURNOVER_VALUE` | Decimal | `counterparty_trade_pairs.trade_value` | Gross rupee trade turnover |
+| 11 | `LTP_PUSH_VALUE_LOGIC_1` | Decimal | `counterparty_trade_pairs.pairwise_ltp_push_value` | *Stored in DB; Ignored in current engine & UI* |
+| 12 | `LTP_PUSH_VALUE_LOGIC_2` | Decimal | `counterparty_trade_pairs.pairwise_ltp_push_value_logic_2` | *Stored in DB; Ignored in current engine & UI* |
+| 13 | `REVERSE_MATCHED_QUANTITY`| Integer | `counterparty_trade_pairs.reverse_matched_qty` | **Reversal Volume** (used for Reversal Trade Rate / Wash trading) |
+
+> **Note on LTP Push Columns**: The two delivered LTP push columns (`LOGIC_1` and `LOGIC_2`) are safely stored in the database for reference, but are **completely ignored** in current surveillance engine calculations and UI screens to keep the surveillance workflow straightforward and focused on volume, concentration, and reversal rings.
+

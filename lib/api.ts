@@ -1,21 +1,5 @@
 export type ExchangeScope = "ALL" | "NSE" | "BSE";
 
-export interface VenueSplit {
-  is_dual_listed: boolean;
-  nse_vol_pct: number;
-  bse_vol_pct: number;
-  primary_venue: string;
-}
-
-export interface VenueBreakdown {
-  nse_volume_z?: number;
-  bse_volume_z?: number;
-  nse_circuit_hits?: number;
-  bse_circuit_hits?: number;
-  nse_price_rise?: number;
-  bse_price_rise?: number;
-}
-
 export interface ScripSummary {
   ticker: string;
   symbol: string;
@@ -36,8 +20,6 @@ export interface ScripSummary {
   company?: string;
   sector?: string;
   exchange_scope?: ExchangeScope;
-  venue_split?: VenueSplit;
-  venue_breakdown?: VenueBreakdown;
   venue_trigger?: string;
 }
 
@@ -90,8 +72,6 @@ export interface ScripDetail {
   risk_score?: number;
   price_band?: number;
   exchange_scope?: ExchangeScope;
-  venue_split?: VenueSplit;
-  venue_breakdown?: VenueBreakdown;
   metrics: {
     price_rise_pct: number;
     price_z: number;
@@ -99,6 +79,25 @@ export interface ScripDetail {
     band_hit_days: number;
     new_high_days: number;
     final_score: number;
+    // Statistical baseline fields from backend engine (PVASF 2.2 / 2.3)
+    price_rise_score?: number;
+    price_z_score?: number;
+    volume_z_score?: number;
+    price_mean?: number;
+    price_std?: number;
+    price_threshold_95?: number;
+    price_threshold_99?: number;
+    price_threshold_999?: number;
+    volume_mean?: number;
+    volume_std?: number;
+    volume_threshold_95?: number;
+    volume_threshold_99?: number;
+    volume_threshold_999?: number;
+    price_mod_z?: number;
+    volume_mod_z?: number;
+    band_score?: number;
+    new_high_score?: number;
+    [key: string]: any;
   };
   score_breakdown: ScoreBreakdownItem[];
   history: PricePoint[];
@@ -208,25 +207,59 @@ function hashString(str: string): number {
 }
 
 /**
+ * Decodes the token's payload to determine if it is expired.
+ */
+export function isTokenExpired(token: string | null): boolean {
+  if (!token || !token.includes(".")) return true;
+  try {
+    const [payloadHex] = token.split(".");
+    let jsonStr = "";
+    for (let i = 0; i < payloadHex.length; i += 2) {
+      jsonStr += String.fromCharCode(parseInt(payloadHex.substr(i, 2), 16));
+    }
+    const payload = JSON.parse(jsonStr);
+    if (!payload.exp) return true;
+    const now = Math.floor(Date.now() / 1000);
+    // Buffer by 30 seconds to refresh early before actual expiration
+    return payload.exp <= now + 30;
+  } catch {
+    return true;
+  }
+}
+
+let activeAuthPromise: Promise<string | null> | null = null;
+
+/**
  * Returns request headers with the user's stored Bearer token attached.
  */
 export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Record<string, string> {
   const token = typeof window !== "undefined" ? localStorage.getItem("pvasf_auth_token") : null;
   const headers: Record<string, string> = { ...extraHeaders };
-  if (token) {
+  if (token && !isTokenExpired(token)) {
     headers["Authorization"] = `Bearer ${token}`;
   }
   return headers;
 }
 
 /**
- * Ensures an active auth token exists. If none is found, logs in as the default analyst.
+ * Ensures an active auth token exists. If none is found or token is expired,
+ * transparently logs in as the default analyst (single-flight across all concurrent calls).
  */
 export async function ensureAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
-  let token = localStorage.getItem("pvasf_auth_token");
-  if (!token) {
+  const token = localStorage.getItem("pvasf_auth_token");
+  if (token && !isTokenExpired(token)) {
+    return token;
+  }
+
+  // If a login request is already in-flight, return the existing promise
+  if (activeAuthPromise) {
+    return activeAuthPromise;
+  }
+
+  activeAuthPromise = (async () => {
     try {
+      localStorage.removeItem("pvasf_auth_token");
       const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -234,21 +267,27 @@ export async function ensureAuthToken(): Promise<string | null> {
       });
       if (res.ok) {
         const data = await res.json();
-        token = data.access_token;
-        if (token) {
-          localStorage.setItem("pvasf_auth_token", token);
+        const newToken = data.access_token;
+        if (newToken) {
+          localStorage.setItem("pvasf_auth_token", newToken);
+          localStorage.removeItem("pvasf_logged_out");
+          return newToken;
         }
       }
     } catch (e) {
       console.warn("[API] Auto-login provisioning failed:", e);
+    } finally {
+      activeAuthPromise = null;
     }
-  }
-  return token;
+    return null;
+  })();
+
+  return activeAuthPromise;
 }
 
 /**
- * Wrapper around standard fetch that automatically attaches the Authorization Bearer header
- * and retries once if the token expires (HTTP 401).
+ * Wrapper around standard fetch that automatically attaches the Authorization Bearer header,
+ * pre-emptively validates token freshness, and retries once if the token expires (HTTP 401).
  */
 export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
   const targetUrl = (url.startsWith("http://") || url.startsWith("https://"))
@@ -262,7 +301,14 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  let res = await fetch(targetUrl, { ...init, headers });
+  let res: Response;
+  try {
+    res = await fetch(targetUrl, { ...init, headers });
+  } catch (err: any) {
+    // Retry once after transient connection reset / socket hang up
+    await new Promise((r) => setTimeout(r, 250));
+    res = await fetch(targetUrl, { ...init, headers });
+  }
 
   if (res.status === 401 && typeof window !== "undefined") {
     // Stale or expired token; clear and re-authenticate once
@@ -272,6 +318,10 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
       headers["Authorization"] = `Bearer ${token}`;
       res = await fetch(targetUrl, { ...init, headers });
     }
+  } else if ((res.status === 502 || res.status === 504) && typeof window !== "undefined") {
+    // Transient reverse-proxy hiccup; retry once
+    await new Promise((r) => setTimeout(r, 300));
+    res = await fetch(targetUrl, { ...init, headers });
   }
 
   return res;
@@ -313,22 +363,8 @@ export async function fetchWatchlist(
       return data.map((s: any) => ({
         ...s,
         exchange_scope: exchange,
-        company: s.company || `${s.symbol} Industries Ltd`,
-        isin: s.isin || `INE${Math.abs(hashString(s.symbol)) % 900000 + 100000}A01018`,
-        venue_split: s.venue_split || {
-          is_dual_listed: true,
-          nse_vol_pct: 88.0,
-          bse_vol_pct: 12.0,
-          primary_venue: "NSE"
-        },
-        venue_breakdown: s.venue_breakdown || {
-          nse_volume_z: s.volume_z ? Number((s.volume_z * 0.95).toFixed(2)) : 0,
-          bse_volume_z: s.volume_z ? Number((s.volume_z * 1.05).toFixed(2)) : 0,
-          nse_circuit_hits: s.band_hit_days || 0,
-          bse_circuit_hits: s.band_hit_days || 0,
-          nse_price_rise: s.price_rise_pct || 0,
-          bse_price_rise: s.price_rise_pct || 0,
-        }
+        company: s.company || s.symbol,
+        isin: s.isin || "—",
       }));
     }
     return [];
@@ -350,14 +386,27 @@ export async function fetchScripDetail(
   if (windowDays) url.searchParams.set("window_days", String(windowDays));
   if (exchange) url.searchParams.set("exchange", exchange);
 
-  const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
+  let res = await fetchWithAuth(url.toString(), { cache: "no-store" });
+  if (!res.ok && res.status >= 500) {
+    await new Promise((r) => setTimeout(r, 250));
+    res = await fetchWithAuth(url.toString(), { cache: "no-store" });
+  }
   
-  if (!res.ok) throw new Error(`Failed to fetch details for ${cleanId}`);
+  if (!res.ok) {
+    let errDetail = "";
+    try {
+      const errJson = await res.json();
+      errDetail = errJson.detail || JSON.stringify(errJson);
+    } catch {
+      errDetail = await res.text().catch(() => "");
+    }
+    throw new Error(`Failed to fetch details for ${cleanId} (HTTP ${res.status}): ${errDetail || res.statusText}`);
+  }
   
   const data = await res.json();
   const m = data.metrics ?? {};
 
-  // Backend uses title-case spaced field names; map to frontend snake_case
+  // Backend uses both title-case spaced and snake_case field names; normalize core fields
   const price_rise_pct: number = m["price_rise_pct"] ?? m["Price Rise %"] ?? 0;
   const price_z: number        = m["price_z"]        ?? m["Price Z"]       ?? 0;
   const volume_z: number       = m["volume_z"]       ?? m["Volume Z"]      ?? 0;
@@ -369,32 +418,30 @@ export async function fetchScripDetail(
   const mediumThreshold: number = Math.max(10, Math.round(effThreshold * 0.6));
   const risk = (data.risk as "High" | "Medium" | "Low") ?? (final_score >= effThreshold ? "High" : final_score >= mediumThreshold ? "Medium" : "Low");
 
+  // Forward the full backend metrics object so statistical baselines (μ, σ, thresholds)
+  // are available to the frontend cards without fallback recalculation (PVASF 2.2 / 2.3)
+  const fullMetrics = {
+    ...m,
+    price_rise_pct,
+    price_z,
+    volume_z,
+    band_hit_days,
+    new_high_days,
+    final_score,
+  };
+
   return {
     ticker: data.ticker ?? cleanId,
     symbol: data.symbol ?? cleanId,
-    company: data.company ?? `${cleanId} Industries Ltd`,
-    isin: data.isin ?? `INE${Math.abs(hashString(cleanId)) % 900000 + 100000}A01018`,
+    company: data.company ?? cleanId,
+    isin: data.isin ?? "—",
     risk: (data.risk as "High" | "Medium" | "Low") ?? risk,
     status: (data.status as "Open" | "Under review" | "Closed") ??
             (final_score >= effThreshold ? "Open" : final_score >= mediumThreshold ? "Under review" : "Closed"),
     threshold: effThreshold,
     watchlist: data.watchlist ?? (final_score >= effThreshold),
     exchange_scope: exchange,
-    venue_split: data.venue_split || {
-      is_dual_listed: true,
-      nse_vol_pct: 88.0,
-      bse_vol_pct: 12.0,
-      primary_venue: "NSE"
-    },
-    venue_breakdown: data.venue_breakdown || {
-      nse_volume_z: Number((volume_z * 0.95).toFixed(2)),
-      bse_volume_z: Number((volume_z * 1.05).toFixed(2)),
-      nse_circuit_hits: band_hit_days,
-      bse_circuit_hits: band_hit_days,
-      nse_price_rise: price_rise_pct,
-      bse_price_rise: price_rise_pct,
-    },
-    metrics: { price_rise_pct, price_z, volume_z, band_hit_days, new_high_days, final_score },
+    metrics: fullMetrics,
     score_breakdown: data.score_breakdown ?? [],
     history: data.history ?? [],
     summary: data.summary ?? {
@@ -415,7 +462,10 @@ export async function fetchScripParticipants(scripId: string, asOfDate?: string,
   if (windowDays) url.searchParams.set("window_days", String(windowDays));
 
   const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch participants for ${cleanId}`);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Failed to fetch participants for ${cleanId} (HTTP ${res.status}): ${errText || res.statusText}`);
+  }
   return await res.json();
 }
 
@@ -426,12 +476,15 @@ export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): P
     url.searchParams.set("exchange", exchange);
   }
   const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch trade log for ${cleanId}`);
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Failed to fetch trade log for ${cleanId} (HTTP ${res.status}): ${errText || res.statusText}`);
+  }
   const result = await res.json();
   const rows: TradeRow[] = result.data || [];
-  return rows.map((r, i) => ({
+  return rows.map((r) => ({
     ...r,
-    exchange: r.exchange || (i % 5 === 0 ? "BSE" : "NSE")
+    exchange: r.exchange || "NSE"
   }));
 }
 

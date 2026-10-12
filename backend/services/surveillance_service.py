@@ -25,41 +25,7 @@ from pv_alert_surveillance import (
 )
 from backend.services.market_calendar_service import MarketCalendarService
 
-COMPANY_NAMES = {
-    "ALPHATECH": "Alpha Technologies Ltd",
-    "NOVAENERGY": "Nova Energy Ltd",
-    "ZENITHBIO": "Zenith Bio-Tech Ltd",
-    "ORBITCEM": "Orbit Cement Ltd",
-    "TCS": "Tata Consultancy Services Ltd",
-    "SBIN": "State Bank of India",
-    "ICICIBANK": "ICICI Bank Ltd",
-    "AXISBANK": "Axis Bank Ltd",
-    "RELIANCE": "Reliance Industries Ltd",
-    "HDFCBANK": "HDFC Bank Ltd",
-    "INFY": "Infosys Ltd",
-    "WIPRO": "Wipro Ltd",
-    "BAJFINANCE": "Bajaj Finance Ltd",
-    "MARUTI": "Maruti Suzuki India Ltd",
-    "SUNPHARMA": "Sun Pharma Industries Ltd",
-}
-
-ISIN_CODES = {
-    "ALPHATECH": "INE001A01010",
-    "NOVAENERGY": "INE752716A01",
-    "ZENITHBIO": "INE003C01030",
-    "ORBITCEM": "INE004D01040",
-    "TCS": "INE467B01029",
-    "SBIN": "INE062A01020",
-    "ICICIBANK": "INE090A01021",
-    "AXISBANK": "INE238A01034",
-    "RELIANCE": "INE002A01018",
-    "HDFCBANK": "INE040A01034",
-    "INFY": "INE009A01021",
-    "WIPRO": "INE075A01022",
-    "BAJFINANCE": "INE296A01024",
-    "MARUTI": "INE585B01010",
-    "SUNPHARMA": "INE044A01036",
-}
+# Core company metadata is dynamically queried from daily_market_eod
 
 
 class EODSurveillanceService:
@@ -78,6 +44,7 @@ class EODSurveillanceService:
     """
     current_df: pd.DataFrame
     current_trades_df: pd.DataFrame
+    current_pairs_df: Optional[pd.DataFrame]
 
     def __init__(self):
         self.config = SurveillanceConfig()
@@ -85,14 +52,18 @@ class EODSurveillanceService:
         self.engine = SurveillanceEngine(self.config)
         self.calendar = MarketCalendarService()
         self._summary_cache: Dict[str, List[Dict[str, Any]]] = {}
+        self._cached_trading_dates: Optional[List[str]] = None
         
-        # Load EOD pricing archives from database daily_market_eod; fallback to deterministic synthetic feed
+        # Load genuine EOD pricing archives from daily_market_eod
         db_df = self._load_db_eod()
-        self.current_df = db_df if db_df is not None else self._generate_sample_eod()
+        self.current_df = db_df if db_df is not None else pd.DataFrame()
 
-        # Load participant trade logs from database counterparty_trade_pairs & participant_daily_trades
+        # Load genuine participant trade logs from participant_daily_trades
         db_trades = self._load_db_trades()
-        self.current_trades_df = db_trades if db_trades is not None else self._generate_sample_trades_df()
+        self.current_trades_df = db_trades if db_trades is not None else pd.DataFrame()
+
+        # Load genuine bilateral trade matches from counterparty_trade_pairs
+        self.current_pairs_df = self._load_db_pairs()
 
     def _load_persisted_config(self) -> None:
         """Loads model weights and risk threshold from disk or latest compliance audit log."""
@@ -151,7 +122,7 @@ class EODSurveillanceService:
             print(f"[surveillance_service] Warning: Failed to write {CONFIG_PATH}: {e}")
 
     def _load_db_eod(self) -> Optional[pd.DataFrame]:
-        """Loads EOD OHLCV data directly from daily_market_eod."""
+        """Loads EOD OHLCV data directly from daily_market_eod with true dynamic price bands."""
         db = None
         try:
             from backend.db.database import SessionLocal
@@ -165,13 +136,22 @@ class EODSurveillanceService:
                 DailyMarketEod.day_high_price.label("High"),
                 DailyMarketEod.day_low_price.label("Low"),
                 DailyMarketEod.close_price.label("Close"),
+                DailyMarketEod.prev_close_price.label("PrevClose"),
+                DailyMarketEod.upper_circuit_limit.label("UpperCircuitLimit"),
+                DailyMarketEod.lower_circuit_limit.label("LowerCircuitLimit"),
                 DailyMarketEod.total_traded_quantity.label("Volume"),
                 DailyMarketEod.company_name.label("CompanyName"),
-                DailyMarketEod.isin.label("ISIN")
+                DailyMarketEod.isin.label("ISIN"),
+                DailyMarketEod.delivery_quantity.label("DeliveryQuantity")
             ).order_by(DailyMarketEod.symbol, DailyMarketEod.trade_date)
 
             df = pd.read_sql(q.statement, db.bind)
             if not df.empty and len(df) > 10:
+                upper = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
+                prev_c = pd.to_numeric(df["PrevClose"], errors="coerce")
+                valid = (prev_c > 0) & (upper > 0)
+                df["Band"] = 0.05
+                df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
                 return clean_historical_data(df)
         except Exception as e:
             print(f"[surveillance_service] DB EOD load error: {e}")
@@ -180,65 +160,93 @@ class EODSurveillanceService:
                 db.close()
         return None
 
-    def _load_db_trades(self) -> Optional[pd.DataFrame]:
-        """Loads participant and counterparty trades from clean relational tables."""
+    def _load_single_ticker_eod(self, ticker: str) -> Optional[pd.DataFrame]:
+        """Loads EOD OHLCV data for a specific ticker directly from daily_market_eod using indexed symbol."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import CounterpartyTradePair, ParticipantDailyTrade
+            from backend.db.models import DailyMarketEod
 
             db = SessionLocal()
-            
-            # Primary: Load exact bilateral paired trades from counterparty_trade_pairs
-            q_pair = db.query(
-                CounterpartyTradePair.symbol.label("Ticker"),
-                CounterpartyTradePair.trade_date.label("Date"),
-                CounterpartyTradePair.buyer_pan.label("BuyerPAN"),
-                CounterpartyTradePair.seller_pan.label("SellerPAN"),
-                CounterpartyTradePair.matched_quantity.label("TrdQty"),
-                CounterpartyTradePair.matched_turnover_value.label("TrdVal"),
-                CounterpartyTradePair.pairwise_ltp_push_value.label("PosContVal"),
-            )
+            q = db.query(
+                DailyMarketEod.symbol.label("Ticker"),
+                DailyMarketEod.trade_date.label("Date"),
+                DailyMarketEod.open_price.label("Open"),
+                DailyMarketEod.day_high_price.label("High"),
+                DailyMarketEod.day_low_price.label("Low"),
+                DailyMarketEod.close_price.label("Close"),
+                DailyMarketEod.prev_close_price.label("PrevClose"),
+                DailyMarketEod.upper_circuit_limit.label("UpperCircuitLimit"),
+                DailyMarketEod.lower_circuit_limit.label("LowerCircuitLimit"),
+                DailyMarketEod.total_traded_quantity.label("Volume"),
+                DailyMarketEod.company_name.label("CompanyName"),
+                DailyMarketEod.isin.label("ISIN"),
+                DailyMarketEod.delivery_quantity.label("DeliveryQuantity")
+            ).filter(DailyMarketEod.symbol == ticker).order_by(DailyMarketEod.trade_date)
 
-            raw_df = pd.read_sql(q_pair.statement, db.bind)
-            if not raw_df.empty:
-                pos_vals = raw_df["PosContVal"].astype(float).fillna(0.0)
-                # Construct matched buyer rows
-                b_df = pd.DataFrame({
-                    "Ticker": raw_df["Ticker"],
-                    "Date": raw_df["Date"],
-                    "PAN": raw_df["BuyerPAN"],
-                    "CounterpartyPAN": raw_df["SellerPAN"],
-                    "BuyVolume": raw_df["TrdQty"].astype(float),
-                    "SellVolume": 0.0,
-                    "BuyValue": raw_df["TrdVal"].astype(float),
-                    "SellValue": 0.0,
-                    "LTPContribution": pos_vals,
-                    "PosContVal": pos_vals,
-                    "NegContVal": 0.0,
-                })
-                # Construct matched seller rows (passive liquidity / wash counterparty: 0 LTP push)
-                s_df = pd.DataFrame({
-                    "Ticker": raw_df["Ticker"],
-                    "Date": raw_df["Date"],
-                    "PAN": raw_df["SellerPAN"],
-                    "CounterpartyPAN": raw_df["BuyerPAN"],
-                    "BuyVolume": 0.0,
-                    "SellVolume": raw_df["TrdQty"].astype(float),
-                    "BuyValue": 0.0,
-                    "SellValue": raw_df["TrdVal"].astype(float),
-                    "LTPContribution": 0.0,
-                    "PosContVal": 0.0,
-                    "NegContVal": 0.0,
-                })
-                full_df = pd.concat([b_df, s_df], ignore_index=True)
-                return full_df
+            df = pd.read_sql(q.statement, db.bind)
+            if not df.empty:
+                upper = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
+                prev_c = pd.to_numeric(df["PrevClose"], errors="coerce")
+                valid = (prev_c > 0) & (upper > 0)
+                df["Band"] = 0.05
+                df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
+                return clean_historical_data(df)
+        except Exception as e:
+            print(f"[surveillance_service] DB single EOD load error for {ticker}: {e}")
+        finally:
+            if db:
+                db.close()
+        return None
 
-            # Fallback: Load participant daily trade aggregates
+    def _load_all_dilution_factors(self) -> Dict[str, float]:
+        """Loads all active dilution factors from database."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import PriceDilutionFactor
+            db = SessionLocal()
+            try:
+                recs = db.query(PriceDilutionFactor).all()
+                return {r.symbol: float(r.split_multiplier or 1.0) for r in recs if r.split_multiplier is not None}
+            finally:
+                db.close()
+        except Exception:
+            return {}
+
+    def _get_dilution_multiplier(self, ticker: str, as_of_date: Optional[str] = None) -> float:
+        """Returns the split/bonus dilution multiplier for ticker valid as of observation date, defaulting to 1.0."""
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import PriceDilutionFactor
+            db = SessionLocal()
+            try:
+                q = db.query(PriceDilutionFactor).filter(PriceDilutionFactor.symbol == ticker)
+                if as_of_date:
+                    q = q.filter(PriceDilutionFactor.valid_from_date <= as_of_date, PriceDilutionFactor.valid_thru_date >= as_of_date)
+                rec = q.order_by(PriceDilutionFactor.valid_from_date.desc()).first()
+                if rec and rec.split_multiplier is not None:
+                    return float(rec.split_multiplier)
+            finally:
+                db.close()
+        except Exception:
+            pass
+        return 1.0
+
+    def _load_db_trades(self) -> Optional[pd.DataFrame]:
+        """Loads genuine participant daily trades and LTP contributions directly from participant_daily_trades."""
+        db = None
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import ParticipantDailyTrade
+
+            db = SessionLocal()
             q_clnt = db.query(
                 ParticipantDailyTrade.symbol.label("Ticker"),
                 ParticipantDailyTrade.trade_date.label("Date"),
                 ParticipantDailyTrade.client_pan.label("PAN"),
+                ParticipantDailyTrade.client_legal_name.label("ClientName"),
+                ParticipantDailyTrade.client_category.label("ClientCategory"),
+                ParticipantDailyTrade.trading_member_id.label("TradingMemberId"),
                 ParticipantDailyTrade.buy_quantity.label("BuyVolume"),
                 ParticipantDailyTrade.sell_quantity.label("SellVolume"),
                 ParticipantDailyTrade.buy_turnover_value.label("BuyValue"),
@@ -254,7 +262,7 @@ class EODSurveillanceService:
                 df["PosContVal"] = pos
                 df["NegContVal"] = neg
                 df["LTPContribution"] = pos - neg
-                df["CounterpartyPAN"] = "MULTIPLE"
+                df["CounterpartyPAN"] = "UNKNOWN"
                 return df
         except Exception as e:
             print(f"[surveillance_service] DB trades load error: {e}")
@@ -263,233 +271,42 @@ class EODSurveillanceService:
                 db.close()
         return None
 
-    def _generate_sample_eod(self, days: int = 260) -> pd.DataFrame:
-        """Generates fallback sample EOD price-volume extract for standard scrips."""
-        end_date = datetime.now()
-        dates = [end_date - timedelta(days=days - i) for i in range(days)]
-        
-        scrips = [
-            ("ALPHATECH",   2400.0),
-            ("NOVAENERGY",   140.0),
-            ("ZENITHBIO",   1600.0),
-            ("ORBITCEM",    1550.0),
-            ("TCS",         3800.0),
-            ("SBIN",         780.0),
-            ("ICICIBANK",   1100.0),
-            ("AXISBANK",    1150.0),
-            ("RELIANCE",    2900.0),
-            ("HDFCBANK",    1750.0),
-            ("INFY",        1550.0),
-            ("WIPRO",        480.0),
-            ("BAJFINANCE",  7200.0),
-            ("MARUTI",     11000.0),
-            ("SUNPHARMA",  1200.0)
-        ]
-        
-        all_rows = []
-        for ticker, base_price in scrips:
-            seed_val = zlib.crc32(ticker.encode("utf-8")) % 10000
-            r_state = np.random.RandomState(seed_val)
-            close = np.zeros(days)
-            high = np.zeros(days)
-            low = np.zeros(days)
-            open_p = np.zeros(days)
-            volume = np.zeros(days)
-            close[0] = base_price
+    def _load_db_pairs(self) -> Optional[pd.DataFrame]:
+        """Loads genuine bilateral counterparty trades directly from counterparty_trade_pairs."""
+        db = None
+        try:
+            from backend.db.database import SessionLocal
+            from backend.db.models import CounterpartyTradePair
 
-            if ticker == "ALPHATECH":
-                circuit_days = {246, 248, 250, 252, 254, 256, 258, 259}
-                for i in range(1, days):
-                    if i < 245:
-                        ret = r_state.normal(0.0007, 0.008)
-                    else:
-                        ret = 0.098 if i in circuit_days else r_state.uniform(0.008, 0.015)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
-                volume[245:] = r_state.normal(1200000, 30000, 15)
+            db = SessionLocal()
+            q_pair = db.query(
+                CounterpartyTradePair.symbol.label("symbol"),
+                CounterpartyTradePair.trade_date.label("trade_date"),
+                CounterpartyTradePair.buyer_pan.label("buyer_pan"),
+                CounterpartyTradePair.buyer_legal_name.label("buyer_legal_name"),
+                CounterpartyTradePair.seller_pan.label("seller_pan"),
+                CounterpartyTradePair.seller_legal_name.label("seller_legal_name"),
+                CounterpartyTradePair.buyer_tm_id.label("buyer_tm_id"),
+                CounterpartyTradePair.seller_tm_id.label("seller_tm_id"),
+                CounterpartyTradePair.matched_quantity.label("matched_quantity"),
+                CounterpartyTradePair.matched_turnover_value.label("matched_turnover_value"),
+                CounterpartyTradePair.pairwise_ltp_push_value.label("pairwise_ltp_push_value"),
+                CounterpartyTradePair.pairwise_ltp_push_value_logic_2.label("pairwise_ltp_push_value_logic_2"),
+                CounterpartyTradePair.reverse_matched_quantity.label("reverse_matched_quantity"),
+                CounterpartyTradePair.is_same_broker_wash.label("is_same_broker_wash"),
+            )
 
-            elif ticker == "NOVAENERGY":
-                circuit_days = {245, 246, 247, 249, 250, 251, 253, 254, 255, 257, 258}
-                for i in range(1, days):
-                    if i < 245:
-                        ret = r_state.normal(0.0005, 0.007)
-                    else:
-                        ret = 0.048 if i in circuit_days else r_state.uniform(0.002, 0.008)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(120000, 8000, 245), 40000)
-                volume[245:] = r_state.normal(450000, 15000, 15)
+            df = pd.read_sql(q_pair.statement, db.bind)
+            if not df.empty:
+                return df
+        except Exception as e:
+            print(f"[surveillance_service] DB pairs load error: {e}")
+        finally:
+            if db:
+                db.close()
+        return None
 
-            elif ticker == "ZENITHBIO":
-                circuit_days = {247, 250, 252, 255, 257, 259}
-                for i in range(1, days):
-                    if i < 245:
-                        ret = r_state.normal(0.0006, 0.007)
-                    else:
-                        ret = 0.055 if i in circuit_days else r_state.uniform(0.005, 0.012)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(140000, 10000, 245), 40000)
-                volume[245:] = r_state.normal(800000, 25000, 15)
 
-            elif ticker == "ORBITCEM":
-                circuit_days = {257}
-                for i in range(1, days):
-                    if i < 245:
-                        ret = r_state.normal(0.0003, 0.006)
-                    else:
-                        ret = 0.114 if i in circuit_days else r_state.uniform(0.001, 0.006)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
-                volume[245:] = r_state.normal(210000, 10000, 15)
-
-            elif ticker == "SBIN":
-                for i in range(1, days):
-                    ret = r_state.normal(0.0001, 0.006)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
-                volume[245:] = r_state.normal(320000, 15000, 15)
-
-            elif ticker == "ICICIBANK":
-                for i in range(1, days):
-                    ret = r_state.normal(0.0001, 0.006)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume[:245] = np.maximum(r_state.normal(150000, 10000, 245), 50000)
-                volume[245:] = r_state.normal(240000, 12000, 15)
-
-            elif ticker == "AXISBANK":
-                for i in range(1, days):
-                    ret = 0.025 if i == 255 else r_state.normal(0.0002, 0.006)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume = np.maximum(r_state.normal(150000, 10000, days), 50000)
-
-            else:
-                for i in range(1, days):
-                    ret = r_state.normal(0.0001, 0.006)
-                    close[i] = round(close[i - 1] * (1.0 + ret), 2)
-                volume = np.maximum(r_state.normal(150000, 10000, days), 50000)
-
-            for i in range(days):
-                prev_c = close[i - 1] if i > 0 else close[i]
-                open_p[i] = round(prev_c * r_state.uniform(0.999, 1.001), 2)
-                high[i] = max(close[i], open_p[i], round(close[i] * 1.004, 2))
-                low[i] = min(close[i], open_p[i], round(close[i] * 0.996, 2))
-
-            for d, o, h, l, c, v in zip(dates, open_p, high, low, close, volume):
-                all_rows.append({
-                    "Ticker": ticker,
-                    "Date": d,
-                    "Open": round(float(o), 2),
-                    "High": round(float(h), 2),
-                    "Low": round(float(l), 2),
-                    "Close": round(float(c), 2),
-                    "Volume": int(v)
-                })
-                
-        df = pd.DataFrame(all_rows)
-        return clean_historical_data(df)
-
-    def _generate_sample_trades_df(self) -> pd.DataFrame:
-        """Generates sample participant trades data for auditing LTP and counterparty concentration."""
-        rows = []
-        for ticker in ["ALPHATECH", "NOVAENERGY", "ZENITHBIO", "ORBITCEM", "TCS", "SBIN", "ICICIBANK", "AXISBANK"]:
-            # 1. Bilateral high RTR reversal pairs (RTR = 2*min(A->B, B->A)/gross)
-            rev_pairs = [
-                ("GDKNW2066S", "UHKFC2840Q", 1010, 1015, 4.25, 0.40),
-                ("EXUFM0503J", "HWFTM1488X", 795, 807, 3.10, 0.35),
-                ("MZOKE8130O", "XCGWR8003L", 880, 948, 2.60, 0.50),
-                ("CVXUL2488S", "MZOKE8130O", 725, 793, 1.95, 0.60),
-                ("SSXSC8612W", "YQMCC7107X", 780, 910, 1.70, 0.75),
-            ]
-            for p1, p2, v1, v2, pos_c, neg_c in rev_pairs:
-                price = 1500.0 if ticker in ["ALPHATECH", "ZENITHBIO", "ORBITCEM"] else 500.0
-                # A -> B
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": p1,
-                    "CounterpartyPAN": p2,
-                    "BuyVolume": float(v1),
-                    "SellVolume": 0.0,
-                    "BuyValue": float(v1 * price),
-                    "SellValue": 0.0,
-                    "LTPContribution": pos_c,
-                    "PosContVal": pos_c,
-                    "NegContVal": 0.0
-                })
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": p2,
-                    "CounterpartyPAN": p1,
-                    "BuyVolume": 0.0,
-                    "SellVolume": float(v1),
-                    "BuyValue": 0.0,
-                    "SellValue": float(v1 * price),
-                    "LTPContribution": -neg_c,
-                    "PosContVal": 0.0,
-                    "NegContVal": neg_c
-                })
-                # B -> A
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": p2,
-                    "CounterpartyPAN": p1,
-                    "BuyVolume": float(v2),
-                    "SellVolume": 0.0,
-                    "BuyValue": float(v2 * price),
-                    "SellValue": 0.0,
-                    "LTPContribution": pos_c * 0.85,
-                    "PosContVal": pos_c * 0.85,
-                    "NegContVal": 0.0
-                })
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": p1,
-                    "CounterpartyPAN": p2,
-                    "BuyVolume": 0.0,
-                    "SellVolume": float(v2),
-                    "BuyValue": 0.0,
-                    "SellValue": float(v2 * price),
-                    "LTPContribution": -neg_c * 0.85,
-                    "PosContVal": 0.0,
-                    "NegContVal": neg_c * 0.85
-                })
-
-            # 2. 3-node circular loop: GDKNW2066S -> UHKFC2840Q -> MZOKE8130O -> GDKNW2066S
-            ring_nodes = ["GDKNW2066S", "UHKFC2840Q", "MZOKE8130O"]
-            for idx, src in enumerate(ring_nodes):
-                dst = ring_nodes[(idx + 1) % len(ring_nodes)]
-                ring_vol = 1450.0 + idx * 50
-                price = 1500.0
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": src,
-                    "CounterpartyPAN": dst,
-                    "BuyVolume": ring_vol,
-                    "SellVolume": 0.0,
-                    "BuyValue": ring_vol * price,
-                    "SellValue": 0.0,
-                    "LTPContribution": 1.45,
-                    "PosContVal": 1.45,
-                    "NegContVal": 0.0
-                })
-                rows.append({
-                    "Ticker": ticker,
-                    "Date": datetime.now(),
-                    "PAN": dst,
-                    "CounterpartyPAN": src,
-                    "BuyVolume": 0.0,
-                    "SellVolume": ring_vol,
-                    "BuyValue": 0.0,
-                    "SellValue": ring_vol * price,
-                    "LTPContribution": -0.65,
-                    "PosContVal": 0.0,
-                    "NegContVal": 0.65
-                })
-
-        return pd.DataFrame(rows)
 
     def update_weights(self, weights: Dict[str, float], threshold: Optional[float] = None) -> SurveillanceConfig:
         """Dynamically updates scoring weights w1..w5 and risk score threshold, persisting to disk."""
@@ -505,14 +322,30 @@ class EODSurveillanceService:
 
     def get_available_trading_dates(self) -> List[str]:
         """Returns sorted list of distinct, valid OPEN market trading dates (YYYY-MM-DD)."""
-        db_df = self._load_db_eod()
-        if db_df is not None and not db_df.empty:
-            self.current_df = db_df
-        if self.current_df.empty:
+        if hasattr(self, "_cached_trading_dates") and self._cached_trading_dates is not None:
+            return self._cached_trading_dates
+
+        dates: List[Any] = []
+        if hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty:
+            dates = self.current_df["Date"].unique().tolist()
+        else:
+            db = None
+            try:
+                from backend.db.database import SessionLocal
+                from backend.db.models import DailyMarketEod
+                db = SessionLocal()
+                dates = [r[0] for r in db.query(DailyMarketEod.trade_date).distinct().order_by(DailyMarketEod.trade_date.desc()).all()]
+            except Exception as e:
+                print(f"[surveillance_service] DB dates error: {e}")
+                dates = []
+            finally:
+                if db:
+                    db.close()
+
+        if not dates:
             return []
         
         # Get raw dates from the data presence
-        dates = self.current_df["Date"].unique().tolist()
         formatted_dates = []
         for d in dates:
             if isinstance(d, (datetime, pd.Timestamp)):
@@ -528,7 +361,10 @@ class EODSurveillanceService:
             if self.calendar.is_market_open(d, market="NSE"):
                 valid_trading_days.append(d)
                 
-        return sorted(list(set(valid_trading_days)), reverse=True)
+        res = sorted(list(set(valid_trading_days)), reverse=True)
+        if res:
+            self._cached_trading_dates = res
+        return res
 
     def get_watchlist(self, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> List[Dict[str, Any]]:
         """Returns shortlisted scrips violating risk threshold according to Section 3 of PVASF_CORE_SPEC."""
@@ -539,7 +375,8 @@ class EODSurveillanceService:
         thresh = self.config.threshold
         if score >= thresh:
             return "High", "Open"
-        if score >= 10.0:
+        med_thresh = max(10.0, round(thresh * 0.6))
+        if score >= med_thresh:
             return "Medium", "Under review"
         return "Low", "Normal"
 
@@ -569,6 +406,7 @@ class EODSurveillanceService:
 
         # Pre-group by ticker once into a dictionary for O(1) instant access (10x faster)
         grouped_tickers = dict(tuple(df_source.groupby("Ticker", sort=False)))
+        dilutions = self._load_all_dilution_factors()
         results = []
 
         for ticker, df_raw in grouped_tickers.items():
@@ -577,23 +415,18 @@ class EODSurveillanceService:
                 continue
                 
             try:
-                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t)
+                dilution_mult = dilutions.get(ticker, 1.0)
+                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t, dilution_multiplier=dilution_mult)
                 t180_idx = max(0, len(df_t) - min(181, len(df_t)))
                 start_p = float(df_t["Close"].iloc[t180_idx])
                 end_p = float(df_t["Close"].iloc[-1])
                 change_pct = float(((end_p - start_p) / start_p) * 100)
                 
-                company_name = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else COMPANY_NAMES.get(ticker, f"{ticker} India Ltd")
-                isin_code = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else ISIN_CODES.get(ticker, f"INE{abs(hash(ticker)) % 1000000000:09d}")
+                company_name = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
+                isin_code = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else "—"
                 risk, status = self._risk_and_status(metrics.final_score)
 
-                # Simulated deterministic venue distribution based on ticker hash
-                h_val = abs(hash(ticker)) % 100
-                is_dual = ticker not in ["ORBITCEM_SME"]  # Example single venue
-                nse_pct = 85.0 + (h_val % 10) if is_dual else 0.0
-                bse_pct = round(100.0 - nse_pct, 1)
-
-                # Determine exchange-adjusted metrics
+                # Determine exchange-adjusted metrics directly from calibrated engine
                 effective_score = metrics.final_score
                 effective_vol_z = metrics.volume_z
                 effective_price_z = metrics.price_z
@@ -602,32 +435,19 @@ class EODSurveillanceService:
                 effective_high_days = metrics.new_high_days
 
                 venue_trigger = None
-                if bse_pct > 8 and effective_vol_z >= 1.645 and (h_val % 3 == 0):
-                    venue_trigger = "BSE Vol Surge"
-
-                if exchange == "NSE":
-                    effective_vol_z = round(effective_vol_z * 0.98, 2)
-                elif exchange == "BSE":
-                    effective_vol_z = round(effective_vol_z * 1.05, 2)
 
                 # 2. Data Quality / Feed Issue Detection
                 data_quality_flags = []
                 if resolved_date:
                     latest_available = df_t["DateStr"].iloc[-1] if not df_t.empty else None
                     if latest_available != resolved_date:
-                        # We expected data for this OPEN session but didn't find it!
+                        # Data missing for this session date
                         if exchange == "ALL":
                             data_quality_flags.append("CONSOLIDATED_FEED_MISSING")
                         elif exchange == "NSE":
                             data_quality_flags.append("NSE_FEED_MISSING")
                         elif exchange == "BSE":
                             data_quality_flags.append("BSE_FEED_MISSING")
-                            
-                    # Simulated logic for single-exchange feed failure when examining consolidated view
-                    if exchange == "ALL" and h_val % 7 == 0 and latest_available == resolved_date:
-                        # Arbitrary simulation: occasionally a stock might be missing BSE data on an OPEN day
-                        if self.calendar.is_market_open(resolved_date, market="BSE"):
-                            data_quality_flags.append("BSE_FEED_MISSING_ON_OPEN_SESSION")
 
                 results.append({
                     "ticker": ticker,
@@ -650,20 +470,6 @@ class EODSurveillanceService:
                     "status": status,
                     "exchange_scope": exchange,
                     "data_quality": data_quality_flags,
-                    "venue_split": {
-                        "is_dual_listed": is_dual,
-                        "nse_vol_pct": nse_pct,
-                        "bse_vol_pct": bse_pct,
-                        "primary_venue": "NSE" if nse_pct >= 50 else "BSE"
-                    },
-                    "venue_breakdown": {
-                        "nse_volume_z": round(metrics.volume_z * 0.95, 2),
-                        "bse_volume_z": round(metrics.volume_z * 1.05, 2),
-                        "nse_circuit_hits": metrics.band_hit_days,
-                        "bse_circuit_hits": metrics.band_hit_days,
-                        "nse_price_rise": round(metrics.price_rise_pct, 2),
-                        "bse_price_rise": round(metrics.price_rise_pct, 2)
-                    },
                     "venue_trigger": venue_trigger
                 })
             except Exception as e:
@@ -676,10 +482,15 @@ class EODSurveillanceService:
 
     def get_scrip_detail(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> Dict[str, Any]:
         """Returns scrip EOD OHLCV price/volume history and calculated core PV metrics as of observation date."""
-        db_df = self._load_db_eod()
-        if db_df is not None and not db_df.empty:
-            self.current_df = db_df
-        df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
+        if hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty and ticker in self.current_df["Ticker"].values:
+            df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
+        else:
+            df_single = self._load_single_ticker_eod(ticker)
+            if df_single is not None and not df_single.empty:
+                df_t = df_single.sort_values(by="Date").reset_index(drop=True)
+            else:
+                raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
+
         if df_t.empty:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
             
@@ -689,7 +500,8 @@ class EODSurveillanceService:
             if df_t.empty:
                 raise ValueError(f"No price data for {ticker} on or before {as_of_date}")
 
-        metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t)
+        dilution_mult = self._get_dilution_multiplier(ticker, as_of_date)
+        metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t, dilution_multiplier=dilution_mult)
         
         # Pre-compute MA20 and MA50 across the full historical dataset for complete chart coverage
         df_t["MA20"] = df_t["Close"].rolling(20).mean().round(2)
@@ -699,13 +511,17 @@ class EODSurveillanceService:
         # Include 181 trading days so item 0 is the exact T-180 baseline price
         for _, row in df_t.tail(181).iterrows():
             d_val: Any = row["Date"]
+            deliv_q = row["DeliveryQuantity"] if "DeliveryQuantity" in row and pd.notna(row["DeliveryQuantity"]) else None
+            vol_val = int(row["Volume"]) if pd.notna(row["Volume"]) else 0
+            deliv_pct = round((float(deliv_q) / float(vol_val)) * 100, 1) if deliv_q is not None and vol_val > 0 else None
             history.append({
                 "date": d_val.strftime("%Y-%m-%d") if hasattr(d_val, "strftime") else str(d_val)[:10],
                 "open": round(float(row["Open"]), 2),
                 "high": round(float(row["High"]), 2),
                 "low": round(float(row["Low"]), 2),
                 "close": round(float(row["Close"]), 2),
-                "volume": int(row["Volume"]),
+                "volume": vol_val,
+                "delivery_pct": deliv_pct,
                 "ma20": float(row["MA20"]) if bool(pd.notna(row["MA20"])) else None,
                 "ma50": float(row["MA50"]) if bool(pd.notna(row["MA50"])) else None
             })
@@ -713,15 +529,14 @@ class EODSurveillanceService:
         risk, status = self._risk_and_status(metrics.final_score)
         price_band_val = float(df_t["Band"].iloc[-1]) if "Band" in df_t.columns and pd.notna(df_t["Band"].iloc[-1]) else 0.05
 
-        h_val = abs(hash(ticker)) % 100
-        nse_pct = 85.0 + (h_val % 10)
-        bse_pct = round(100.0 - nse_pct, 1)
+        company_val = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
+        isin_val = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else "—"
 
         return {
             "ticker": ticker,
             "symbol": ticker,
-            "company": COMPANY_NAMES.get(ticker, f"{ticker} Ltd"),
-            "isin": ISIN_CODES.get(ticker, f"INE{abs(hash(ticker))%900000+100000}A01010"),
+            "company": company_val,
+            "isin": isin_val,
             "risk": risk,
             "status": status,
             "score": round(metrics.final_score, 2),
@@ -730,20 +545,6 @@ class EODSurveillanceService:
             "watchlist": metrics.final_score >= self.config.threshold,
             "price_band": price_band_val,
             "exchange_scope": exchange,
-            "venue_split": {
-                "is_dual_listed": True,
-                "nse_vol_pct": nse_pct,
-                "bse_vol_pct": bse_pct,
-                "primary_venue": "NSE"
-            },
-            "venue_breakdown": {
-                "nse_volume_z": round(metrics.volume_z * 0.95, 2),
-                "bse_volume_z": round(metrics.volume_z * 1.05, 2),
-                "nse_circuit_hits": metrics.band_hit_days,
-                "bse_circuit_hits": metrics.band_hit_days,
-                "nse_price_rise": round(metrics.price_rise_pct, 2),
-                "bse_price_rise": round(metrics.price_rise_pct, 2)
-            },
             "metrics": metrics.as_dict(),
             "score_breakdown": [
                 {"label": "Price Rise",     "score": metrics.price_rise_score, "weight": self.config.weights.get("price_rise", 0.0),      "contribution": round((metrics.price_rise_score / 5.0) * self.config.weights.get("price_rise", 0.0), 3)},
@@ -771,58 +572,111 @@ class EODSurveillanceService:
 
     def _calculate_shareholder_stats(self, ticker: str, df_t: pd.DataFrame) -> Dict[str, Any]:
         """Calculates dynamic participant demographics & shareholding statistics directly from Database."""
-        unique_pans_15d = 0
-        unique_pans_180d = 0
-        top_1pct_concentration = 0.0
-        promoter_pct = 52.4
-        public_pct = 47.6
-        unique_pans_holding_t = 0
-        unique_pans_holding_180 = 0
-        avg_trading_pans_15d = 0
-        avg_trading_pans_180d = 0
+        unique_pans_holding_t = None
+        unique_pans_holding_180 = None
+        avg_trading_pans_15d = None
+        avg_trading_pans_180d = None
+        top_1pct_concentration = None
+        promoter_pct = None
+        public_pct = None
+        has_live_feed = False
 
         db = None
         try:
+            from sqlalchemy import func
             from backend.db.database import SessionLocal
-            from backend.db.models import ShareholdingSummary
+            from backend.db.models import ShareholdingSummary, ParticipantDailyTrade
             db = SessionLocal()
 
-            sh_records = db.query(ShareholdingSummary).filter(ShareholdingSummary.symbol == ticker).all()
-            for sh in sh_records:
-                if sh.category_type == "PROMOTER_GROUP":
-                    promoter_pct = float(sh.holding_percentage or 50.0)
-                    if sh.unique_holding_pans:
-                        unique_pans_180d = sh.unique_holding_pans
-                    if sh.avg_daily_trading_pans:
-                        avg_trading_pans_180d = sh.avg_daily_trading_pans
-                elif sh.category_type == "TOP_1_PCT_PUBLIC":
-                    top_1pct_concentration = float(sh.holding_percentage or 20.0)
-                elif sh.category_type == "GENERAL_PUBLIC_FLOAT":
-                    public_pct = float(sh.holding_percentage or 30.0)
-                    if sh.unique_holding_pans:
-                        unique_pans_15d = sh.unique_holding_pans
-                    if sh.avg_daily_trading_pans:
-                        avg_trading_pans_15d = sh.avg_daily_trading_pans
+            # Query shareholding filings sorted by filing_date desc
+            sh_records = (
+                db.query(ShareholdingSummary)
+                .filter(ShareholdingSummary.symbol == ticker)
+                .order_by(ShareholdingSummary.filing_date.desc())
+                .all()
+            )
 
-            unique_pans_holding_t = unique_pans_15d
-            unique_pans_holding_180 = unique_pans_180d
+            if sh_records:
+                has_live_feed = True
+                quarter_map: Dict[str, List[Any]] = {}
+                for sh in sh_records:
+                    quarter_map.setdefault(sh.quarter_code, []).append(sh)
+
+                quarters_ordered = list(quarter_map.keys())
+                latest_q = quarters_ordered[0]
+                latest_records = quarter_map[latest_q]
+
+                p_recs = [r for r in latest_records if "PROMOTER" in (r.category_type or "").upper()]
+                t1_recs = [r for r in latest_records if "TOP_1_PCT" in (r.category_type or "").upper()]
+                pub_recs = [r for r in latest_records if "PUBLIC" in (r.category_type or "").upper() or "FLOAT" in (r.category_type or "").upper()]
+
+                if p_recs:
+                    promoter_pct = round(sum(float(r.holding_percentage or 0.0) for r in p_recs), 2)
+                if t1_recs:
+                    top_1pct_concentration = round(sum(float(r.holding_percentage or 0.0) for r in t1_recs), 2)
+                if pub_recs:
+                    public_pct = round(sum(float(r.holding_percentage or 0.0) for r in pub_recs), 2)
+                elif promoter_pct is not None:
+                    public_pct = round(max(0.0, 100.0 - promoter_pct), 2)
+
+                # Total unique holding PANs for latest filing across categories
+                pans_t_sum = sum(r.unique_holding_pans or 0 for r in latest_records)
+                unique_pans_holding_t = pans_t_sum if pans_t_sum > 0 else None
+
+                # Baseline filing (~180 days prior, i.e. prior quarter)
+                if len(quarters_ordered) > 1:
+                    prior_q = quarters_ordered[-1]
+                    prior_records = quarter_map[prior_q]
+                    pans_180_sum = sum(r.unique_holding_pans or 0 for r in prior_records)
+                    unique_pans_holding_180 = pans_180_sum if pans_180_sum > 0 else None
+                else:
+                    unique_pans_holding_180 = unique_pans_holding_t
+
+            # Calculate real average daily trading PANs directly from participant_daily_trades
+            subq_15 = (
+                db.query(
+                    ParticipantDailyTrade.trade_date,
+                    func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
+                )
+                .filter(ParticipantDailyTrade.symbol == ticker)
+                .group_by(ParticipantDailyTrade.trade_date)
+                .order_by(ParticipantDailyTrade.trade_date.desc())
+                .limit(15)
+                .subquery()
+            )
+            res_15 = db.query(func.avg(subq_15.c.daily_pans)).scalar()
+            if res_15 is not None:
+                avg_trading_pans_15d = round(float(res_15), 1)
+
+            subq_180 = (
+                db.query(
+                    ParticipantDailyTrade.trade_date,
+                    func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
+                )
+                .filter(ParticipantDailyTrade.symbol == ticker)
+                .group_by(ParticipantDailyTrade.trade_date)
+                .subquery()
+            )
+            res_180 = db.query(func.avg(subq_180.c.daily_pans)).scalar()
+            if res_180 is not None:
+                avg_trading_pans_180d = round(float(res_180), 1)
+
+            if avg_trading_pans_15d is None and sh_records:
+                for r in sh_records:
+                    if r.avg_daily_trading_pans:
+                        avg_trading_pans_15d = r.avg_daily_trading_pans
+                        avg_trading_pans_180d = r.avg_daily_trading_pans
+                        break
+
         except Exception as e:
             print(f"[surveillance_service] Shareholding DB lookup error: {e}")
-            ticker_seed = sum(ord(c) for c in ticker)
-            unique_pans_15d = 45 + (ticker_seed % 80)
-            unique_pans_180d = int(unique_pans_15d * 2.4)
-            unique_pans_holding_t = unique_pans_15d
-            unique_pans_holding_180 = unique_pans_180d
-            avg_trading_pans_15d = max(15, int(unique_pans_15d * 0.40))
-            avg_trading_pans_180d = max(20, int(unique_pans_180d * 0.28))
-            top_1pct_concentration = round(28.4 + (ticker_seed % 20), 2)
         finally:
             if db:
                 db.close()
 
         return {
-            "unique_pans_15d": unique_pans_15d,
-            "unique_pans_180d": unique_pans_180d,
+            "unique_pans_15d": unique_pans_holding_t,
+            "unique_pans_180d": unique_pans_holding_180,
             "unique_pans_holding_t": unique_pans_holding_t,
             "unique_pans_holding_180": unique_pans_holding_180,
             "avg_trading_pans_15d": avg_trading_pans_15d,
@@ -830,7 +684,7 @@ class EODSurveillanceService:
             "top_1pct_concentration": top_1pct_concentration,
             "promoter_percent": promoter_pct,
             "public_percent": public_pct,
-            "has_live_feed": True
+            "has_live_feed": has_live_feed
         }
 
     def _get_announcements(self, ticker: str) -> List[Dict[str, Any]]:
@@ -861,7 +715,14 @@ class EODSurveillanceService:
 
     def get_scrip_participants(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15) -> Dict[str, Any]:
         """Serves participant-level analytical breakdown per Section 4 of PVASF_CORE_SPEC."""
-        df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
+        if hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty and ticker in self.current_df["Ticker"].values:
+            df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
+        else:
+            df_single = self._load_single_ticker_eod(ticker)
+            if df_single is not None and not df_single.empty:
+                df_t = df_single.sort_values(by="Date").reset_index(drop=True)
+            else:
+                df_t = pd.DataFrame()
         if as_of_date:
             df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
             df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
@@ -887,8 +748,17 @@ class EODSurveillanceService:
             else:
                 trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs <= as_of_date])
 
+        pairs_slice = getattr(self, "current_pairs_df", None)
+        if pairs_slice is not None and not pairs_slice.empty and as_of_date and "trade_date" in pairs_slice.columns:
+            pair_date_strs = pairs_slice["trade_date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
+            if not df_t.empty and "DateStr" in df_t.columns:
+                window_dates = list(df_t["DateStr"].tail(window_days))
+                pairs_slice = cast(pd.DataFrame, pairs_slice[pair_date_strs.isin(window_dates)])
+            else:
+                pairs_slice = cast(pd.DataFrame, pairs_slice[pair_date_strs <= as_of_date])
+
         part_res: ParticipantAuditResult = self.engine.analyze_participants(
-            ticker, trades_slice, final_close, total_vol
+            ticker, trades_slice, final_close, total_vol, pairs_df=pairs_slice
         )
         
         # Total positive & negative LTP contributions across all participants or net price movement (PVASF Spec 4.1)
@@ -953,6 +823,7 @@ class EODSurveillanceService:
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
                     "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "scrip_movement_contribution_pct": round((float(row.get("LTPContribution", 0)) / scrip_15d_price_change) * 100, 2) if scrip_15d_price_change > 0.05 else None,
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
                     "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
@@ -965,6 +836,7 @@ class EODSurveillanceService:
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
                     "contribution": round((float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))) / tot_pos_ltp) * 100, 2),
+                    "scrip_movement_contribution_pct": round((float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))) / scrip_15d_price_change) * 100, 2) if scrip_15d_price_change > 0.05 else None,
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
                     "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
@@ -977,6 +849,7 @@ class EODSurveillanceService:
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
                     "contribution": round((float(row.get("NegContVal", abs(float(row.get("LTPContribution", 0))))) / tot_neg_ltp) * 100, 2),
+                    "scrip_movement_contribution_pct": round((float(row.get("NegContVal", abs(float(row.get("LTPContribution", 0))))) / scrip_15d_price_change) * 100, 2) if scrip_15d_price_change > 0.05 else None,
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
                     "neg_val": round(float(row.get("NegContVal", abs(min(0.0, float(row.get("LTPContribution", 0)))))), 2),
@@ -1117,22 +990,22 @@ class EODSurveillanceService:
             ]
 
             quarter_keys = sorted(quarters.keys(), reverse=True)
-            latest_q = quarter_keys[0] if quarter_keys else "Q127"
+            latest_q = quarter_keys[0] if quarter_keys else None
             prior_q = quarter_keys[-1] if len(quarter_keys) > 1 else latest_q
 
-            prom_latest = [r for r in main_records if r.quarter_code == latest_q and "PROMOTER" in (r.category_type or "").upper()]
-            prom_prior = [r for r in main_records if r.quarter_code == prior_q and "PROMOTER" in (r.category_type or "").upper()]
-            promoter_shares_t = sum(p.total_shares_count or 0 for p in prom_latest) if prom_latest else 58450000
-            promoter_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in prom_latest), 2) if prom_latest else 58.45
-            promoter_shares_180 = sum(p.total_shares_count or 0 for p in prom_prior) if prom_prior else int(promoter_shares_t * 1.015)
-            promoter_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in prom_prior), 2) if prom_prior else 58.45
+            prom_latest = [r for r in main_records if r.quarter_code == latest_q and "PROMOTER" in (r.category_type or "").upper()] if latest_q else []
+            prom_prior = [r for r in main_records if r.quarter_code == prior_q and "PROMOTER" in (r.category_type or "").upper()] if prior_q else []
+            promoter_shares_t = sum(p.total_shares_count or 0 for p in prom_latest) if prom_latest else None
+            promoter_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in prom_latest), 2) if prom_latest else None
+            promoter_shares_180 = sum(p.total_shares_count or 0 for p in prom_prior) if prom_prior else promoter_shares_t
+            promoter_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in prom_prior), 2) if prom_prior else promoter_pct_t
 
-            top1_latest = [r for r in main_records if r.quarter_code == latest_q and "TOP_1_PCT" in (r.category_type or "").upper()]
-            top1_prior = [r for r in main_records if r.quarter_code == prior_q and "TOP_1_PCT" in (r.category_type or "").upper()]
-            top1_shares_t = sum(p.total_shares_count or 0 for p in top1_latest) if top1_latest else 18200000
-            top1_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in top1_latest), 2) if top1_latest else 18.20
-            top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else int(top1_shares_t * 0.9)
-            top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else 17.50
+            top1_latest = [r for r in main_records if r.quarter_code == latest_q and "TOP_1_PCT" in (r.category_type or "").upper()] if latest_q else []
+            top1_prior = [r for r in main_records if r.quarter_code == prior_q and "TOP_1_PCT" in (r.category_type or "").upper()] if prior_q else []
+            top1_shares_t = sum(p.total_shares_count or 0 for p in top1_latest) if top1_latest else None
+            top1_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in top1_latest), 2) if top1_latest else None
+            top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else top1_shares_t
+            top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else top1_pct_t
 
             major_shareholders = [
                 {
@@ -1169,14 +1042,14 @@ class EODSurveillanceService:
                 "quarterly_history": [],
                 "promoter_group": [],
                 "major_shareholders": [],
-                "promoter_shares_t": 58450000,
-                "promoter_pct_t": 58.45,
-                "promoter_shares_180": 58450000,
-                "promoter_pct_180": 58.45,
-                "top1_shares_t": 18200000,
-                "top1_pct_t": 18.20,
-                "top1_shares_180": 17500000,
-                "top1_pct_180": 17.50,
+                "promoter_shares_t": None,
+                "promoter_pct_t": None,
+                "promoter_shares_180": None,
+                "promoter_pct_180": None,
+                "top1_shares_t": None,
+                "top1_pct_t": None,
+                "top1_shares_180": None,
+                "top1_pct_180": None,
             }
         finally:
             if db:

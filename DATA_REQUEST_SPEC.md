@@ -49,7 +49,8 @@
 | | | Seller Broker ID | `seller_tm_id` | TM101 | Trading member ID of selling broker | Precalculated |
 | | | Matched Quantity | `matched_quantity` | 67617 | Total shares transacted between this buyer-seller pair on trade date | Precalculated |
 | | | Matched Turnover Value | `matched_turnover_value` | 18577094.58 | Total rupee value of matched trades between this pair on trade date | Precalculated |
-| | | Pairwise LTP Push Value | `pairwise_ltp_push_value` | 0.32 | Net directional rupee price shift generated between this matched pair | Precalculated |
+| | | Pairwise LTP Push Value (Logic 1) | `pairwise_ltp_push_value` | 0.32 | Optional / Ignored in current engine (saved in DB for audit, not used in risk scoring or UI) | Precalculated |
+| | | Pairwise LTP Push Value (Logic 2) | `pairwise_ltp_push_value_logic_2` | 0.45 | Alternative push logic / Ignored in current engine (saved in DB for audit, not used in risk scoring or UI) | Precalculated |
 | | | Reverse Matched Quantity | `reverse_matched_quantity` | 64236 | Volume executed in reverse direction (B sells to A) across window | Precalculated |
 | **Shareholding** | 180 Days | Scrip Symbol | `symbol` | NOVAENERGY | Unique exchange ticker for the scrip | Precalculated |
 | | | Quarter Code | `quarter_code` | Q127 | Statutory filing quarter code in QMYY format | Precalculated |
@@ -80,9 +81,9 @@
 | | | Is Special Auction | `is_special_auction` | FALSE | Whether a special call auction session was active on this date | Precalculated |
 | **Client Details** | Master Record | Client PAN | `client_pan` | HWFTM1488X | Permanent Account Number of trading client | Precalculated |
 | | | Client Legal Name | `client_legal_name` | Rahul Gupta | Full registered entity name as per KYC records | Precalculated |
-| **Alert Settings** | - | Price Rise Weight | `w1` | 1 | Scoring weight applied to the Price Rise % metric | Admin Config |
-| | | Price Z-Score Weight | `w2` | 1 | Scoring weight applied to the Price Z-Score metric | Admin Config |
-| | | Volume Z-Score Weight | `w3` | 1 | Scoring weight applied to the Volume Z-Score metric | Admin Config |
-| | | Band Hit Days Weight | `w4` | 1 | Scoring weight applied to the Band Hit Days metric | Admin Config |
-| | | New High Breakout Weight | `w5` | 1 | Scoring weight applied to the 180-Day New High Breakout metric | Admin Config |
-| | | Shortlist Threshold | `shortlist_threshold` | 10 | Minimum composite score for a scrip to be added to the watchlist | Admin Config |
+| **Alert Settings** | - | Price Rise Weight | `w1` | 20.0 | Scoring weight applied to the Price Rise % metric (out of 100%) | Admin Config |
+| | | Price Z-Score Weight | `w2` | 20.0 | Scoring weight applied to the Price Z-Score metric (out of 100%) | Admin Config |
+| | | Volume Z-Score Weight | `w3` | 20.0 | Scoring weight applied to the Volume Z-Score metric (out of 100%) | Admin Config |
+| | | Band Hit Days Weight | `w4` | 20.0 | Scoring weight applied to the Upper Circuit Persistence metric (out of 100%) | Admin Config |
+| | | New High Breakout Weight | `w5` | 20.0 | Scoring weight applied to the 180-Day New High Breakout metric (out of 100%) | Admin Config |
+| | | Shortlist Threshold | `shortlist_threshold` | 60.0 | Minimum composite score for a scrip to be added to the watchlist | Admin Config |

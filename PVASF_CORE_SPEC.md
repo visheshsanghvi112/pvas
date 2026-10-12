@@ -154,12 +154,12 @@ Manipulators often "lock" a stock at the Upper Circuit for several days in a row
 Highlights the number of times the stock has broken past its 6-month ceiling and hit a brand new high in the past 15 days.
 
 #### 2.5.2. Formula
-$$\text{New High Condition}: \text{High}_t \ge \max_{j=t-180}^{t-1}(\text{High}_j)$$
+$$\text{New High Condition}: \text{High}_t > \max_{j=t-180}^{t-1}(\text{High}_j)$$
 
 $$\text{Persistence Count} = \sum_{t=T-14}^{T} \mathbb{I}(\text{New High Condition is True})$$
 
 #### 2.5.3. Methodology
-For each day in the last 15 days ($T \dots T-14$), carries out a binary check ($\text{Yes}=1, \text{No}=0$) to determine if the current day's high price is greater than or equal to the highest recorded price of the preceding 180 trading days. The count is accumulated.
+For each day in the last 15 days ($T \dots T-14$), carries out a binary check ($\text{Yes}=1, \text{No}=0$) to determine if the current day's high price is strictly greater than the highest recorded price of the preceding 180 trading days. The count is accumulated.
 
 #### 2.5.4. Explanation
 Manipulators intentionally push a stock to a new high to trigger algorithmic buy signals and attract retail momentum traders.

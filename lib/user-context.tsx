@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { fetchWithAuth, ensureAuthToken, isTokenExpired } from "@/lib/api";
 
 export type UserRole = "Admin" | "Analyst" | "Viewer";
 
@@ -94,13 +95,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const fetchMe = useCallback(async (token: string | null) => {
-    if (!token) {
+    let activeTok = token;
+    if (!activeTok || isTokenExpired(activeTok)) {
+      activeTok = await ensureAuthToken();
+    }
+    if (!activeTok) {
       setCurrentUser(defaultGuestUser);
       return;
     }
     try {
-      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
-      const res = await fetch(`${AUTH_API}/me`, { headers });
+      const res = await fetchWithAuth(`${AUTH_API}/me`);
       if (res.ok) {
         const data = await res.json();
         setCurrentUser({
@@ -113,19 +117,16 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           is_active: data.is_active,
         });
       } else {
-        logout();
+        setCurrentUser(defaultGuestUser);
       }
     } catch (e) {
       console.error("Failed to fetch current user profile", e);
     }
-  }, [logout]);
+  }, []);
 
-  const refreshUsers = useCallback(async (tokenOverride?: string | null) => {
+  const refreshUsers = useCallback(async (_tokenOverride?: string | null) => {
     try {
-      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
-      const headers: Record<string, string> = {};
-      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
-      const res = await fetch(`${AUTH_API}/users`, { headers });
+      const res = await fetchWithAuth(`${AUTH_API}/users`);
       if (res.ok) {
         const data = await res.json();
         setUsersList(
@@ -143,14 +144,11 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error("Failed to refresh users", e);
     }
-  }, [authToken]);
+  }, []);
 
-  const refreshAuditLogs = useCallback(async (tokenOverride?: string | null) => {
+  const refreshAuditLogs = useCallback(async (_tokenOverride?: string | null) => {
     try {
-      const activeTok = tokenOverride !== undefined ? tokenOverride : authToken;
-      const headers: Record<string, string> = {};
-      if (activeTok) headers["Authorization"] = `Bearer ${activeTok}`;
-      const res = await fetch(`${AUTH_API}/audit-logs?limit=100`, { headers });
+      const res = await fetchWithAuth(`${AUTH_API}/audit-logs?limit=100`);
       if (res.ok) {
         const data = await res.json();
         setAuditLogs(data);
@@ -158,7 +156,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     } catch (e) {
       console.error("Failed to refresh audit logs", e);
     }
-  }, [authToken]);
+  }, []);
 
   const login = useCallback(async (username: string, password: string): Promise<boolean> => {
     try {
@@ -197,26 +195,29 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     // Check saved token on mount
     const savedToken = localStorage.getItem("pvasf_auth_token");
     const wasLoggedOut = localStorage.getItem("pvasf_logged_out") === "true";
-    if (savedToken) {
+    if (savedToken && !isTokenExpired(savedToken)) {
       setAuthToken(savedToken);
       fetchMe(savedToken);
     } else if (!wasLoggedOut) {
-      // Auto-provision analyst session on initial visit
-      login("arao_analyst", "arao123");
+      // Auto-provision analyst session on initial visit or expired token
+      ensureAuthToken().then((tok) => {
+        if (tok) {
+          setAuthToken(tok);
+          fetchMe(tok);
+        }
+      });
     }
-  }, [fetchMe, login]);
+  }, [fetchMe]);
 
-  const setUserRole = (role: UserRole) => {
+  const setUserRole = (_role: UserRole) => {
     // Role state is managed via backend auth token claims
   };
 
   async function updateUserRoleApi(userId: number, newRole: UserRole): Promise<boolean> {
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-      const res = await fetch(`${AUTH_API}/users/${userId}/role`, {
+      const res = await fetchWithAuth(`${AUTH_API}/users/${userId}/role`, {
         method: "PUT",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: newRole }),
       });
       if (res.ok) {
@@ -232,11 +233,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
   async function toggleUserActiveApi(userId: number): Promise<boolean> {
     try {
-      const headers: Record<string, string> = {};
-      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-      const res = await fetch(`${AUTH_API}/users/${userId}/toggle`, {
+      const res = await fetchWithAuth(`${AUTH_API}/users/${userId}/toggle`, {
         method: "PUT",
-        headers,
       });
       if (res.ok) {
         refreshUsers();
@@ -258,11 +256,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     role: UserRole;
   }): Promise<boolean> {
     try {
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
-      const res = await fetch(`${AUTH_API}/users`, {
+      const res = await fetchWithAuth(`${AUTH_API}/users`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(user),
       });
       if (res.ok) {

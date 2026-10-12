@@ -127,16 +127,16 @@ def clean_announcements_data(df: pd.DataFrame) -> pd.DataFrame:
 class SurveillanceConfig:
     """Configuration weights and lookup parameters for the Surveillance Engine."""
     weights: Dict[str, float] = field(default_factory=lambda: {
-        "price_rise": 25.0,
+        "price_rise": 20.0,
         "price_z": 20.0,
-        "volume_z": 25.0,
-        "band_persistence": 15.0,
-        "new_high": 15.0,
+        "volume_z": 20.0,
+        "band_persistence": 20.0,
+        "new_high": 20.0,
     })
     default_band_percent: float = 0.20
     lookback_days: int = 180
     recent_days: int = 15
-    threshold: float = 15.0
+    threshold: float = 60.0
 
 
 @dataclass
@@ -156,6 +156,16 @@ class MarketMetricsResult:
     final_score: float
     price_mod_z: float = 0.0
     volume_mod_z: float = 0.0
+    price_mean: float = 0.0
+    price_std: float = 0.0
+    price_threshold_95: float = 0.0
+    price_threshold_99: float = 0.0
+    price_threshold_999: float = 0.0
+    volume_mean: float = 0.0
+    volume_std: float = 0.0
+    volume_threshold_95: float = 0.0
+    volume_threshold_99: float = 0.0
+    volume_threshold_999: float = 0.0
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -171,12 +181,22 @@ class MarketMetricsResult:
             "price_z_score": self.price_z_score,
             "Price Mod Z": round(self.price_mod_z, 2),
             "price_mod_z": round(self.price_mod_z, 2),
+            "price_mean": round(self.price_mean, 2),
+            "price_std": round(self.price_std, 2),
+            "price_threshold_95": round(self.price_threshold_95, 2),
+            "price_threshold_99": round(self.price_threshold_99, 2),
+            "price_threshold_999": round(self.price_threshold_999, 2),
             "Volume Z": round(self.volume_z, 2),
             "volume_z": round(self.volume_z, 2),
             "Volume Z Score": self.volume_z_score,
             "volume_z_score": self.volume_z_score,
             "Volume Mod Z": round(self.volume_mod_z, 2),
             "volume_mod_z": round(self.volume_mod_z, 2),
+            "volume_mean": round(self.volume_mean, 2),
+            "volume_std": round(self.volume_std, 2),
+            "volume_threshold_95": round(self.volume_threshold_95, 2),
+            "volume_threshold_99": round(self.volume_threshold_99, 2),
+            "volume_threshold_999": round(self.volume_threshold_999, 2),
             "Band Hit Days (15d)": self.band_hit_days,
             "band_hit_days": self.band_hit_days,
             "Band Score": self.band_score,
@@ -311,7 +331,10 @@ class SurveillanceEngine:
             return 1
         return 0
 
-    def calculate_core_metrics(self, ticker: str, df: pd.DataFrame, band_percent: Optional[float] = None) -> MarketMetricsResult:
+    def calculate_core_metrics(
+        self, ticker: str, df: pd.DataFrame, band_percent: Optional[float] = None,
+        dilution_multiplier: float = 1.0
+    ) -> MarketMetricsResult:
         """
         Calculates all 5 Core Surveillance Metrics for a single stock:
         -------------------------------------------------------------
@@ -319,10 +342,10 @@ class SurveillanceEngine:
         2. Price Z-Score: Is the 15-day average daily return abnormal compared to 180 days history?
         3. Volume Z-Score: Is the 15-day average daily volume abnormal compared to 180 days history?
         4. Band Persistence: How many days did it hit >= 90% of the upper circuit limit?
-        5. 180-Day New Highs: How many days did it break its previous 180-day high?
+        5. 180-Day New Highs: How many days did it strictly break its previous 180-day high?
         
         Final Score: Combines all 5 metrics into a single 0 to 100 risk score.
-        A score of 15.0 or higher flags the stock for the compliance watchlist.
+        A score exceeding threshold (default 60.0) flags the stock for the compliance watchlist.
         """
         lookback = self.config.lookback_days
         recent = self.config.recent_days
@@ -363,11 +386,14 @@ class SurveillanceEngine:
         low = pd.to_numeric(df["Low"], errors="coerce").ffill().bfill().fillna(1e-4)
 
         # --- 1. Price Rise % ---
-        # Compare highest price in the last 15 days against the baseline price at the start of lookback
+        # Compare highest price in the last 15 days against the Closing Price at T-180 (PVASF 2.1.2)
+        # T-180 baseline = the closing price 180 trading days ago. When the dataset has fewer than
+        # 181 rows, T-180 is the oldest available closing price (index 0).
         last15_high = high.iloc[-recent:].max()
-        close_t180 = float(close.iloc[-(effective_lookback + 1)])
-        safe_close_t180 = max(close_t180, 1e-4) if close_t180 != 0 else 1e-4
-        price_rise_pct = ((last15_high - close_t180) / safe_close_t180) * 100
+        t180_index = max(0, len(close) - (lookback + 1))
+        close_t180 = float(close.iloc[t180_index])
+        safe_close_t180 = max(close_t180 * dilution_multiplier, 1e-4) if close_t180 != 0 else 1e-4
+        price_rise_pct = ((last15_high - safe_close_t180) / safe_close_t180) * 100
         price_rise_score = self.score_price_rise(price_rise_pct)
 
         # Helper: Calculate rolling 15-day average of daily Close-to-Close returns
@@ -378,28 +404,33 @@ class SurveillanceEngine:
         def rolling_mean_volume(v: pd.Series) -> pd.Series:
             return v.rolling(recent).mean()
 
-        # Helper: Standard Z-score = (Current Value - Historical Mean) / Historical Std Dev
-        def zscore_latest(series: pd.Series) -> float:
+        # Helper: Standard Z-score & baseline parameters = (Current Value - Historical Mean) / Historical Std Dev
+        def zscore_stats(series: pd.Series) -> tuple[float, float, float]:
             series_clean = series.dropna()
-            if len(series_clean) < effective_lookback + 1:
-                return 0.0
-            latest = series_clean.iloc[-1]
-            background = series_clean.iloc[-(effective_lookback + 1):-1]
-            mu = background.mean()
-            sigma = background.std()
+            if len(series_clean) < 2:
+                return 0.0, 0.0, 0.0
+            latest = float(series_clean.iloc[-1])
+            background = series_clean.iloc[:-1] if len(series_clean) <= effective_lookback + 1 else series_clean.iloc[-(effective_lookback + 1):-1]
+            if len(background) < 2:
+                return 0.0, float(background.mean()) if len(background) > 0 else latest, 0.0
+            mu = float(background.mean())
+            sigma = float(background.std())
             if sigma < 1e-6 or np.isnan(sigma):
-                return 0.0
-            return float((latest - mu) / sigma)
+                return 0.0, mu, 0.0
+            z = float((latest - mu) / sigma)
+            return z, mu, sigma
 
         # Helper: Robust Modified Z-score using Median & MAD (less sensitive to single huge spikes)
         def modified_zscore_latest(series: pd.Series) -> float:
             series_clean = series.dropna()
-            if len(series_clean) < effective_lookback + 1:
+            if len(series_clean) < 2:
                 return 0.0
-            latest = series_clean.iloc[-1]
-            background = series_clean.iloc[-(effective_lookback + 1):-1]
-            median = background.median()
-            mad = (background - median).abs().median()
+            latest = float(series_clean.iloc[-1])
+            background = series_clean.iloc[:-1] if len(series_clean) <= effective_lookback + 1 else series_clean.iloc[-(effective_lookback + 1):-1]
+            if len(background) < 2:
+                return 0.0
+            median = float(background.median())
+            mad = float((background - median).abs().median())
             if mad < 1e-6 or np.isnan(mad):
                 return 0.0
             return float(0.6745 * (latest - median) / mad)
@@ -407,26 +438,49 @@ class SurveillanceEngine:
         # --- 2. Price Z-Score ---
         # Tests if the 15-day average daily price return is a statistical outlier
         price_roll = rolling_mean_pct_change(close)
-        price_z = zscore_latest(price_roll)
+        price_z, price_mean, price_std = zscore_stats(price_roll)
         price_mod_z = modified_zscore_latest(price_roll)
         price_z_score = self.score_zscore(price_z)
+        price_threshold_95 = price_mean + 1.645 * price_std
+        price_threshold_99 = price_mean + 2.33 * price_std
+        price_threshold_999 = price_mean + 3.09 * price_std
 
         # --- 3. Volume Z-Score ---
         # Tests if the 15-day average daily volume is a statistical outlier
         vol_roll = rolling_mean_volume(volume)
-        volume_z = zscore_latest(vol_roll)
+        volume_z, volume_mean, volume_std = zscore_stats(vol_roll)
         volume_mod_z = modified_zscore_latest(vol_roll)
         volume_z_score = self.score_zscore(volume_z)
+        volume_threshold_95 = volume_mean + 1.645 * volume_std
+        volume_threshold_99 = volume_mean + 2.33 * volume_std
+        volume_threshold_999 = volume_mean + 3.09 * volume_std
 
         # --- 4. Price Band Persistence (Upper Circuit Hits) ---
         # Counts days where the stock rose by at least 90% of its daily circuit band
         prev_close = close.shift(1).replace(0, np.nan).fillna(1e-4)
         high_pct = (high - prev_close) / prev_close
-        band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
+
+        # Priority 1: Use empirical daily regulatory circuit bands if present in DataFrame
+        daily_bands = None
+        if "Band" in df.columns:
+            b_series = pd.to_numeric(df["Band"], errors="coerce")
+            if b_series.notna().sum() >= recent:
+                daily_bands = b_series
+        elif "UpperCircuitLimit" in df.columns and "PrevClose" in df.columns:
+            u_series = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
+            p_series = pd.to_numeric(df["PrevClose"], errors="coerce")
+            valid = (p_series > 0) & (u_series > 0)
+            if valid.sum() >= recent:
+                daily_bands = (u_series - p_series) / p_series
+
+        if daily_bands is not None:
+            band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * daily_bands.iloc[-recent:]).sum())
+        else:
+            band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
         band_score = self.score_band_persistence(band_hit_days)
 
         # --- 5. 180-Day New High Breakout ---
-        # Counts days where today's high broke past the previous 180-day ceiling (PVASF 2.5.1)
+        # Counts days where today's high strictly broke past the previous 180-day ceiling (PVASF 2.5)
         rolling_180_high_prev = high.shift(1).rolling(effective_lookback, min_periods=min(15, effective_lookback)).max()
         is_new_high = high > rolling_180_high_prev
         new_high_days = int(is_new_high.iloc[-recent:].sum())
@@ -457,10 +511,23 @@ class SurveillanceEngine:
             new_high_score=new_high_score,
             final_score=final_score,
             price_mod_z=price_mod_z,
-            volume_mod_z=volume_mod_z
+            volume_mod_z=volume_mod_z,
+            price_mean=price_mean,
+            price_std=price_std,
+            price_threshold_95=price_threshold_95,
+            price_threshold_99=price_threshold_99,
+            price_threshold_999=price_threshold_999,
+            volume_mean=volume_mean,
+            volume_std=volume_std,
+            volume_threshold_95=volume_threshold_95,
+            volume_threshold_99=volume_threshold_99,
+            volume_threshold_999=volume_threshold_999,
         )
 
-    def analyze_participants(self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float) -> ParticipantAuditResult:
+    def analyze_participants(
+        self, ticker: str, trades_df: pd.DataFrame, final_close: float, total_exchange_vol: float,
+        pairs_df: Optional[pd.DataFrame] = None
+    ) -> ParticipantAuditResult:
         """
         Executes Participant-Level Conduct Audits & Algorithmic Abuse Detection (PVASF Section 4).
         
@@ -554,17 +621,36 @@ class SurveillanceEngine:
             })
 
         # --- 4.2 Volume Share (The "Dominance" Metric) ---
-        # Formula: (Individual PAN Volume over 15d / Total Scrip Volume over 15d) * 100 (PVASF 4.2)
-        # Rationale: Flags single entities cornering or monopolizing liquidity.
+        # Formula: (Individual PAN Volume over 15d / Total Gross Market Volume Legs over 15d) * 100
+        # Denominator represents 2 * Total Scrip Volume (each exchange trade comprises 1 buyer + 1 seller leg)
         df["PANVolume"] = df["BuyVolume"] + df["SellVolume"]
         vol_group = df.groupby("PAN")["PANVolume"].sum().reset_index()
-        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / max(1.0, total_exchange_vol)) * 100.0
+        total_market_legs = max(1.0, 2.0 * total_exchange_vol)
+        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / total_market_legs) * 100.0
         top_vol = vol_group.sort_values("VolumeSharePercent", ascending=False).head(5).to_dict("records")
 
         # Extract directed flow mapping between counterparties
-        df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
-        flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
-        flows = {(r["PAN"], r["CounterpartyPAN"]): r["BuyVolume"] for _, r in flow_df.iterrows()}
+        flows = {}
+        if pairs_df is not None and not pairs_df.empty:
+            p_df = pairs_df
+            if "symbol" in p_df.columns:
+                p_df = p_df[p_df["symbol"] == ticker]
+            elif "Ticker" in p_df.columns:
+                p_df = p_df[p_df["Ticker"] == ticker]
+
+            b_col = "buyer_pan" if "buyer_pan" in p_df.columns else ("BuyerPAN" if "BuyerPAN" in p_df.columns else None)
+            s_col = "seller_pan" if "seller_pan" in p_df.columns else ("SellerPAN" if "SellerPAN" in p_df.columns else None)
+            q_col = "matched_quantity" if "matched_quantity" in p_df.columns else ("TrdQty" if "TrdQty" in p_df.columns else ("BuyVolume" if "BuyVolume" in p_df.columns else None))
+
+            if b_col and s_col and q_col and not p_df.empty:
+                flow_df = p_df.groupby([b_col, s_col])[q_col].sum().reset_index()
+                flows = {(str(r[b_col]), str(r[s_col])): float(r[q_col]) for _, r in flow_df.iterrows() if str(r[b_col]) != str(r[s_col]) and float(r[q_col]) > 0}
+
+        if not flows:
+            df_filtered = df[(df["PAN"] != "UNKNOWN") & (df["CounterpartyPAN"] != "UNKNOWN") & (df["PAN"] != df["CounterpartyPAN"])]
+            if not df_filtered.empty:
+                flow_df = df_filtered.groupby(["PAN", "CounterpartyPAN"])["BuyVolume"].sum().reset_index()
+                flows = {(r["PAN"], r["CounterpartyPAN"]): float(r["BuyVolume"]) for _, r in flow_df.iterrows() if float(r["BuyVolume"]) > 0}
 
         # --- 4.3 Counterparty Concentration (The "Collusive Pair" Metric) ---
         # Formula: (Bilateral Matched Volume / Total Scrip Volume over 15d) * 100
@@ -824,10 +910,14 @@ class SurveillanceEngine:
                 # Market statistics summary
                 lookback = self.config.lookback_days
                 recent = self.config.recent_days
+                t180_idx = max(0, len(df_ticker) - (lookback + 1))
+                start_p = float(df_ticker["Close"].iloc[t180_idx])
+                end_p = float(df_ticker["Close"].iloc[-1])
+                safe_start_p = max(start_p, 1e-4)
                 hist_summary = {
-                    "StartPrice": float(df_ticker["Close"].iloc[-(lookback + 1)]),
-                    "EndPrice": float(df_ticker["Close"].iloc[-1]),
-                    "PriceChangePercent": float(((df_ticker["Close"].iloc[-1] - df_ticker["Close"].iloc[-(lookback + 1)]) / df_ticker["Close"].iloc[-(lookback + 1)]) * 100),
+                    "StartPrice": start_p,
+                    "EndPrice": end_p,
+                    "PriceChangePercent": float(((end_p - start_p) / safe_start_p) * 100),
                     "15dAvgDailyReturn": float((df_ticker["Close"].pct_change() * 100).iloc[-recent:].mean()),
                     "15dAvgVolume": float(df_ticker["Volume"].iloc[-recent:].mean())
                 }
@@ -967,7 +1057,7 @@ def main():
     parser.add_argument("--trades", help="Path to PAN trades CSV")
     parser.add_argument("--shareholding", help="Path to shareholding pattern CSV")
     parser.add_argument("--announcements", help="Path to corporate announcements CSV")
-    parser.add_argument("--threshold", type=float, default=10.0, help="Watch-list score threshold")
+    parser.add_argument("--threshold", type=float, default=60.0, help="Watch-list score threshold (calibrated framework cutoff: 60.0)")
     parser.add_argument("--lookback", type=int, default=180, help="Historical baseline lookback period in days (default: 180)")
     parser.add_argument("--recent", type=int, default=15, help="Recent evaluation window in days (default: 15)")
     parser.add_argument("--out", default="pv_surveillance_output.csv", help="Output summary CSV path")

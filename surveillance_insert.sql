@@ -232,6 +232,7 @@ CREATE TABLE IF NOT EXISTS counterparty_trade_pairs (
     matched_quantity BIGINT NOT NULL,
     matched_turnover_value NUMERIC(20, 2) NOT NULL,
     pairwise_ltp_push_value NUMERIC(15, 2) DEFAULT 0.00,
+    pairwise_ltp_push_value_logic_2 NUMERIC(15, 2) DEFAULT 0.00,
     reverse_matched_quantity BIGINT DEFAULT 0,
     is_same_broker_wash BOOLEAN NOT NULL DEFAULT 0,
     algo_execution_flag SMALLINT DEFAULT 0,

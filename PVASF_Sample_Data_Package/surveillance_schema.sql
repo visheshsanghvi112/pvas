@@ -209,7 +209,8 @@ CREATE TABLE IF NOT EXISTS counterparty_trade_pairs (
     seller_tm_id              VARCHAR(20),
     matched_quantity          BIGINT          NOT NULL,
     matched_turnover_value    DECIMAL(20, 2)  NOT NULL,
-    pairwise_ltp_push_value   DECIMAL(15, 2)  DEFAULT 0.00, -- Gross upward price push contributed by trades between pair
+    pairwise_ltp_push_value   DECIMAL(15, 2)  DEFAULT 0.00, -- Gross upward price push contributed by trades between pair (Logic 1)
+    pairwise_ltp_push_value_logic_2 DECIMAL(15, 2) DEFAULT 0.00, -- Depth sweep LTP push value (Logic 2)
     reverse_matched_quantity  BIGINT          DEFAULT 0,             -- Volume traded in reverse direction Seller -> Buyer (for RTR)
     is_same_broker_wash       BOOLEAN         NOT NULL DEFAULT FALSE, -- TRUE if buyer_tm_id == seller_tm_id
     algo_execution_flag       SMALLINT        DEFAULT 0,             -- 0=Manual, 1=Algo/HFT, 2=DMA

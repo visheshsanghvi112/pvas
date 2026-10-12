@@ -48,16 +48,17 @@ const COMPANY_NAMES: Record<string, [string, string]> = {
 };
 
 // ── PVASF Scoring Calculations ──
-function getScoreZone(score: number): { label: string; badgeClass: string; bgClass: string } {
+function getScoreZone(score: number, threshold: number = 60): { label: string; badgeClass: string; bgClass: string } {
   const normScore = score <= 25 ? score * 4 : score;
-  if (normScore >= 60) {
+  const mediumCutoff = Math.max(10, Math.round(threshold * 0.6));
+  if (normScore >= threshold) {
     return {
       label: "High Risk",
       badgeClass: "bg-rose-100 text-rose-800 border-rose-300",
       bgClass: "bg-rose-50/70 border-rose-200"
     };
   }
-  if (normScore >= 40) {
+  if (normScore >= mediumCutoff) {
     return {
       label: "Medium Risk",
       badgeClass: "bg-amber-100 text-amber-800 border-amber-300",
@@ -306,11 +307,11 @@ export function SurveillanceDossierPdf({
   const company = (rawCompany && rawCompany.toUpperCase() !== symbol)
     ? rawCompany
     : lookup ? lookup[0] : `${symbol.charAt(0) + symbol.slice(1).toLowerCase()} Ltd`;
-  const isin = rawIsin && rawIsin !== "N/A" ? rawIsin : lookup ? lookup[1] : "INE002A01018";
+  const isin = rawIsin && rawIsin !== "N/A" ? rawIsin : lookup ? lookup[1] : "—";
 
   // Standardized 100-Point Model
   const finalScore = metrics.final_score ?? 0;
-  const zone = getScoreZone(finalScore);
+  const zone = getScoreZone(finalScore, detail.threshold);
 
   // Raw parameter scores (0-5)
   const priceRiseRaw = rawScoreForPriceRise(metrics.price_rise_pct);
@@ -805,54 +806,52 @@ export function SurveillanceDossierPdf({
                 <span className="text-[10px] text-slate-500">SEBI Reg 31 Disclosures</span>
               </div>
 
-              <table className="w-full text-xs text-left">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
-                    <th className="py-1.5 px-3">Shareholder Category</th>
-                    <th className="py-1.5 px-3 text-right">Shares Held</th>
-                    <th className="py-1.5 px-3 text-right">% Holding</th>
-                    <th className="py-1.5 px-3 text-right">Pledged Shares</th>
-                    <th className="py-1.5 px-3 text-right">% Pledged</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-mono text-[10.5px]">
-                  <tr>
-                    <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Promoter & Promoter Group</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">64,200,000</td>
-                    <td className="py-1.5 px-3 text-right font-bold text-blue-700">64.20%</td>
-                    <td className="py-1.5 px-3 text-right text-slate-700">0</td>
-                    <td className="py-1.5 px-3 text-right text-emerald-700 font-bold">0.00%</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Public - Institutional (Mutual Funds & DIIs)</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">14,350,000</td>
-                    <td className="py-1.5 px-3 text-right font-bold text-slate-900">14.35%</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Public - Foreign Portfolio Investors (FPI / FII)</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">11,450,000</td>
-                    <td className="py-1.5 px-3 text-right font-bold text-slate-900">11.45%</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                  </tr>
-                  <tr>
-                    <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Public - Non-Institutional & Retail</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">10,000,000</td>
-                    <td className="py-1.5 px-3 text-right font-bold text-slate-900">10.00%</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                    <td className="py-1.5 px-3 text-right text-slate-400">—</td>
-                  </tr>
-                  <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
-                    <td className="py-1.5 px-3 font-sans text-slate-900">Total Issued Capital</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">100,000,000</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">100.00%</td>
-                    <td className="py-1.5 px-3 text-right text-slate-900">0</td>
-                    <td className="py-1.5 px-3 text-right text-emerald-700">0.00%</td>
-                  </tr>
-                </tbody>
-              </table>
+              {(() => {
+                const promoter_pct = detail.shareholders?.promoter_percent ?? shBreakdown?.promoter_pct_t ?? null;
+                const public_pct = detail.shareholders?.public_percent ?? (promoter_pct != null ? Number((100 - promoter_pct).toFixed(2)) : null);
+                const hasData = promoter_pct != null;
+
+                if (!hasData) {
+                  return (
+                    <div className="p-4 text-center text-xs text-slate-500">
+                      Shareholding pattern data not available for this scrip. Data will be populated when SEBI Reg 31 filings are ingested.
+                    </div>
+                  );
+                }
+
+                const promoter_shares = shBreakdown?.promoter_shares_t ?? null;
+                const total_shares = (promoter_pct > 0 && promoter_shares != null) ? Math.round(promoter_shares / (promoter_pct / 100)) : null;
+                const public_shares = (total_shares != null && promoter_shares != null) ? Math.max(0, total_shares - promoter_shares) : null;
+
+                return (
+                  <table className="w-full text-xs text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
+                        <th className="py-1.5 px-3">Shareholder Category</th>
+                        <th className="py-1.5 px-3 text-right">Shares Held</th>
+                        <th className="py-1.5 px-3 text-right">% Holding</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-[10.5px]">
+                      <tr>
+                        <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Promoter & Promoter Group</td>
+                        <td className="py-1.5 px-3 text-right text-slate-900">{promoter_shares != null ? promoter_shares.toLocaleString("en-IN") : "—"}</td>
+                        <td className="py-1.5 px-3 text-right font-bold text-blue-700">{promoter_pct != null ? `${promoter_pct.toFixed(2)}%` : "—"}</td>
+                      </tr>
+                      <tr>
+                        <td className="py-1.5 px-3 font-sans font-medium text-slate-800">Public & Non-Promoter</td>
+                        <td className="py-1.5 px-3 text-right text-slate-900">{public_shares != null ? public_shares.toLocaleString("en-IN") : "—"}</td>
+                        <td className="py-1.5 px-3 text-right font-bold text-slate-900">{public_pct != null ? `${public_pct.toFixed(2)}%` : "—"}</td>
+                      </tr>
+                      <tr className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                        <td className="py-1.5 px-3 font-sans text-slate-900">Total Issued Capital</td>
+                        <td className="py-1.5 px-3 text-right text-slate-900">{total_shares != null ? total_shares.toLocaleString("en-IN") : "—"}</td>
+                        <td className="py-1.5 px-3 text-right text-slate-900">{total_shares != null ? "100.00%" : "—"}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
             </div>
 
             {/* Major Shareholders Register (>= 1%) */}

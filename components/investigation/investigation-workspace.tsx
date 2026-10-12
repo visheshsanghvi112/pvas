@@ -27,9 +27,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Megaphone,
-  Eye,
-  Repeat,
-  RefreshCw
+  Eye
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,80 +78,32 @@ function scoreColor(score: number, threshold: number = 60) {
   return z === "High" ? "text-rose-600" : z === "Medium" ? "text-amber-600" : "text-emerald-600";
 }
 
-// Individual PVASF parameter raw scores (0/1/3/5)
-function rawScoreForPriceRise(pct: number): number {
-  if (pct > 150) return 5;
-  if (pct >= 76) return 3;
-  if (pct >= 15) return 1;
-  return 0;
-}
-function rawScoreForZ(z: number): number {
-  if (z >= 3.09) return 5;
-  if (z >= 2.33) return 3;
-  if (z >= 1.645) return 1;
-  return 0;
-}
-function rawScoreForBandDays(d: number): number {
-  if (d >= 10) return 5;
-  if (d >= 6) return 3;
-  if (d >= 3) return 1;
-  return 0;
-}
-function rawScoreForNewHighDays(d: number): number {
-  if (d >= 10) return 5;
-  if (d >= 5) return 3;
-  if (d >= 1) return 1;
-  return 0;
-}
-
-function ScoreChip({
-  label,
-  value,
-  rawScore,
-  weight,
-  contribution
-}: {
-  label: string;
-  value: string;
-  rawScore: number;
-  weight: number;
-  contribution?: number;
-}) {
-  return (
-    <div className="flex-1 min-w-[130px] bg-white border border-slate-200/90 rounded-2xl p-3 flex flex-col justify-between gap-1.5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xs hover:border-slate-300 shadow-2xs">
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-slate-500">{label}</span>
-        <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/80 px-1.5 py-0.2 rounded font-mono">
-          w = {weight}%
-        </span>
-      </div>
-      <div className="text-lg font-extrabold text-slate-900 font-mono leading-none tracking-tight my-0.5">{value}</div>
-      <div className="flex items-center justify-between mt-1 pt-1.5 border-t border-slate-100 text-[11px]">
-        <span className="font-semibold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/80 font-mono">
-          Score {rawScore}/5
-        </span>
-        {contribution != null && (
-          <span className="font-mono font-bold text-slate-600">
-            +{contribution.toFixed(1)} pts
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function DataTable({
   headers,
   rows,
-  alignments
+  alignments,
+  colWidths,
+  minWidth = "min-w-full",
+  className,
 }: {
   headers: (string | React.ReactNode)[];
   rows: (string | React.ReactNode)[][];
   alignments?: ("left" | "right" | "center")[];
+  colWidths?: string[];
+  minWidth?: string;
+  className?: string;
 }) {
   return (
-    <div className="w-full">
-      <table className="w-full text-xs border-collapse">
+    <div className={cn("w-full overflow-x-auto", className)}>
+      <table className={cn("w-full text-xs border-collapse", minWidth)}>
+        {colWidths && (
+          <colgroup>
+            {colWidths.map((w, idx) => (
+              <col key={idx} style={{ width: w }} />
+            ))}
+          </colgroup>
+        )}
         <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-700 font-semibold">
           <tr>
             {headers.map((h, i) => {
@@ -162,7 +112,7 @@ function DataTable({
                 <th
                   key={i}
                   className={cn(
-                    "px-3 py-2.5 text-xs font-semibold text-slate-700",
+                    "px-3 py-2.5 text-xs font-semibold text-slate-700 whitespace-nowrap",
                     align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left"
                   )}
                 >
@@ -394,6 +344,45 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     return availableDates[startIdx] || selectedDate;
   }, [availableDates, dateIndex, windowDays, selectedDate]);
 
+  // Check for significant calendar gaps (> 15 calendar days) in the scrip history
+  const historyGap = useMemo(() => {
+    if (!detail?.history || detail.history.length < 2) return null;
+    let maxGapDays = 0;
+    let gapStart = "";
+    let gapEnd = "";
+    for (let i = 1; i < detail.history.length; i++) {
+      const d1 = new Date(detail.history[i - 1].date);
+      const d2 = new Date(detail.history[i].date);
+      const diffDays = Math.round((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays > maxGapDays) {
+        maxGapDays = diffDays;
+        gapStart = detail.history[i - 1].date;
+        gapEnd = detail.history[i].date;
+      }
+    }
+    if (maxGapDays > 15) {
+      return { days: maxGapDays, start: gapStart, end: gapEnd };
+    }
+    return null;
+  }, [detail?.history]);
+
+  // Map calibrated model weights and points contributions from detail.score_breakdown
+  const scoreBreakdownMap = useMemo(() => {
+    const map: Record<string, { weight: number; contribution: number; score: number }> = {};
+    (detail?.score_breakdown || []).forEach((item) => {
+      map[item.label] = { weight: item.weight, contribution: item.contribution, score: item.score };
+    });
+    return map;
+  }, [detail?.score_breakdown]);
+
+  const activeWeights = useMemo(() => ({
+    price_rise: scoreBreakdownMap["Price Rise"]?.weight ?? 20,
+    price_z: scoreBreakdownMap["Price Z"]?.weight ?? 20,
+    volume_z: scoreBreakdownMap["Volume Z"]?.weight ?? 20,
+    band_persistence: scoreBreakdownMap["Band Persistence"]?.weight ?? 20,
+    new_high: scoreBreakdownMap["180 Day New High"]?.weight ?? 20,
+  }), [scoreBreakdownMap]);
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[50vh] gap-3 text-slate-500">
@@ -431,29 +420,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
   }
 
   const { metrics, summary, history, score_breakdown, risk, company } = detail;
-
-  const priceRiseRaw = rawScoreForPriceRise(metrics.price_rise_pct);
-  const priceZRaw    = rawScoreForZ(metrics.price_z);
-  const volumeZRaw   = rawScoreForZ(metrics.volume_z);
-  const bandRaw      = rawScoreForBandDays(metrics.band_hit_days);
-  const newHighRaw   = rawScoreForNewHighDays(metrics.new_high_days);
-
-  // Map calibrated model weights and points contributions from detail.score_breakdown
-  const scoreBreakdownMap = useMemo(() => {
-    const map: Record<string, { weight: number; contribution: number; score: number }> = {};
-    (score_breakdown || []).forEach((item) => {
-      map[item.label] = { weight: item.weight, contribution: item.contribution, score: item.score };
-    });
-    return map;
-  }, [score_breakdown]);
-
-  const activeWeights = useMemo(() => ({
-    price_rise: scoreBreakdownMap["Price Rise"]?.weight ?? 20,
-    price_z: scoreBreakdownMap["Price Z"]?.weight ?? 20,
-    volume_z: scoreBreakdownMap["Volume Z"]?.weight ?? 20,
-    band_persistence: scoreBreakdownMap["Band Persistence"]?.weight ?? 20,
-    new_high: scoreBreakdownMap["180 Day New High"]?.weight ?? 20,
-  }), [scoreBreakdownMap]);
 
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
@@ -641,6 +607,21 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   </div>
                 )}
 
+                {historyGap && (
+                  <div
+                    className="flex items-center gap-1.5 bg-rose-50 border border-rose-200/90 rounded-xl px-2.5 py-1 text-xs text-rose-900 font-semibold shadow-2xs"
+                    title={`Feed Notice: A ${historyGap.days}-day calendar gap exists between ${historyGap.start} and ${historyGap.end} in the provided market archive. The 15 evaluated sessions span non-contiguous periods.`}
+                  >
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-600 flex-shrink-0" />
+                    <span>
+                      Feed Gap:{" "}
+                      <strong className="font-mono font-bold text-rose-950">
+                        {historyGap.days}d ({formatDateDisplay(historyGap.start)} → {formatDateDisplay(historyGap.end)})
+                      </strong>
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex items-center gap-2 bg-amber-50 border border-amber-200/90 rounded-xl px-2.5 py-1 text-xs text-amber-950 font-semibold shadow-2xs">
                   <Clock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
                   <span>
@@ -722,55 +703,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {activeTab === "Overview" && (
           <div className="space-y-6">
 
-            {/* 5-Parameter Calibrated Scoring Strip with Active Model Weights */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs px-0.5">
-                <span className="font-bold text-slate-700 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 text-blue-600" />
-                  Calibrated Framework Model Scoring (Active Weights $w_1 \dots w_5$)
-                </span>
-                <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200/80 px-2 py-0.5 rounded-lg">
-                  Cutoff Threshold: <strong className="font-mono text-blue-950 font-bold">≥ {detail.threshold ?? 60}</strong>
-                </span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                <ScoreChip
-                  label="1. Price Rise"
-                  value={`${metrics.price_rise_pct > 0 ? "+" : ""}${metrics.price_rise_pct.toFixed(1)}%`}
-                  rawScore={priceRiseRaw}
-                  weight={scoreBreakdownMap["Price Rise"]?.weight ?? 20}
-                  contribution={scoreBreakdownMap["Price Rise"]?.contribution}
-                />
-                <ScoreChip
-                  label="2. Return Z-Score"
-                  value={`${metrics.price_z.toFixed(2)}σ`}
-                  rawScore={priceZRaw}
-                  weight={scoreBreakdownMap["Price Z"]?.weight ?? 20}
-                  contribution={scoreBreakdownMap["Price Z"]?.contribution}
-                />
-                <ScoreChip
-                  label="3. Volume Z-Score"
-                  value={`${metrics.volume_z.toFixed(2)}σ`}
-                  rawScore={volumeZRaw}
-                  weight={scoreBreakdownMap["Volume Z"]?.weight ?? 20}
-                  contribution={scoreBreakdownMap["Volume Z"]?.contribution}
-                />
-                <ScoreChip
-                  label="4. Band Persistence"
-                  value={`${metrics.band_hit_days} Days`}
-                  rawScore={bandRaw}
-                  weight={scoreBreakdownMap["Band Persistence"]?.weight ?? 20}
-                  contribution={scoreBreakdownMap["Band Persistence"]?.contribution}
-                />
-                <ScoreChip
-                  label="5. 180D New Highs"
-                  value={`${metrics.new_high_days} Days`}
-                  rawScore={newHighRaw}
-                  weight={scoreBreakdownMap["180 Day New High"]?.weight ?? 20}
-                  contribution={scoreBreakdownMap["180 Day New High"]?.contribution}
-                />
-              </div>
-            </div>
 
             {/* 5-Parameter Risk Radar Signature Command Card */}
             <Card className="bg-gradient-to-br from-white via-slate-50/60 to-blue-50/20 border-slate-200/90 shadow-xs">
@@ -834,34 +766,36 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {activeTab === "Shareholders" && (
           <div className="space-y-6">
             {(() => {
-              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? 54;
-              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? 55;
-              const unique_pans_diff = unique_pans_t - unique_pans_180;
-              const unique_pans_pct_diff = Number(((unique_pans_diff / Math.max(1, unique_pans_180)) * 100).toFixed(1));
+              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? null;
+              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? null;
+              const unique_pans_diff = (unique_pans_t != null && unique_pans_180 != null) ? unique_pans_t - unique_pans_180 : null;
+              const unique_pans_pct_diff = (unique_pans_diff != null && unique_pans_180 != null && unique_pans_180 > 0) ? Number(((unique_pans_diff / unique_pans_180) * 100).toFixed(1)) : null;
 
-              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? detail.shareholders?.unique_pans_15d ?? 24;
-              const avg_pans_180d = detail.shareholders?.avg_trading_pans_180d ?? detail.shareholders?.unique_pans_180d ?? 23;
-              const avg_pans_diff = avg_pans_15d - avg_pans_180d;
-              const avg_pans_pct_diff = Number(((avg_pans_diff / Math.max(1, avg_pans_180d)) * 100).toFixed(1));
+              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? detail.shareholders?.unique_pans_15d ?? null;
+              const avg_pans_180d = detail.shareholders?.avg_trading_pans_180d ?? detail.shareholders?.unique_pans_180d ?? null;
+              const avg_pans_diff = (avg_pans_15d != null && avg_pans_180d != null) ? avg_pans_15d - avg_pans_180d : null;
+              const avg_pans_pct_diff = (avg_pans_diff != null && avg_pans_180d != null && avg_pans_180d > 0) ? Number(((avg_pans_diff / avg_pans_180d) * 100).toFixed(1)) : null;
 
-              const promoter_pct_t = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent ?? 64.2;
-              const promoter_pct_180 = shBreakdown?.promoter_pct_180 ?? 68.4;
-              const promoter_shares_t = shBreakdown?.promoter_shares_t ?? 64200000;
-              const promoter_shares_180 = shBreakdown?.promoter_shares_180 ?? 68400000;
-              const promoter_pct_diff = Number((promoter_pct_t - promoter_pct_180).toFixed(2));
+              const promoter_pct_t: number | null = shBreakdown?.promoter_pct_t ?? detail.shareholders?.promoter_percent ?? null;
+              const promoter_pct_180: number | null = shBreakdown?.promoter_pct_180 ?? null;
+              const promoter_shares_t: number | null = shBreakdown?.promoter_shares_t ?? null;
+              const promoter_shares_180: number | null = shBreakdown?.promoter_shares_180 ?? null;
+              const promoter_pct_diff = (promoter_pct_t != null && promoter_pct_180 != null) ? Number((promoter_pct_t - promoter_pct_180).toFixed(2)) : null;
 
-              const top1_pct_t = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration ?? 35.8;
-              const top1_pct_180 = shBreakdown?.top1_pct_180 ?? 31.6;
-              const top1_shares_t = shBreakdown?.top1_shares_t ?? 35800000;
-              const top1_shares_180 = shBreakdown?.top1_shares_180 ?? 31600000;
-              const top1_pct_diff = Number((top1_pct_t - top1_pct_180).toFixed(2));
+              const top1_pct_t: number | null = shBreakdown?.top1_pct_t ?? detail.shareholders?.top_1pct_concentration ?? null;
+              const top1_pct_180: number | null = shBreakdown?.top1_pct_180 ?? null;
+              const top1_shares_t: number | null = shBreakdown?.top1_shares_t ?? null;
+              const top1_shares_180: number | null = shBreakdown?.top1_shares_180 ?? null;
+              const top1_pct_diff = (top1_pct_t != null && top1_pct_180 != null) ? Number((top1_pct_t - top1_pct_180).toFixed(2)) : null;
 
-              const total_shares_approx = promoter_pct_t > 0 ? Math.round(promoter_shares_t / (promoter_pct_t / 100)) : 100000000;
-              const public_shares_t = Math.max(0, total_shares_approx - promoter_shares_t);
-              const public_shares_180 = Math.max(0, total_shares_approx - promoter_shares_180);
-              const public_pct_t = Number((100 - promoter_pct_t).toFixed(2));
-              const public_pct_180 = Number((100 - promoter_pct_180).toFixed(2));
-              const public_pct_diff = Number((public_pct_t - public_pct_180).toFixed(2));
+              const total_shares_approx = (promoter_pct_t != null && promoter_pct_t > 0 && promoter_shares_t != null) ? Math.round(promoter_shares_t / (promoter_pct_t / 100)) : null;
+              const public_shares_t = (total_shares_approx != null && promoter_shares_t != null) ? Math.max(0, total_shares_approx - promoter_shares_t) : null;
+              const public_shares_180 = (total_shares_approx != null && promoter_shares_180 != null) ? Math.max(0, total_shares_approx - promoter_shares_180) : null;
+              const public_pct_t = promoter_pct_t != null ? Number((100 - promoter_pct_t).toFixed(2)) : null;
+              const public_pct_180 = promoter_pct_180 != null ? Number((100 - promoter_pct_180).toFixed(2)) : null;
+              const public_pct_diff = (public_pct_t != null && public_pct_180 != null) ? Number((public_pct_t - public_pct_180).toFixed(2)) : null;
+
+              const hasNoShareholderData = unique_pans_t == null && avg_pans_15d == null && promoter_pct_t == null && top1_pct_t == null;
 
               return (
                 <>
@@ -875,12 +809,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       </div>
                       <div className="mt-2.5 flex items-baseline justify-between">
-                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{unique_pans_t}</span>
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{unique_pans_t ?? "—"}</span>
                         <span className={cn(
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
-                          unique_pans_diff >= 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
+                          (unique_pans_diff ?? 0) >= 0 ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-rose-50 text-rose-700 border-rose-200"
                         )}>
-                          {unique_pans_diff >= 0 ? "+" : ""}{unique_pans_diff}
+                          {unique_pans_diff != null ? `${unique_pans_diff >= 0 ? "+" : ""}${unique_pans_diff}` : "—"}
                         </span>
                       </div>
                     </div>
@@ -893,12 +827,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       </div>
                       <div className="mt-2.5 flex items-baseline justify-between">
-                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{avg_pans_15d}</span>
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{avg_pans_15d ?? "—"}</span>
                         <span className={cn(
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
-                          avg_pans_diff >= 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-700 border-slate-200"
+                          (avg_pans_diff ?? 0) >= 0 ? "bg-indigo-50 text-indigo-700 border-indigo-200" : "bg-slate-50 text-slate-700 border-slate-200"
                         )}>
-                          {avg_pans_diff >= 0 ? "+" : ""}{avg_pans_diff}
+                          {avg_pans_diff != null ? `${avg_pans_diff >= 0 ? "+" : ""}${avg_pans_diff}` : "—"}
                         </span>
                       </div>
                     </div>
@@ -911,12 +845,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       </div>
                       <div className="mt-2.5 flex items-baseline justify-between">
-                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{promoter_pct_t}%</span>
+                        <span className="text-2xl font-black text-slate-900 font-mono tracking-tight">{promoter_pct_t != null ? `${promoter_pct_t}%` : "—"}</span>
                         <span className={cn(
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
-                          promoter_pct_diff >= 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"
+                          (promoter_pct_diff ?? 0) >= 0 ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-amber-50 text-amber-700 border-amber-200"
                         )}>
-                          {promoter_pct_diff >= 0 ? "+" : ""}{promoter_pct_diff}%
+                          {promoter_pct_diff != null ? `${promoter_pct_diff >= 0 ? "+" : ""}${promoter_pct_diff}%` : "—"}
                         </span>
                       </div>
                     </div>
@@ -929,12 +863,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       </div>
                       <div className="mt-2.5 flex items-baseline justify-between">
-                        <span className="text-2xl font-black text-amber-900 font-mono tracking-tight">{top1_pct_t}%</span>
+                        <span className="text-2xl font-black text-amber-900 font-mono tracking-tight">{top1_pct_t != null ? `${top1_pct_t}%` : "—"}</span>
                         <span className={cn(
                           "text-xs font-bold font-mono px-2 py-0.5 rounded-md border",
-                          top1_pct_diff > 0 ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200"
+                          (top1_pct_diff ?? 0) > 0 ? "bg-amber-50 text-amber-800 border-amber-300" : "bg-slate-50 text-slate-700 border-slate-200"
                         )}>
-                          {top1_pct_diff >= 0 ? "+" : ""}{top1_pct_diff}%
+                          {top1_pct_diff != null ? `${top1_pct_diff >= 0 ? "+" : ""}${top1_pct_diff}%` : "—"}
                         </span>
                       </div>
                     </div>
@@ -962,51 +896,51 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                           <span key="name-p" className="font-bold text-slate-900 flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 shrink-0" /> Promoters & Promoter Group
                           </span>,
-                          <span key="p-st" className="font-mono font-bold text-slate-900">{promoter_shares_t.toLocaleString("en-IN")}</span>,
+                          <span key="p-st" className="font-mono font-bold text-slate-900">{promoter_shares_t != null ? promoter_shares_t.toLocaleString("en-IN") : "—"}</span>,
                           <div key="p-pt" className="flex items-center gap-2">
                             <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
-                              <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.min(100, promoter_pct_t)}%` }} />
+                              <div className="bg-indigo-600 h-full rounded-full" style={{ width: `${Math.min(100, promoter_pct_t ?? 0)}%` }} />
                             </div>
-                            <span className="font-mono font-bold text-indigo-700">{promoter_pct_t}%</span>
+                            <span className="font-mono font-bold text-indigo-700">{promoter_pct_t != null ? `${promoter_pct_t}%` : "—"}</span>
                           </div>,
-                          <span key="p-s180" className="font-mono text-slate-700">{promoter_shares_180.toLocaleString("en-IN")}</span>,
-                          <span key="p-p180" className="font-mono font-bold text-slate-700">{promoter_pct_180}%</span>,
-                          <span key="p-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", promoter_pct_diff >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
-                            {promoter_pct_diff >= 0 ? "+" : ""}{promoter_pct_diff}%
+                          <span key="p-s180" className="font-mono text-slate-700">{promoter_shares_180 != null ? promoter_shares_180.toLocaleString("en-IN") : "—"}</span>,
+                          <span key="p-p180" className="font-mono font-bold text-slate-700">{promoter_pct_180 != null ? `${promoter_pct_180}%` : "—"}</span>,
+                          <span key="p-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", (promoter_pct_diff ?? 0) >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
+                            {promoter_pct_diff != null ? `${promoter_pct_diff >= 0 ? "+" : ""}${promoter_pct_diff}%` : "—"}
                           </span>,
                         ],
                         [
                           <span key="name-top1" className="font-bold text-slate-900 flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" /> Top 1% Largest Shareholders
                           </span>,
-                          <span key="top1-st" className="font-mono font-bold text-slate-900">{top1_shares_t.toLocaleString("en-IN")}</span>,
+                          <span key="top1-st" className="font-mono font-bold text-slate-900">{top1_shares_t != null ? top1_shares_t.toLocaleString("en-IN") : "—"}</span>,
                           <div key="top1-pt" className="flex items-center gap-2">
                             <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
-                              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${Math.min(100, top1_pct_t)}%` }} />
+                              <div className="bg-amber-500 h-full rounded-full" style={{ width: `${Math.min(100, top1_pct_t ?? 0)}%` }} />
                             </div>
-                            <span className="font-mono font-bold text-amber-800">{top1_pct_t}%</span>
+                            <span className="font-mono font-bold text-amber-800">{top1_pct_t != null ? `${top1_pct_t}%` : "—"}</span>
                           </div>,
-                          <span key="top1-s180" className="font-mono text-slate-700">{top1_shares_180.toLocaleString("en-IN")}</span>,
-                          <span key="top1-p180" className="font-mono font-bold text-slate-700">{top1_pct_180}%</span>,
-                          <span key="top1-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", top1_pct_diff >= 0 ? "text-amber-800 bg-amber-50 border border-amber-200" : "text-emerald-700 bg-emerald-50 border border-emerald-100")}>
-                            {top1_pct_diff >= 0 ? "+" : ""}{top1_pct_diff}%
+                          <span key="top1-s180" className="font-mono text-slate-700">{top1_shares_180 != null ? top1_shares_180.toLocaleString("en-IN") : "—"}</span>,
+                          <span key="top1-p180" className="font-mono font-bold text-slate-700">{top1_pct_180 != null ? `${top1_pct_180}%` : "—"}</span>,
+                          <span key="top1-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", (top1_pct_diff ?? 0) >= 0 ? "text-amber-800 bg-amber-50 border border-amber-200" : "text-emerald-700 bg-emerald-50 border border-emerald-100")}>
+                            {top1_pct_diff != null ? `${top1_pct_diff >= 0 ? "+" : ""}${top1_pct_diff}%` : "—"}
                           </span>,
                         ],
                         [
                           <span key="name-pub" className="font-bold text-slate-900 flex items-center gap-2">
                             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" /> Public & Non-Promoter Free Float
                           </span>,
-                          <span key="pub-st" className="font-mono font-bold text-slate-900">{public_shares_t.toLocaleString("en-IN")}</span>,
+                          <span key="pub-st" className="font-mono font-bold text-slate-900">{public_shares_t != null ? public_shares_t.toLocaleString("en-IN") : "—"}</span>,
                           <div key="pub-pt" className="flex items-center gap-2">
                             <div className="w-16 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/60">
-                              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, public_pct_t)}%` }} />
+                              <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${Math.min(100, public_pct_t ?? 0)}%` }} />
                             </div>
-                            <span className="font-mono font-bold text-emerald-700">{public_pct_t}%</span>
+                            <span className="font-mono font-bold text-emerald-700">{public_pct_t != null ? `${public_pct_t}%` : "—"}</span>
                           </div>,
-                          <span key="pub-s180" className="font-mono text-slate-700">{public_shares_180.toLocaleString("en-IN")}</span>,
-                          <span key="pub-p180" className="font-mono font-bold text-slate-700">{public_pct_180}%</span>,
-                          <span key="pub-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", public_pct_diff >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
-                            {public_pct_diff >= 0 ? "+" : ""}{public_pct_diff}%
+                          <span key="pub-s180" className="font-mono text-slate-700">{public_shares_180 != null ? public_shares_180.toLocaleString("en-IN") : "—"}</span>,
+                          <span key="pub-p180" className="font-mono font-bold text-slate-700">{public_pct_180 != null ? `${public_pct_180}%` : "—"}</span>,
+                          <span key="pub-diff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", (public_pct_diff ?? 0) >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-amber-700 bg-amber-50 border border-amber-100")}>
+                            {public_pct_diff != null ? `${public_pct_diff >= 0 ? "+" : ""}${public_pct_diff}%` : "—"}
                           </span>,
                         ],
                       ]}
@@ -1031,18 +965,18 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       rows={[
                         [
                           <span key="r-hp" className="font-bold text-slate-900">Unique PAN-holders holding scrip (Day t vs Day T-180)</span>,
-                          <span key="r-hpt" className="font-mono font-bold text-slate-900">{unique_pans_t} PANs</span>,
-                          <span key="r-hp180" className="font-mono font-bold text-slate-700">{unique_pans_180} PANs</span>,
-                          <span key="r-hpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", unique_pans_diff >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-rose-700 bg-rose-50 border border-rose-100")}>
-                            {unique_pans_pct_diff >= 0 ? "+" : ""}{unique_pans_pct_diff}%
+                          <span key="r-hpt" className="font-mono font-bold text-slate-900">{unique_pans_t != null ? `${unique_pans_t} PANs` : "—"}</span>,
+                          <span key="r-hp180" className="font-mono font-bold text-slate-700">{unique_pans_180 != null ? `${unique_pans_180} PANs` : "—"}</span>,
+                          <span key="r-hpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", (unique_pans_diff ?? 0) >= 0 ? "text-emerald-700 bg-emerald-50 border border-emerald-100" : "text-rose-700 bg-rose-50 border border-rose-100")}>
+                            {unique_pans_pct_diff != null ? `${unique_pans_pct_diff >= 0 ? "+" : ""}${unique_pans_pct_diff}%` : "—"}
                           </span>,
                         ],
                         [
                           <span key="r-tp" className="font-bold text-slate-900">Average unique PANs trading in scrip (15D vs 180D Avg)</span>,
-                          <span key="r-tpt" className="font-mono font-bold text-slate-900">{avg_pans_15d} PANs / day</span>,
-                          <span key="r-tp180" className="font-mono font-bold text-slate-700">{avg_pans_180d} PANs / day</span>,
-                          <span key="r-tpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", avg_pans_diff >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-slate-700 bg-slate-100 border border-slate-200")}>
-                            {avg_pans_pct_diff >= 0 ? "+" : ""}{avg_pans_pct_diff}%
+                          <span key="r-tpt" className="font-mono font-bold text-slate-900">{avg_pans_15d != null ? `${avg_pans_15d} PANs / day` : "—"}</span>,
+                          <span key="r-tp180" className="font-mono font-bold text-slate-700">{avg_pans_180d != null ? `${avg_pans_180d} PANs / day` : "—"}</span>,
+                          <span key="r-tpdiff" className={cn("font-mono font-bold px-2 py-0.5 rounded text-xs", (avg_pans_diff ?? 0) >= 0 ? "text-indigo-700 bg-indigo-50 border border-indigo-100" : "text-slate-700 bg-slate-100 border border-slate-200")}>
+                            {avg_pans_pct_diff != null ? `${avg_pans_pct_diff >= 0 ? "+" : ""}${avg_pans_pct_diff}%` : "—"}
                           </span>,
                         ],
                       ]}
@@ -1169,13 +1103,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {/* TAB: PARTICIPANTS (Possible Suspects — Framework Spec §5.4) */}
         {activeTab === "Participants" && (
           <div className="space-y-5">
-            {!participants ? (
+            {!participants && (
               <Card>
                 <div className="p-8 text-sm text-slate-500 text-center">
                   Participant audit data not available for this scrip.
                 </div>
               </Card>
-            ) : (() => {
+            )}
+            {participants && (() => {
               const allLtp = participants.ltp_contributors || [];
               const posList = participants.pos_ltp_contributors && participants.pos_ltp_contributors.length > 0
                 ? participants.pos_ltp_contributors
@@ -1216,7 +1151,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         icon={<TrendingUp className="w-4 h-4 text-slate-600" />}
                         title="Gross Positive LTP Contribution"
                         subtitle="Aggressive buy orders driving upward price momentum (+₹)"
-                        info="Gross positive LTP contribution delivered into the order book. Quantifies accounts aggressively lifting ask prices to drive stock price upwards."
+                        info="Measures how much each participant's aggressive buy orders pushed the traded price higher across the 15-day window."
                       />
                       {posList.length === 0 ? (
                         <div className="p-6 text-center text-xs text-slate-500">
@@ -1224,19 +1159,22 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       ) : (
                         <DataTable
+                          minWidth="min-w-[500px]"
+                          colWidths={["35%", "21%", "22%", "22%"]}
                           alignments={["left", "left", "right", "right"]}
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Positive LTP Push (+₹) <InfoTooltip text="Gross positive price-pusher rupee impact from aggressive buy executions lifting the order book ask price." /></span>,
-                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of upward price momentum." /></span>
+                            <span key="h-pos" className="inline-flex items-center gap-1 whitespace-nowrap">LTP Push (+₹) <InfoTooltip text="Total rupee value of price increases directly caused by this entity's buy orders hitting the ask." /></span>,
+                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Share of the stock's total upward price movement caused by this entity's orders." /></span>
                           ]}
                           rows={posList.map((p) => {
                             const posVal = p.pos_val ?? (p.net_val && p.net_val > 0 ? p.net_val : 0);
                             const contPct = Math.abs(Number(p.contribution || 0));
+                            const displayName = p.name || panNameMap[p.participant] || "Unknown Entity";
 
                             return [
-                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
+                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[170px] sm:max-w-[210px] xl:max-w-[240px] block" title={displayName}>{displayName}</span>,
                               <button
                                 type="button"
                                 key={p.participant}
@@ -1250,14 +1188,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                               <span key="pos" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
                                 +₹{Number(posVal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
-                              <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-                                <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                              <div key="bar" className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                <div className="w-7 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
                                   <div
                                     className="bg-slate-700 h-full rounded-full transition-all duration-300"
                                     style={{ width: `${Math.min(100, contPct)}%` }}
                                   />
                                 </div>
-                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">
+                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[42px] text-right">
                                   +{contPct.toFixed(2)}%
                                 </span>
                               </div>,
@@ -1273,7 +1211,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         icon={<TrendingDown className="w-4 h-4 text-slate-600" />}
                         title="Gross Negative LTP Contribution"
                         subtitle="Aggressive sell orders dampening price or hitting bids (-₹)"
-                        info="Gross negative LTP contribution delivered into the order book. Quantifies accounts aggressively hitting bid prices to pull or suppress stock price downwards."
+                        info="Measures how much each participant's aggressive sell orders pulled or suppressed the traded price downwards across the 15-day window."
                       />
                       {negList.length === 0 ? (
                         <div className="p-6 text-center text-xs text-slate-500">
@@ -1281,19 +1219,22 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         </div>
                       ) : (
                         <DataTable
+                          minWidth="min-w-[500px]"
+                          colWidths={["35%", "21%", "22%", "22%"]}
                           alignments={["left", "left", "right", "right"]}
                           headers={[
                             <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                             <span key="h-pan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Negative LTP Pull (-₹) <InfoTooltip text="Gross negative price-dampener rupee impact from aggressive sell executions hitting the order book bid price." /></span>,
-                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Percentage share of price dampening impact." /></span>
+                            <span key="h-neg" className="inline-flex items-center gap-1 whitespace-nowrap">LTP Pull (-₹) <InfoTooltip text="Total rupee value of price drops directly caused by this entity's sell orders hitting the bid." /></span>,
+                            <span key="h-cont" className="inline-flex items-center gap-1 whitespace-nowrap">Contribution % <InfoTooltip text="Share of the stock's total downward price pressure caused by this entity's orders." /></span>
                           ]}
                           rows={negList.map((p) => {
                             const negVal = p.neg_val ?? (p.net_val && p.net_val < 0 ? Math.abs(p.net_val) : 0);
                             const contPct = Math.abs(Number(p.contribution || 0));
+                            const displayName = p.name || panNameMap[p.participant] || "Unknown Entity";
 
                             return [
-                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[130px] block" title={p.name || "Unknown Entity"}>{p.name || "Unknown Entity"}</span>,
+                              <span key="name" className="font-semibold text-slate-900 truncate max-w-[170px] sm:max-w-[210px] xl:max-w-[240px] block" title={displayName}>{displayName}</span>,
                               <button
                                 type="button"
                                 key={p.participant}
@@ -1307,14 +1248,14 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                               <span key="neg" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
                                 -₹{Number(negVal || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </span>,
-                              <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-                                <div className="w-8 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                              <div key="bar" className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                                <div className="w-7 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
                                   <div
                                     className="bg-slate-700 h-full rounded-full transition-all duration-300"
                                     style={{ width: `${Math.min(100, contPct)}%` }}
                                   />
                                 </div>
-                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">
+                                <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[42px] text-right">
                                   -{contPct.toFixed(2)}%
                                 </span>
                               </div>,
@@ -1332,41 +1273,46 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       <SectionHeader
                         title="Concentrated Volume Share"
                         subtitle="Top 5 participants by volume"
-                        info="Measures percentage of total scrip volume traded by top client PANs over the 15-day window to detect cornering of floating supply."
+                        info="Highlights the top entities by total trading volume over the 15-day window to detect cornering of the stock's floating shares."
                       />
                       <DataTable
+                        minWidth="min-w-[500px]"
+                        colWidths={["35%", "21%", "22%", "22%"]}
                         alignments={["left", "left", "right", "right"]}
                         headers={[
                           <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                           <span key="h-volpan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                          <span key="h-vol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total gross shares traded by this participant in the 15-day window." /></span>,
-                          <span key="h-volpct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Participant traded volume divided by total exchange scrip volume." /></span>
+                          <span key="h-vol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total number of shares bought and sold by this participant during the 15-day period." /></span>,
+                          <span key="h-volpct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Percentage of the stock's total market volume traded by this single participant." /></span>
                         ]}
-                        rows={participants.volume_share.map((p) => [
-                          <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
-                          <button
-                            type="button"
-                            key={p.participant}
-                            onClick={() => setSelectedPan(p.participant)}
-                            className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
-                            title="Click to view Client 360 profile"
-                          >
-                            <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                            {p.participant}
-                          </button>,
-                          <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
-                            {Number(p.volume || 0).toLocaleString("en-IN")}
-                          </span>,
-                          <div key="bar" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-                            <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
-                              <div
-                                className="bg-slate-700 h-full rounded-full transition-all duration-300"
-                                style={{ width: `${Math.min(100, Math.max(0, Number(p.share_pct || 0)))}%` }}
-                              />
-                            </div>
-                            <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[45px] text-right">{Number(p.share_pct || 0).toFixed(2)}%</span>
-                          </div>,
-                        ])}
+                        rows={participants.volume_share.map((p) => {
+                          const displayName = p.name || panNameMap[p.participant] || "Unknown Entity";
+                          return [
+                            <span key="name" className="font-semibold text-slate-900 truncate max-w-[170px] sm:max-w-[210px] xl:max-w-[240px] block" title={displayName}>{displayName}</span>,
+                            <button
+                              type="button"
+                              key={p.participant}
+                              onClick={() => setSelectedPan(p.participant)}
+                              className="text-slate-800 hover:text-blue-600 hover:bg-blue-50 px-1.5 py-0.5 rounded inline-flex items-center gap-1 font-mono font-semibold text-xs whitespace-nowrap cursor-pointer transition-colors"
+                              title="Click to view Client 360 profile"
+                            >
+                              <UserCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                              {p.participant}
+                            </button>,
+                            <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
+                              {Number(p.volume || 0).toLocaleString("en-IN")}
+                            </span>,
+                            <div key="bar" className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+                              <div className="w-7 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
+                                <div
+                                  className="bg-slate-700 h-full rounded-full transition-all duration-300"
+                                  style={{ width: `${Math.min(100, Math.max(0, Number(p.share_pct || 0)))}%` }}
+                                />
+                              </div>
+                              <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs min-w-[42px] text-right">{Number(p.share_pct || 0).toFixed(2)}%</span>
+                            </div>,
+                          ];
+                        })}
                       />
                     </Card>
 
@@ -1375,103 +1321,33 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       <SectionHeader
                         title="Counterparty Concentration"
                         subtitle="Top 5 bilateral trading pairs by volume"
-                        info="Evaluates bilateral trade volume between buyer-seller PAN pairs. High concentration suggests synchronized or non-genuine ring trading."
+                        info="Tracks trades matched directly between specific buyer-seller pairs. High concentration indicates potential circular or synchronized trading."
                       />
-                      <DataTable
-                        alignments={["left", "right", "right"]}
-                        headers={[
-                          <span key="h-cppair" className="inline-flex items-center gap-1 whitespace-nowrap">Matched Entities & PANs <InfoTooltip text="Buyer and Seller entities and PANs identified from bilateral counterparty trade records." /></span>,
-                          <span key="h-cpvol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total shares matched between this specific bilateral pair." /></span>,
-                          <span key="h-cppct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Percentage of total scrip volume accounted for by this pair." /></span>
-                        ]}
-                        rows={participants.counterparty_pairs.map((p) => {
-                          const pairParts = p.pair.split(" <-> ");
-                          const p1 = p.pan1 || pairParts[0] || p.pair;
-                          const p2 = p.pan2 || pairParts[1] || "";
-                          const n1 = p.name1 || panNameMap[p1] || p1;
-                          const n2 = p.name2 || panNameMap[p2] || p2;
-                          return [
-                            <div key={p.pair} className="flex flex-col gap-1 py-1">
-                              {/* Entity Names */}
-                              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 leading-snug">
-                                <span className="truncate max-w-[130px]" title={n1}>{n1}</span>
-                                <span className="text-slate-400 font-bold shrink-0">⇄</span>
-                                <span className="truncate max-w-[130px]" title={n2}>{n2}</span>
-                              </div>
-                              {/* PAN Badges */}
-                              <div className="inline-flex items-center gap-1 font-mono text-[11px]">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedPan(p1)}
-                                  className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
-                                  title={`Click to view Client 360 profile for ${p1}`}
-                                >
-                                  <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
-                                  {p1}
-                                </button>
-                                <span className="text-slate-300 font-bold">⇄</span>
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedPan(p2)}
-                                  className="px-1.5 py-0.5 rounded bg-slate-100 hover:bg-blue-50 hover:text-blue-700 text-slate-600 border border-slate-200 inline-flex items-center gap-1 cursor-pointer transition-colors"
-                                  title={`Click to view Client 360 profile for ${p2}`}
-                                >
-                                  <UserCircle className="w-3 h-3 text-slate-400 shrink-0" />
-                                  {p2}
-                                </button>
-                              </div>
-                            </div>,
-                            <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
-                              {Number(p.volume || 0).toLocaleString("en-IN")}
-                            </span>,
-                            <span key="pct" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
-                              {Number(p.share_pct || 0).toFixed(2)}%
-                            </span>,
-                          ];
-                        })}
-                      />
-                    </Card>
-                  </div>
-
-                  {/* Row 3: Section 4.4 Trade Reversal Ratio (RTR) & Section 4.5 Circular Trading Loops */}
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                    {/* Section 4.4 Trade Reversal Ratio (RTR) */}
-                    <Card>
-                      <SectionHeader
-                        icon={<Repeat className="w-4 h-4 text-slate-600" />}
-                        title="Trade Reversal Ratio (RTR)"
-                        subtitle="Bilateral synchronized buy-sell reversals"
-                        info="SEBI PVASF Section 4.4: Measures reciprocal buying and selling between bilateral counterparty pairs: RTR = 2 * min(Vol_AB, Vol_BA) / (Vol_AB + Vol_BA) * 100. RTR ≥ 80% indicates synchronized wash trading designed to inflate volume."
-                      />
-                      {(!participants.reversal_pairs || participants.reversal_pairs.length === 0) ? (
-                        <div className="p-6 text-center text-xs text-slate-500">
-                          No bilateral trade reversal anomalies detected above surveillance threshold.
-                        </div>
-                      ) : (
+                      {participants.counterparty_pairs.length > 0 ? (
                         <DataTable
-                          alignments={["left", "right", "right", "right"]}
+                          minWidth="min-w-[480px]"
+                          colWidths={["56%", "22%", "22%"]}
+                          alignments={["left", "right", "right"]}
                           headers={[
-                            <span key="h-rtrpair" className="whitespace-nowrap">Matched Pair Entities & PANs</span>,
-                            <span key="h-rtrdir" className="inline-flex items-center gap-1 whitespace-nowrap">Directional Flow <InfoTooltip text="Traded volume from A to B vs B to A." /></span>,
-                            <span key="h-rtrvol" className="inline-flex items-center gap-1 whitespace-nowrap">Gross Volume <InfoTooltip text="Total shares exchanged between this bilateral pair." /></span>,
-                            <span key="h-rtrpct" className="inline-flex items-center gap-1 whitespace-nowrap">Reversal Ratio <InfoTooltip text="Percentage of bilateral trade volume matched in reverse. ≥80% is flagged as synchronized wash trading." /></span>
+                            <span key="h-cppair" className="inline-flex items-center gap-1 whitespace-nowrap">Matched Entities & PANs <InfoTooltip text="Buyer and seller accounts that frequently traded shares with each other." /></span>,
+                            <span key="h-cpvol" className="inline-flex items-center gap-1 whitespace-nowrap">Volume <InfoTooltip text="Total volume of shares exchanged directly between this buyer and seller pair." /></span>,
+                            <span key="h-cppct" className="inline-flex items-center gap-1 whitespace-nowrap">Share % <InfoTooltip text="Percentage of total market volume generated by trades between this specific pair." /></span>
                           ]}
-                          rows={participants.reversal_pairs.map((p) => {
+                          rows={participants.counterparty_pairs.map((p) => {
                             const pairParts = p.pair.split(" <-> ");
                             const p1 = p.pan1 || pairParts[0] || p.pair;
                             const p2 = p.pan2 || pairParts[1] || "";
                             const n1 = p.name1 || panNameMap[p1] || p1;
                             const n2 = p.name2 || panNameMap[p2] || p2;
-                            const rtr = Number(p.reversal_ratio || 0);
-                            const isHighRisk = rtr >= 80;
-
                             return [
                               <div key={p.pair} className="flex flex-col gap-1 py-1">
+                                {/* Entity Names */}
                                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 leading-snug">
-                                  <span className="truncate max-w-[130px]" title={n1}>{n1}</span>
+                                  <span className="truncate max-w-[120px] sm:max-w-[140px] xl:max-w-[160px]" title={n1}>{n1}</span>
                                   <span className="text-slate-400 font-bold shrink-0">⇄</span>
-                                  <span className="truncate max-w-[130px]" title={n2}>{n2}</span>
+                                  <span className="truncate max-w-[120px] sm:max-w-[140px] xl:max-w-[160px]" title={n2}>{n2}</span>
                                 </div>
+                                {/* PAN Badges */}
                                 <div className="inline-flex items-center gap-1 font-mono text-[11px]">
                                   <button
                                     type="button"
@@ -1494,126 +1370,45 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                                   </button>
                                 </div>
                               </div>,
-                              <div key="dir" className="text-xs font-mono tabular-nums text-slate-700 leading-tight">
-                                <div>{Number(p.vol_a_to_b || 0).toLocaleString("en-IN")} <span className="text-[10px] text-slate-400">→</span></div>
-                                <div>{Number(p.vol_b_to_a || 0).toLocaleString("en-IN")} <span className="text-[10px] text-slate-400">←</span></div>
-                              </div>,
                               <span key="vol" className="font-mono text-xs font-semibold text-slate-800 whitespace-nowrap tabular-nums">
                                 {Number(p.volume || 0).toLocaleString("en-IN")}
                               </span>,
-                              <div key="rtr" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-                                <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
-                                  <div
-                                    className={cn(
-                                      "h-full rounded-full transition-all duration-300",
-                                      isHighRisk ? "bg-rose-600" : rtr >= 50 ? "bg-amber-500" : "bg-blue-600"
-                                    )}
-                                    style={{ width: `${Math.min(100, Math.max(0, rtr))}%` }}
-                                  />
-                                </div>
-                                <span className={cn(
-                                  "font-mono font-bold tabular-nums text-xs min-w-[45px] text-right",
-                                  isHighRisk ? "text-rose-700" : "text-slate-900"
-                                )}>
-                                  {rtr.toFixed(1)}%
-                                </span>
-                                {isHighRisk && (
-                                  <span className="text-[9px] font-extrabold px-1 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-tight">
-                                    Wash
-                                  </span>
-                                )}
-                              </div>
+                              <span key="pct" className="font-mono text-xs font-semibold text-slate-900 whitespace-nowrap tabular-nums">
+                                {Number(p.share_pct || 0).toFixed(2)}%
+                              </span>,
                             ];
                           })}
                         />
-                      )}
-                    </Card>
-
-                    {/* Section 4.5 Circular Trading Loops */}
-                    <Card>
-                      <SectionHeader
-                        icon={<RefreshCw className="w-4 h-4 text-slate-600" />}
-                        title="Circular Trading Loops"
-                        subtitle="Multi-party ring trading cycles (A → B → C → A)"
-                        info="SEBI PVASF Section 4.5: Directed cycle detection identifying trade flow loops where shares rotate through intermediate accounts and return to originators to create fictitious market activity."
-                      />
-                      {(!participants.circular_loops || participants.circular_loops.length === 0) ? (
-                        <div className="p-6 text-center text-xs text-slate-500">
-                          No closed circular trading rings detected in the observation window.
-                        </div>
                       ) : (
-                        <DataTable
-                          alignments={["left", "center", "right", "right"]}
-                          headers={[
-                            <span key="h-loop" className="whitespace-nowrap">Ring Trading Flow Path</span>,
-                            <span key="h-len" className="whitespace-nowrap">Ring Size</span>,
-                            <span key="h-rvol" className="inline-flex items-center gap-1 whitespace-nowrap">Rotated Vol <InfoTooltip text="Volume successfully rotated fully around the closed ring." /></span>,
-                            <span key="h-eff" className="inline-flex items-center gap-1 whitespace-nowrap">Loop Efficiency <InfoTooltip text="Rotated volume divided by gross cycle trade volume." /></span>
-                          ]}
-                          rows={participants.circular_loops.map((c, ci) => {
-                            const nodes = c.nodes && c.nodes.length > 0 ? c.nodes : (c.loop || "").split(" -> ").filter(Boolean);
-                            const eff = Number(c.efficiency_pct || 0);
-
-                            return [
-                              <div key={ci} className="flex flex-wrap items-center gap-1.5 py-1">
-                                {nodes.map((node, ni) => (
-                                  <Fragment key={ni}>
-                                    <button
-                                      type="button"
-                                      onClick={() => setSelectedPan(node)}
-                                      className="px-1.5 py-0.5 rounded bg-blue-50/80 hover:bg-blue-100 hover:text-blue-800 text-blue-900 border border-blue-200/80 inline-flex items-center gap-1 font-mono font-semibold text-[11px] cursor-pointer transition-colors"
-                                      title={`Click to view Client 360 profile for ${node}`}
-                                    >
-                                      <UserCircle className="w-3 h-3 text-blue-500 shrink-0" />
-                                      <span className="font-bold">{panNameMap[node] || node}</span>
-                                    </button>
-                                    {ni < nodes.length - 1 && (
-                                      <span className="text-slate-400 font-bold text-xs">→</span>
-                                    )}
-                                  </Fragment>
-                                ))}
-                                <span className="text-amber-600 font-bold text-xs ml-0.5">↺</span>
-                              </div>,
-                              <span key="len" className="font-mono text-xs font-semibold text-slate-700 whitespace-nowrap">
-                                {nodes.length} Accounts
-                              </span>,
-                              <span key="rvol" className="font-mono text-xs font-bold text-rose-700 whitespace-nowrap tabular-nums">
-                                {Number(c.volume || 0).toLocaleString("en-IN")}
-                              </span>,
-                              <div key="eff" className="inline-flex items-center justify-end gap-2 whitespace-nowrap">
-                                <div className="w-10 bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200 shrink-0">
-                                  <div
-                                    className="bg-amber-500 h-full rounded-full transition-all duration-300"
-                                    style={{ width: `${Math.min(100, Math.max(0, eff))}%` }}
-                                  />
-                                </div>
-                                <div className="text-right">
-                                  <span className="font-mono font-semibold text-slate-900 tabular-nums text-xs">{eff.toFixed(1)}%</span>
-                                  <div className="text-[10px] text-slate-400 font-mono">of {Number(c.gross_volume || 0).toLocaleString("en-IN")}</div>
-                                </div>
-                              </div>
-                            ];
-                          })}
-                        />
+                        <div className="py-7 px-4 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200">
+                          <Users className="w-5 h-5 text-slate-400 mx-auto mb-1.5" />
+                          <div className="text-xs font-semibold text-slate-700">Bilateral Trade Matches Not Supplied</div>
+                          <div className="text-[11px] text-slate-500 max-w-sm mx-auto mt-1 leading-relaxed">
+                            Bilateral matching extract was not delivered by the exchange for {detail.symbol} (available for acute circuit scrips SKMEGGPROD & GUJRAFFIA). Individual conduct (LTP Push/Pull, Volume Dominance, and Net P&L) is fully tracked from genuine client logs.
+                          </div>
+                        </div>
                       )}
                     </Card>
                   </div>
+
 
                   {/* Row 3: Net P&L — Top Beneficiaries */}
                   <Card>
                     <SectionHeader
                       title="Net P&L — Top Trading Beneficiaries"
                       subtitle="Net realized & unrealized gainers/position holders in 15D window"
-                      info="Mark-to-Market net trading P&L (Total Sells - Total Buys + Open Position @ Latest Close) during the 15-day window. Pinpoints who extracted cash profits."
+                      info="Net trading profit or loss (sells minus buys plus current holdings valued at latest close) over the 15-day window to identify who made money."
                     />
                     <DataTable
+                      minWidth="min-w-[600px]"
+                      colWidths={["30%", "18%", "20%", "16%", "16%"]}
                       alignments={["left", "left", "right", "right", "right"]}
                       headers={[
                         <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                         <span key="h-pnlpan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                        <span key="h-pnl" className="inline-flex items-center gap-1 whitespace-nowrap">Net P&L (₹) <InfoTooltip text="Net realized + unrealized profit extracted during the 15-day pump." /></span>,
-                        <span key="h-bvol" className="inline-flex items-center gap-1 whitespace-nowrap">Buy Vol <InfoTooltip text="Total buy execution quantity." /></span>,
-                        <span key="h-svol" className="inline-flex items-center gap-1 whitespace-nowrap">Sell Vol <InfoTooltip text="Total sell execution quantity." /></span>
+                        <span key="h-pnl" className="inline-flex items-center gap-1 whitespace-nowrap">Net P&L (₹) <InfoTooltip text="Total profit or loss generated by this participant during the 15-day observation window." /></span>,
+                        <span key="h-bvol" className="inline-flex items-center gap-1 whitespace-nowrap">Buy Vol <InfoTooltip text="Total shares bought by this participant during the 15-day window." /></span>,
+                        <span key="h-svol" className="inline-flex items-center gap-1 whitespace-nowrap">Sell Vol <InfoTooltip text="Total shares sold by this participant during the 15-day window." /></span>
                       ]}
                       rows={participants.profit_makers.map((p) => {
                         const pnlVal = Number(p.net_pnl || 0);
@@ -1626,9 +1421,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                         } else if (absVal >= 100000) {
                           macroLabel = `${isPos ? "+" : "-"}₹${(absVal / 100000).toFixed(2)} L`;
                         }
+                        const displayName = p.name || panNameMap[p.participant] || "Unknown Entity";
 
                         return [
-                          <span key="name" className="font-semibold text-slate-900 whitespace-nowrap">{p.name || "Unknown Entity"}</span>,
+                          <span key="name" className="font-semibold text-slate-900 truncate max-w-[170px] sm:max-w-[210px] xl:max-w-[250px] block" title={displayName}>{displayName}</span>,
                           <button
                             type="button"
                             key={p.participant}

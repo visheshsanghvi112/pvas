@@ -33,14 +33,26 @@ class ClientService:
 
         dep_accounts = self._dep_repo.get_by_pan(clean_pan)
 
+        tm_id = "—"
+        try:
+            from backend.db.models import ParticipantDailyTrade
+            part_trade = self._exch_repo._db.query(ParticipantDailyTrade.trading_member_id).filter(
+                ParticipantDailyTrade.client_pan == clean_pan,
+                ParticipantDailyTrade.trading_member_id.isnot(None)
+            ).first()
+            if part_trade and part_trade[0]:
+                tm_id = str(part_trade[0])
+        except Exception:
+            pass
+
         return {
             "pan": client.client_pan,
             "clnt_id": f"CLI-{client.client_pan[-4:]}",
-            "tm_id": "TM101",
+            "tm_id": tm_id,
             "name": client.client_legal_name or "Unknown Entity",
             "category": client.entity_type or "Client",
             "client_code": f"CL-{client.client_pan[-4:]}",
-            "city": client.residential_city or "Mumbai",
+            "city": client.residential_city or "—",
             "risk_grade": client.risk_profile_grade or "STANDARD",
             "terminals": [],
             "depository_accounts": [

@@ -7,7 +7,7 @@ Ingests client-level trade execution records from client_data.xlsx into:
   1. client_identity_master     : KYC, PAN, entity classification, risk profiles.
   2. client_demat_accounts      : NSDL/CDSL depository accounts for Client 360°.
   3. participant_daily_trades   : Daily execution aggregates, LTP push/pull, volumes.
-  4. counterparty_trade_pairs   : Matched bilateral trade flows for wash/loop checks.
+(Bilateral trade pairs are loaded strictly from genuine exchange PAN_PAIR files)
 
 Key Features:
   - Atomic transactions with rollback protection.
@@ -224,7 +224,6 @@ def ingest_client_data(
             print(f"      Wiping prior participant records for symbols: {symbols}...")
             placeholders = ",".join(["?"] * len(symbols))
             cursor.execute(f"DELETE FROM participant_daily_trades WHERE symbol IN ({placeholders})", symbols)
-            cursor.execute(f"DELETE FROM counterparty_trade_pairs WHERE symbol IN ({placeholders})", symbols)
 
         # 1. Upsert client_identity_master
         print(f"\n[4/5] Ingesting into client_identity_master & client_demat_accounts...")
@@ -288,61 +287,6 @@ def ingest_client_data(
         """, part_records)
         print(f"      Successfully upserted {len(part_records):,} participant daily records.")
 
-        # 3. Synthesize bilateral counterparty trade pairs for active trading sessions
-        print("\n[*] Synthesizing bilateral counterparty trade pairs for flow & wash analysis...")
-        pair_records = []
-        for (sym, dt), group in df.groupby(["symbol", "trade_date"]):
-            buyers = group[group["BUY_QUANTITY"] > 0].sort_values(by="BUY_QUANTITY", ascending=False).head(25)
-            sellers = group[group["SELL_QUANTITY"] > 0].sort_values(by="SELL_QUANTITY", ascending=False).head(25)
-            if buyers.empty or sellers.empty:
-                continue
-
-            for _, b in buyers.iterrows():
-                b_pan = b["client_pan"]
-                b_name = b["client_legal_name"]
-                b_tm = b["trading_member_id"]
-                b_qty = b["BUY_QUANTITY"]
-                b_ltp = b["GROSS_POSITIVE_LTP_VALUE"]
-
-                for _, s in sellers.iterrows():
-                    s_pan = s["client_pan"]
-                    s_name = s["client_legal_name"]
-                    s_tm = s["trading_member_id"]
-                    s_qty = s["SELL_QUANTITY"]
-                    if b_pan == s_pan:
-                        continue
-
-                    # Matched bilateral proportion
-                    matched_qty = min(b_qty, s_qty) // 10
-                    if matched_qty <= 0:
-                        continue
-
-                    matched_val = (matched_qty / max(1, b_qty)) * b["BUY_TURNOVER_VALUE"]
-                    ltp_push = (matched_qty / max(1, b_qty)) * b_ltp
-                    is_same_broker = 1 if b_tm == s_tm else 0
-                    algo_flag = 1 if ("LLP" in b_name or "CAPITAL" in b_name or "RESEARCH" in b_name) else 0
-
-                    pair_records.append((
-                        sym, dt, b_pan, b_name, s_pan, s_name, b_tm, s_tm,
-                        int(matched_qty), round(float(matched_val), 2), round(float(ltp_push), 2),
-                        0, is_same_broker, algo_flag
-                    ))
-                    if len(pair_records) >= 15000:
-                        break
-                if len(pair_records) >= 15000:
-                    break
-
-        if pair_records:
-            cursor.executemany("""
-                INSERT INTO counterparty_trade_pairs (
-                    symbol, trade_date, buyer_pan, buyer_legal_name,
-                    seller_pan, seller_legal_name, buyer_tm_id, seller_tm_id,
-                    matched_quantity, matched_turnover_value, pairwise_ltp_push_value,
-                    reverse_matched_quantity, is_same_broker_wash, algo_execution_flag
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """, pair_records)
-            print(f"      Inserted {len(pair_records):,} matched bilateral trade pairs.")
-
         conn.commit()
         print("\n[SUCCESS] Transaction committed successfully to database.")
 
@@ -359,7 +303,6 @@ def ingest_client_data(
     print(f"INGESTION COMPLETE IN {elapsed:.2f}s")
     print(f"Total Client Records Ingested : {len(identity_rows):,}")
     print(f"Total Trade Records Ingested  : {len(df):,}")
-    print(f"Total Trade Pairs Synthesized : {len(pair_records):,}")
     print("=" * 76)
 
 

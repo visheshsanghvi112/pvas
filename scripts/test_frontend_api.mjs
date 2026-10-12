@@ -43,15 +43,17 @@ async function runTests() {
   const topScrip = watchlist[0];
   console.log(`     Top Alert: ${topScrip.symbol} (${topScrip.company}) - Risk: ${topScrip.risk}, Score: ${topScrip.score}, Price Rise: +${topScrip.price_rise_pct}%`);
 
-  // 6. Scrip Detail (NOVAENERGY)
-  const detailRes = await fetch(`${BASE}/api/v1/surveillance/scrip/NOVAENERGY?as_of_date=${dates[0]}&window_days=15&exchange=ALL`, { headers: authHeaders });
+  const sym = topScrip.symbol;
+
+  // 6. Scrip Detail
+  const detailRes = await fetch(`${BASE}/api/v1/surveillance/scrip/${sym}?as_of_date=${dates[0]}&window_days=15&exchange=ALL`, { headers: authHeaders });
   const detail = await detailRes.json();
   console.log(`✓ 6. Scrip detail: ${detail.ticker} (${detail.company}) - ISIN: ${detail.isin}`);
   console.log(`     Latest Close: ₹${detail.summary.latest_close}, 15D History Points: ${detail.history.length}`);
   console.log(`     Score Breakdown: ${detail.score_breakdown.map(s => `${s.label}: ${s.score}/5`).join(", ")}`);
 
   // 7. Scrip Participants & Counterparties
-  const partRes = await fetch(`${BASE}/api/v1/surveillance/scrip/NOVAENERGY/participants?as_of_date=${dates[0]}&window_days=15`, { headers: authHeaders });
+  const partRes = await fetch(`${BASE}/api/v1/surveillance/scrip/${sym}/participants?as_of_date=${dates[0]}&window_days=15`, { headers: authHeaders });
   const participants = await partRes.json();
   console.log(`✓ 7. Participants: ${participants.ltp_contributors.length} LTP contributors, ${participants.counterparty_pairs.length} matched pairs`);
   if (participants.counterparty_pairs.length > 0) {
@@ -60,13 +62,13 @@ async function runTests() {
   }
 
   // 8. Shareholding Breakdown
-  const shRes = await fetch(`${BASE}/api/v1/surveillance/scrip/NOVAENERGY/shareholding-breakdown`, { headers: authHeaders });
+  const shRes = await fetch(`${BASE}/api/v1/surveillance/scrip/${sym}/shareholding-breakdown`, { headers: authHeaders });
   const sh = await shRes.json();
   console.log(`✓ 8. Shareholding: Promoter Float: ${sh.promoter_pct_t}%, Public: ${(100 - sh.promoter_pct_t).toFixed(2)}%`);
   console.log(`     Quarterly points: ${sh.quarterly_history.length}, Key promoter groups: ${sh.promoter_group.length}`);
 
   // 9. Corporate Actions
-  const caRes = await fetch(`${BASE}/api/v1/surveillance/scrip/NOVAENERGY/corporate-actions`, { headers: authHeaders });
+  const caRes = await fetch(`${BASE}/api/v1/surveillance/scrip/${sym}/corporate-actions`, { headers: authHeaders });
   const ca = await caRes.json();
   console.log(`✓ 9. Corporate actions: ${ca.length} events logged`);
   ca.forEach(item => {
@@ -74,7 +76,7 @@ async function runTests() {
   });
 
   // 10. Trade Surveillance Log
-  const tradesRes = await fetch(`${BASE}/api/v1/trades/?symbol=NOVAENERGY&page=1&page_size=50`, { headers: authHeaders });
+  const tradesRes = await fetch(`${BASE}/api/v1/trades/?symbol=${sym}&page=1&page_size=50`, { headers: authHeaders });
   const trades = await tradesRes.json();
   console.log(`✓ 10. Trade surveillance matches: ${trades.data.length} trades returned (Total: ${trades.pagination.total})`);
   if (trades.data.length > 0) {
@@ -83,7 +85,7 @@ async function runTests() {
   }
 
   // 11. Client 360 PAN Lookup
-  const pan = "HWFTM1488X";
+  const pan = participants.ltp_contributors.length > 0 ? participants.ltp_contributors[0].participant : "ABNPP8622K";
   const clntRes = await fetch(`${BASE}/api/v1/clients/pan/${pan}`, { headers: authHeaders });
   const clnt = await clntRes.json();
   console.log(`✓ 11. Client 360 profile for PAN ${clnt.pan}:`);
@@ -103,7 +105,7 @@ async function runTests() {
   users.forEach(u => console.log(`      User: ${u.username.padEnd(16)} | Role: ${u.role.padEnd(8)} | ${u.full_name} (${u.email})`));
 
   // 14. Excel Dossier Export Binary Payload
-  const excelRes = await fetch(`${BASE}/api/v1/surveillance/scrip/NOVAENERGY/export-excel?as_of_date=${dates[0]}`, { headers: authHeaders });
+  const excelRes = await fetch(`${BASE}/api/v1/surveillance/scrip/${sym}/export-excel?as_of_date=${dates[0]}`, { headers: authHeaders });
   const excelBlob = await excelRes.arrayBuffer();
   console.log(`✓ 14. Excel regulatory dossier generated: ${excelBlob.byteLength} bytes binary xlsx payload`);
 

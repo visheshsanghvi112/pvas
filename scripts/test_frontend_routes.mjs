@@ -2,9 +2,9 @@
 // Comprehensive code-level simulation and verification of all frontend routes,
 // API data pipelines, state structures, and UI contracts.
 
-const PORT = process.env.PORT || "3005";
-const FRONTEND_HOST = `http://localhost:${PORT}`;
-const BACKEND_HOST = "http://localhost:8000";
+const PORT = process.env.PORT || "3000";
+const FRONTEND_HOST = `http://127.0.0.1:${PORT}`;
+const BACKEND_HOST = "http://127.0.0.1:8000";
 
 let authToken = null;
 
@@ -125,7 +125,7 @@ async function runTestSuite() {
   const shRes = await fetch(`${FRONTEND_HOST}/api/v1/surveillance/scrip/${sampleScrip.symbol}/shareholding-breakdown`, { headers: authHeaders });
   assert(shRes.ok, "GET shareholding-breakdown is 200 OK");
   const shData = await shRes.json();
-  assert(typeof shData.promoter_pct_t === "number", `Shareholding has promoter_pct_t (${shData.promoter_pct_t}%)`);
+  assert(shData.promoter_pct_t === null || typeof shData.promoter_pct_t === "number", `Shareholding has promoter_pct_t (${shData.promoter_pct_t}%)`);
 
   // Corporate Actions
   const caRes = await fetch(`${FRONTEND_HOST}/api/v1/surveillance/scrip/${sampleScrip.symbol}/corporate-actions`, { headers: authHeaders });

@@ -77,15 +77,14 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingTab>("Model Configuration");
 
   // Weights state
-  const [wPriceRise, setWPriceRise] = useState(25);
+  const [wPriceRise, setWPriceRise] = useState(20);
   const [wPriceZ, setWPriceZ] = useState(20);
-  const [wVolumeZ, setWVolumeZ] = useState(25);
-  const [wBand, setWBand] = useState(15);
-  const [wHigh, setWHigh] = useState(15);
-
+  const [wVolumeZ, setWVolumeZ] = useState(20);
+  const [wBand, setWBand] = useState(20);
+  const [wHigh, setWHigh] = useState(20);
 
   // Thresholds state
-  const [watchlistScore, setWatchlistScore] = useState(15);
+  const [watchlistScore, setWatchlistScore] = useState(60);
   const [loadingWeights, setLoadingWeights] = useState(true);
 
   // Save & Modal states
@@ -116,11 +115,11 @@ export default function SettingsPage() {
       setLoadingWeights(true);
       const data = await fetchModelWeights();
       if (data && data.weights) {
-        setWPriceRise(data.weights.price_rise ?? 25);
+        setWPriceRise(data.weights.price_rise ?? 20);
         setWPriceZ(data.weights.price_z ?? 20);
-        setWVolumeZ(data.weights.volume_z ?? 25);
-        setWBand(data.weights.band_persistence ?? 15);
-        setWHigh(data.weights.new_high ?? 15);
+        setWVolumeZ(data.weights.volume_z ?? 20);
+        setWBand(data.weights.band_persistence ?? 20);
+        setWHigh(data.weights.new_high ?? 20);
       }
       if (data && data.threshold != null) {
         setWatchlistScore(data.threshold);
@@ -139,12 +138,12 @@ export default function SettingsPage() {
   }, [refreshUsers, refreshAuditLogs, loadWeights]);
 
   const handleResetDefaults = () => {
-    setWPriceRise(25);
+    setWPriceRise(20);
     setWPriceZ(20);
-    setWVolumeZ(25);
-    setWBand(15);
-    setWHigh(15);
-    setWatchlistScore(15);
+    setWVolumeZ(20);
+    setWBand(20);
+    setWHigh(20);
+    setWatchlistScore(60);
   };
 
   const handleSaveWeights = async (e: React.FormEvent) => {
@@ -382,7 +381,7 @@ export default function SettingsPage() {
                         onChange={(e) => setWPriceRise(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 25%</div>
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
@@ -416,7 +415,7 @@ export default function SettingsPage() {
                         onChange={(e) => setWVolumeZ(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 25%</div>
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
@@ -433,7 +432,7 @@ export default function SettingsPage() {
                         onChange={(e) => setWBand(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 15%</div>
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
                     </div>
 
                     <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
@@ -450,7 +449,7 @@ export default function SettingsPage() {
                         onChange={(e) => setWHigh(Number(e.target.value))}
                         className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
                       />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 15%</div>
+                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
                     </div>
                   </div>
                 </CardContent>
