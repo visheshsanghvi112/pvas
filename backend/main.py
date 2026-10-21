@@ -63,7 +63,7 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Standard CORS configuration
+# Standard CORS configuration restricted to authorized origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -72,12 +72,21 @@ app.add_middleware(
         "http://localhost:8000",
         "http://127.0.0.1:8000",
     ],
-    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 # ── Routers ─────────────────────────────────────────────────────────────────
 app.include_router(surveillance_router)

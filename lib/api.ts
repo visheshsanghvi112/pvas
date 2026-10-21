@@ -219,6 +219,18 @@ export function isTokenExpired(token: string | null): boolean {
   }
 }
 
+export function setAuthCookie(token: string) {
+  if (typeof document !== "undefined") {
+    document.cookie = `pvasf_auth_token=${encodeURIComponent(token)}; Path=/; SameSite=Lax; max-age=86400`;
+  }
+}
+
+export function clearAuthCookie() {
+  if (typeof document !== "undefined") {
+    document.cookie = "pvasf_auth_token=; Path=/; SameSite=Lax; max-age=0";
+  }
+}
+
 let activeAuthPromise: Promise<string | null> | null = null;
 
 /**
@@ -241,6 +253,7 @@ export async function ensureAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
   const token = localStorage.getItem("pvasf_auth_token");
   if (token && !isTokenExpired(token)) {
+    setAuthCookie(token);
     return token;
   }
 
@@ -255,6 +268,7 @@ export async function ensureAuthToken(): Promise<string | null> {
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
           localStorage.removeItem("pvasf_auth_token");
+          clearAuthCookie();
           const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -266,6 +280,7 @@ export async function ensureAuthToken(): Promise<string | null> {
             if (newToken) {
               localStorage.setItem("pvasf_auth_token", newToken);
               localStorage.removeItem("pvasf_logged_out");
+              setAuthCookie(newToken);
               return newToken;
             }
           }

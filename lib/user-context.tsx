@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { fetchWithAuth, ensureAuthToken, isTokenExpired } from "@/lib/api";
+import { fetchWithAuth, ensureAuthToken, isTokenExpired, setAuthCookie, clearAuthCookie } from "@/lib/api";
 
 export type UserRole = "Admin" | "Analyst" | "Viewer";
 
@@ -91,6 +91,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     setAuthToken(null);
     localStorage.removeItem("pvasf_auth_token");
     localStorage.setItem("pvasf_logged_out", "true");
+    clearAuthCookie();
     setCurrentUser(defaultGuestUser);
   }, []);
 
@@ -171,6 +172,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         setAuthToken(token);
         localStorage.setItem("pvasf_auth_token", token);
         localStorage.removeItem("pvasf_logged_out");
+        setAuthCookie(token);
         const userObj: UserProfile = {
           id: data.user.id,
           username: data.user.username,
