@@ -64,8 +64,27 @@ sqlite3 backend/db/surveillance.db
 
 Because `backend/db/` is completely self-contained, **the following external / root files are redundant and can be safely removed** whenever you perform cleanup:
 
-- ❌ `surveillance_insert.sql` *(Root directory — 1.8 MB static dump; fully superseded by `backend/db/seed.py`)*
-- ❌ `surveillance_schema.sql` *(Root directory — superseded by `backend/db/schema.sql`)*
-- ❌ `PVASF_Sample_Data_Package/` *(Sample export bundle; does not affect backend runtime)*
+- 📦 `surveillance_insert.sql` *(Archived in `archive/sql/surveillance_insert.sql` — 1.8 MB historical static dump)*
+- 📄 `surveillance_schema.sql` *(Root directory — clean ANSI reference DDL)*
+- 📦 `PVASF_Sample_Data_Package/` *(Sample export bundle; does not affect backend runtime)*
 
 The application backend **only** accesses `backend/db/surveillance.db`.
+
+---
+
+## 5. Offline Data Storage & Backup Manifest (What to Keep / Download)
+
+Because confidential exchange market data cannot be pushed to public/remote Git repositories, `.gitignore` excludes all `.db` databases.
+
+If you are setting up the project on another computer or maintaining external backups (Google Drive, AWS S3, USB drive):
+
+| File Name | Location in Project | Size | Role & Importance |
+| :--- | :--- | :---: | :--- |
+| **`surveillance.db`** | `backend/db/surveillance.db` | **145 MB** | **🔴 PRIMARY OPERATIONAL DATABASE (853,157+ records)**.<br/>If you keep this single file and place it here, the entire platform runs with full production data immediately. |
+| **`result_part1.xlsx`** | Project root (`/`) | 19.1 MB | Raw EOD Market feed (Feb–Jul 2025). Used by `scripts/ingest_market_eod.py`. |
+| **`result_part2.xlsx`** | Project root (`/`) | 17.2 MB | Raw EOD Market feed (Jul–Nov 2025). Used by `scripts/ingest_market_eod.py`. |
+| **`client_data.xlsx`** | Project root (`/`) | 4.3 MB | Raw participant trade executions & KYC. Used by `scripts/ingest_client_data.py`. |
+| **`PAN_PAIR_GUJRAFFIA.xlsx`** | Project root (`/`) | 222 KB | Bilateral matched trade logs. Used by `scripts/ingest_pan_pairs.py`. |
+| **`PAN_PAIR_SKMEGGPROD.xlsx`** | Project root (`/`) | 325 KB | Bilateral matched trade logs. Used by `scripts/ingest_pan_pairs.py`. |
+
+> **Fresh Machine Setup Without DB**: If you don't have `surveillance.db` on a new PC, run `python3 -m backend.db.seed` to instantly generate an operational database with 15 scrips and 500 KYC clients for development.

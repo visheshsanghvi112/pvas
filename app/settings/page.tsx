@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import {
-  BellRing,
-  Database,
   Gauge,
   SlidersHorizontal,
   Save,
@@ -11,25 +10,20 @@ import {
   CheckCircle2,
   Lock,
   Users,
-  ShieldCheck,
-  ShieldAlert,
-  UserCheck,
   UserPlus,
-  Pencil,
   FileText,
-  KeyRound,
   LogIn,
   LogOut,
   X,
   Search,
-  Activity,
-  AlertCircle
+  Scale,
+  AlertTriangle,
+  ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { MetricHelp } from "@/components/ui/metric-help";
-import { useUser, type UserRole, type UserProfile } from "@/lib/user-context";
+import { useUser, type UserRole } from "@/lib/user-context";
 import { cn } from "@/lib/utils";
 import { fetchModelWeights, saveModelWeights } from "@/lib/api";
 
@@ -62,7 +56,6 @@ export default function SettingsPage() {
     currentUser,
     canEditSettings,
     isAdmin,
-    login,
     logout,
     openLoginModal,
     usersList,
@@ -85,18 +78,12 @@ export default function SettingsPage() {
 
   // Thresholds state
   const [watchlistScore, setWatchlistScore] = useState(60);
-  const [loadingWeights, setLoadingWeights] = useState(true);
 
   // Save & Modal states
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [userUpdateMsg, setUserUpdateMsg] = useState("");
+  const [validationError, setValidationError] = useState("");
   const [showCreateUserModal, setShowCreateUserModal] = useState(false);
-
-  // Login form state
-  const [loginUsername, setLoginUsername] = useState("");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
 
   // New user form state
   const [newUsername, setNewUsername] = useState("");
@@ -112,7 +99,6 @@ export default function SettingsPage() {
 
   const loadWeights = useCallback(async () => {
     try {
-      setLoadingWeights(true);
       const data = await fetchModelWeights();
       if (data && data.weights) {
         setWPriceRise(data.weights.price_rise ?? 20);
@@ -126,8 +112,6 @@ export default function SettingsPage() {
       }
     } catch (err) {
       console.error("Failed to load active model weights from server:", err);
-    } finally {
-      setLoadingWeights(false);
     }
   }, []);
 
@@ -137,6 +121,23 @@ export default function SettingsPage() {
     loadWeights();
   }, [refreshUsers, refreshAuditLogs, loadWeights]);
 
+  // Handle Create User Modal ESC key & Body scroll lock
+  useEffect(() => {
+    if (!showCreateUserModal) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowCreateUserModal(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = original;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [showCreateUserModal]);
+
   const handleResetDefaults = () => {
     setWPriceRise(20);
     setWPriceZ(20);
@@ -144,11 +145,44 @@ export default function SettingsPage() {
     setWBand(20);
     setWHigh(20);
     setWatchlistScore(60);
+    setValidationError("");
+  };
+
+  const handleAutoBalanceWeights = () => {
+    const sum = wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh;
+    if (sum === 0) {
+      setWPriceRise(20);
+      setWPriceZ(20);
+      setWVolumeZ(20);
+      setWBand(20);
+      setWHigh(20);
+      setValidationError("");
+      return;
+    }
+    const r1 = Math.round((wPriceRise / sum) * 100);
+    const r2 = Math.round((wPriceZ / sum) * 100);
+    const r3 = Math.round((wVolumeZ / sum) * 100);
+    const r4 = Math.round((wBand / sum) * 100);
+    const r5 = 100 - (r1 + r2 + r3 + r4);
+    setWPriceRise(r1);
+    setWPriceZ(r2);
+    setWVolumeZ(r3);
+    setWBand(r4);
+    setWHigh(r5);
+    setValidationError("");
   };
 
   const handleSaveWeights = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canEditSettings) return;
+
+    const totalWeight = wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh;
+    if (totalWeight !== 100) {
+      setValidationError(`Total parameter weight must sum to exactly 100%. Currently: ${totalWeight}%. Please adjust the sliders or click "Auto-Balance to 100%".`);
+      return;
+    }
+
+    setValidationError("");
     setSaving(true);
     setSaveSuccess(false);
 
@@ -167,8 +201,9 @@ export default function SettingsPage() {
       refreshAuditLogs();
       await loadWeights();
       setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
+    } catch (err: any) {
       setSaving(false);
+      setValidationError(err?.message || "Failed to save model weights to server. Please check backend connection.");
       console.error("Failed to save model weights:", err);
     }
   };
@@ -305,181 +340,251 @@ export default function SettingsPage() {
 
           {/* ─── TAB 1: MODEL CONFIGURATION ─────────────────────────────────────── */}
           {activeTab === "Model Configuration" && (
-            <form onSubmit={handleSaveWeights} className="space-y-5">
-              {saveSuccess && (
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-800 shadow-xs">
-                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-                  Model weights and parameters updated successfully and recorded in audit log!
-                </div>
-              )}
-
-              <Card className="bg-white border-slate-200 shadow-xs overflow-hidden">
-                <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 py-3.5 px-5 bg-slate-50/50">
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="h-4 w-4 text-blue-600" />
-                    <div>
-                      <CardTitle className="text-sm font-bold text-slate-900">
-                        Model Scoring & Weight Calibration
-                      </CardTitle>
-                    </div>
+            <div className="space-y-5">
+              <form onSubmit={handleSaveWeights} className="space-y-5">
+                {saveSuccess && (
+                  <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs font-semibold text-emerald-800 shadow-xs">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+                    Model weights and parameters updated successfully and recorded in audit log!
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1 flex items-center gap-1">
-                      <span>Active Cutoff:</span>
-                      <strong className="font-mono text-blue-900 font-bold">≥ {watchlistScore}</strong>
-                    </span>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <span className="text-slate-500 font-medium">Total Weight:</span>
-                      <span className={cn(
-                        "font-bold px-2 py-0.5 rounded border text-xs",
-                        (wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh) === 100
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-rose-50 text-rose-700 border-rose-200"
-                      )}>
-                        {wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh}%
-                      </span>
-                    </div>
-                  </div>
-                </CardHeader>
+                )}
 
-                <CardContent className="p-5 space-y-6">
-                  {/* Watchlist Threshold Input Row */}
-                  <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex-wrap">
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">Watchlist Triage Cutoff Score</div>
-                      <div className="text-[11px] text-slate-500 font-medium mt-0.5">
-                        Threshold score for shortlisting scrips onto the Watchlist
-                      </div>
-                    </div>
+                {validationError && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3.5 text-xs font-semibold text-rose-800 shadow-xs animate-in fade-in-0">
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-bold text-slate-600">Cutoff Score:</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={100}
-                        value={watchlistScore}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWatchlistScore(Number(e.target.value))}
-                        className="h-9 w-24 text-xs font-extrabold text-center rounded-xl bg-white border-slate-200"
-                      />
+                      <AlertTriangle className="h-4 w-4 shrink-0 text-rose-600" />
+                      <span>{validationError}</span>
                     </div>
-                  </div>
-
-                  {/* 5 Core Metric Weight Sliders Grid */}
-                  <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                        <span>Price Rise ($w_1$)</span>
-                        <span className="text-blue-600 font-mono text-sm">{wPriceRise}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={50}
-                        value={wPriceRise}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWPriceRise(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                        <span>Price Z-Score ($w_2$)</span>
-                        <span className="text-blue-600 font-mono text-sm">{wPriceZ}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={50}
-                        value={wPriceZ}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWPriceZ(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                        <span>Volume Z-Score ($w_3$)</span>
-                        <span className="text-blue-600 font-mono text-sm">{wVolumeZ}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={50}
-                        value={wVolumeZ}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWVolumeZ(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                        <span>Band Persistence ($w_4$)</span>
-                        <span className="text-blue-600 font-mono text-sm">{wBand}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={50}
-                        value={wBand}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWBand(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                        <span>180D New High ($w_5$)</span>
-                        <span className="text-blue-600 font-mono text-sm">{wHigh}%</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={50}
-                        value={wHigh}
-                        disabled={!canEditSettings || saving}
-                        onChange={(e) => setWHigh(Number(e.target.value))}
-                        className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                      />
-                      <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
-                    </div>
-                  </div>
-                </CardContent>
-
-                {/* Footer Action Buttons Bar */}
-                {canEditSettings && (
-                  <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
                     <button
                       type="button"
-                      onClick={handleResetDefaults}
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all shadow-2xs cursor-pointer"
-                      title="Reset model parameters to default framework weights"
+                      onClick={handleAutoBalanceWeights}
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition-colors shadow-2xs shrink-0 cursor-pointer"
                     >
-                      <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
-                      Reset to Framework Defaults
-                    </button>
-
-                    <button
-                      type="submit"
-                      disabled={saving}
-                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-blue-600 text-xs font-bold transition-all shadow-xs cursor-pointer"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      {saving ? "Saving..." : "Save Model Parameters"}
+                      Auto-Balance to 100%
                     </button>
                   </div>
                 )}
+
+                <Card className="bg-white border-slate-200 shadow-xs overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-slate-100 py-3.5 px-5 bg-slate-50/50">
+                    <div className="flex items-center gap-2">
+                      <SlidersHorizontal className="h-4 w-4 text-blue-600" />
+                      <div>
+                        <CardTitle className="text-sm font-bold text-slate-900">
+                          Model Scoring & Weight Calibration
+                        </CardTitle>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1 flex items-center gap-1">
+                        <span>Active Cutoff:</span>
+                        <strong className="font-mono text-blue-900 font-bold">≥ {watchlistScore}</strong>
+                      </span>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <span className="text-slate-500 font-medium">Total Weight:</span>
+                        <span className={cn(
+                          "font-bold px-2 py-0.5 rounded border text-xs",
+                          (wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh) === 100
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-rose-50 text-rose-700 border-rose-200"
+                        )}>
+                          {wPriceRise + wPriceZ + wVolumeZ + wBand + wHigh}%
+                        </span>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="p-5 space-y-6">
+                    {/* Watchlist Threshold Input Row */}
+                    <div className="flex items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex-wrap">
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">Watchlist Triage Cutoff Score</div>
+                        <div className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          Threshold score for shortlisting scrips onto the Watchlist
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-600">Cutoff Score:</span>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={watchlistScore}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => setWatchlistScore(Number(e.target.value))}
+                          className="h-9 w-24 text-xs font-extrabold text-center rounded-xl bg-white border-slate-200"
+                        />
+                      </div>
+                    </div>
+
+                    {/* 5 Core Metric Weight Sliders Grid */}
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                          <span>Price Rise ($w_1$)</span>
+                          <span className="text-blue-600 font-mono text-sm">{wPriceRise}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={wPriceRise}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => { setWPriceRise(Number(e.target.value)); setValidationError(""); }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                          <span>Price Z-Score ($w_2$)</span>
+                          <span className="text-blue-600 font-mono text-sm">{wPriceZ}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={wPriceZ}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => { setWPriceZ(Number(e.target.value)); setValidationError(""); }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                          <span>Volume Z-Score ($w_3$)</span>
+                          <span className="text-blue-600 font-mono text-sm">{wVolumeZ}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={wVolumeZ}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => { setWVolumeZ(Number(e.target.value)); setValidationError(""); }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                          <span>Band Persistence ($w_4$)</span>
+                          <span className="text-blue-600 font-mono text-sm">{wBand}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={wBand}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => { setWBand(Number(e.target.value)); setValidationError(""); }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+                          <span>180D New High ($w_5$)</span>
+                          <span className="text-blue-600 font-mono text-sm">{wHigh}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={5}
+                          value={wHigh}
+                          disabled={!canEditSettings || saving}
+                          onChange={(e) => { setWHigh(Number(e.target.value)); setValidationError(""); }}
+                          className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                        />
+                        <div className="text-[10px] text-slate-400 font-medium">Framework default: 20%</div>
+                      </div>
+                    </div>
+                  </CardContent>
+
+                  {/* Footer Action Buttons Bar */}
+                  {canEditSettings && (
+                    <div className="px-5 py-3.5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleResetDefaults}
+                          disabled={saving}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                          title="Reset model parameters to default framework weights (20% each)"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                          Reset Defaults (20% each)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleAutoBalanceWeights}
+                          disabled={saving}
+                          className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-blue-700 hover:bg-blue-50 text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                          title="Proportionally auto-balance weights to sum to 100%"
+                        >
+                          <Scale className="h-3.5 w-3.5 text-blue-600" />
+                          Auto-Balance to 100%
+                        </button>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={saving}
+                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 text-white hover:bg-blue-600 text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      >
+                        <Save className="h-3.5 w-3.5" />
+                        {saving ? "Saving..." : "Save Model Parameters"}
+                      </button>
+                    </div>
+                  )}
+                </Card>
+              </form>
+
+              {/* Framework Scoring Thresholds Reference Table */}
+              <Card className="bg-white border-slate-200 shadow-xs overflow-hidden">
+                <CardHeader className="py-3 px-5 border-b border-slate-100 bg-slate-50/50">
+                  <CardTitle className="text-xs font-bold text-slate-800 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-blue-600" />
+                    Framework Metric Scoring Matrix &amp; Tiers Reference (0–5 Points)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0 overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="py-2.5 px-4 font-bold text-slate-700">Surveillance Parameter</th>
+                        <th className="py-2.5 px-4 text-center">0 Points (Normal)</th>
+                        <th className="py-2.5 px-4 text-center">1 Point (Low Risk)</th>
+                        <th className="py-2.5 px-4 text-center">3 Points (Medium Risk)</th>
+                        <th className="py-2.5 px-4 text-center">5 Points (Severe Risk)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
+                      {scoreRows.map(([metric, tiers]) => (
+                        <tr key={metric} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-4 font-sans font-bold text-slate-900">{metric}</td>
+                          <td className="py-2.5 px-4 text-center text-slate-500 bg-slate-50/30">{tiers[0]}</td>
+                          <td className="py-2.5 px-4 text-center text-blue-700 bg-blue-50/30">{tiers[1]}</td>
+                          <td className="py-2.5 px-4 text-center text-amber-700 bg-amber-50/30 font-semibold">{tiers[2]}</td>
+                          <td className="py-2.5 px-4 text-center text-rose-700 bg-rose-50/30 font-bold">{tiers[3]}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </CardContent>
               </Card>
-            </form>
+            </div>
           )}
 
           {/* ─── TAB 2: USER MANAGEMENT (SYS_USERS) ─────────────────────────────── */}
@@ -577,14 +682,24 @@ export default function SettingsPage() {
                     Immutable Security & Access Audit Trail (`SYS_AUDIT_LOGS`)
                   </CardTitle>
                 </div>
-                <div className="flex items-center gap-2 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
-                  <Search className="h-3.5 w-3.5 text-slate-400" />
-                  <input
-                    value={auditSearch}
-                    onChange={(e) => setAuditSearch(e.target.value)}
-                    placeholder="Search logs..."
-                    className="bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400 w-36"
-                  />
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                    <Search className="h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      value={auditSearch}
+                      onChange={(e) => setAuditSearch(e.target.value)}
+                      placeholder="Search logs..."
+                      className="bg-transparent border-none outline-none text-xs text-slate-800 placeholder:text-slate-400 w-36"
+                    />
+                  </div>
+                  <Link
+                    href="/history"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold transition-all shadow-2xs"
+                    title="Open Full Audit Trail with Action Filtering & CSV Export"
+                  >
+                    <span>Full Audit Center &amp; CSV</span>
+                    <ExternalLink className="h-3 w-3 text-slate-400" />
+                  </Link>
                 </div>
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
@@ -632,8 +747,13 @@ export default function SettingsPage() {
 
       {/* ── Create User Modal ── */}
       {showCreateUserModal && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4">
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCreateUserModal(false);
+          }}
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in"
+        >
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-blue-600" /> Add Surveillance Officer Account

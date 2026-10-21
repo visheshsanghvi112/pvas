@@ -243,7 +243,7 @@ All incoming raw data from the five delivered Excel files has been parsed, clean
 * **Schema Types**: Strongly typed as `NUMERIC(20, 2)`, `BIGINT`, `VARCHAR(10)`.
 
 ### 6.3. Table: `counterparty_trade_pairs` (from `PAN_PAIR_*.xlsx` & Participant Ingestion)
-* **Total Records**: `15,303` (including 6,700 newly ingested genuine bilateral matched trades from `PAN_PAIR_GUJRAFFIA.xlsx` and `PAN_PAIR_SKMEGGPROD.xlsx`; 750 dummy records purged)
+* **Total Records**: `6,700` (100% genuine bilateral matched trades from `PAN_PAIR_GUJRAFFIA.xlsx` [2,713 pairs] and `PAN_PAIR_SKMEGGPROD.xlsx` [3,987 pairs]; all dummy records purged)
 * **Data Integrity**:
   * Null Matched Quantities: **`0` (0.00%)**
   * Null Buyer/Seller PANs: **`0` (0.00%)**

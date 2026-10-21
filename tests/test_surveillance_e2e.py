@@ -390,3 +390,50 @@ class TestFastAPIEndpoints:
 
         stats_resp = self.client.get("/api/v1/trades/stats/daily", headers=admin_headers)
         assert stats_resp.status_code == 200
+
+    def test_rbac_forbidden_on_non_admin_weight_change(self):
+        """Analyst or Viewer attempting to modify model weights receives HTTP 403 Forbidden."""
+        analyst_login = self.client.post("/api/v1/auth/login", json={"username": "arao_analyst", "password": "arao123"})
+        assert analyst_login.status_code == 200
+        analyst_token = analyst_login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {analyst_token}"}
+
+        resp = self.client.post(
+            "/api/v1/surveillance/weights",
+            json={"weights": {"price_rise": 30}, "threshold": 65},
+            headers=headers
+        )
+        assert resp.status_code == 403, "Non-admin user must receive HTTP 403 Forbidden when altering model weights"
+        assert "Access denied" in resp.json()["detail"]
+
+    def test_rbac_forbidden_on_non_admin_user_management(self):
+        """Analyst attempting to create or toggle users receives HTTP 403 Forbidden."""
+        analyst_login = self.client.post("/api/v1/auth/login", json={"username": "arao_analyst", "password": "arao123"})
+        analyst_token = analyst_login.json()["access_token"]
+        headers = {"Authorization": f"Bearer {analyst_token}"}
+
+        resp = self.client.post(
+            "/api/v1/auth/users",
+            json={
+                "username": "rogue_user",
+                "email": "rogue@test.gov",
+                "full_name": "Rogue Officer",
+                "password": "password123",
+                "role": "Analyst"
+            },
+            headers=headers
+        )
+        assert resp.status_code == 403, "Non-admin must be denied user creation"
+
+    def test_tampered_token_rejected(self):
+        """Tampered or invalid JWT/HMAC token receives HTTP 401 Unauthorized."""
+        login_resp = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "vishesh123"})
+        valid_token = login_resp.json()["access_token"]
+        
+        # Tamper signature part
+        parts = valid_token.rsplit(".", 1)
+        tampered_token = f"{parts[0]}.{'0' * len(parts[1])}"
+
+        resp = self.client.get("/api/v1/surveillance/dates", headers={"Authorization": f"Bearer {tampered_token}"})
+        assert resp.status_code == 401, "Tampered token must be rejected with 401 Unauthorized"
+

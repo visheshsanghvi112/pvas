@@ -10,12 +10,10 @@ from backend.db.database import get_db
 from backend.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/v1/surveillance", tags=["EOD Price-Volume Surveillance"])
-legacy_router = APIRouter(prefix="/api", tags=["Legacy Compatibility"])
 service = EODSurveillanceService()
 
 
 @router.get("/health")
-@legacy_router.get("/health")
 def health_check():
     return {
         "status": "ONLINE",
@@ -42,7 +40,6 @@ def get_watchlist(
 
 
 @router.get("/scrips")
-@legacy_router.get("/scrips")
 def get_scrips(
     search: str = Query("", description="Search ticker symbol"),
     watchlist: Optional[bool] = Query(None, description="Filter for watchlist-shortlisted scrips"),
@@ -61,7 +58,6 @@ def get_scrips(
 
 
 @router.get("/scrip/{scrip_id}")
-@legacy_router.get("/scrip/{scrip_id}")
 def get_scrip_detail(
     scrip_id: str,
     as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
@@ -160,7 +156,6 @@ def export_scrip_excel(
 
 
 @router.get("/weights")
-@legacy_router.get("/weights")
 def get_weights(current_user: SysUser = Depends(get_current_user)):
     return {
         "status": "SUCCESS",
@@ -170,7 +165,6 @@ def get_weights(current_user: SysUser = Depends(get_current_user)):
 
 
 @router.post("/weights")
-@legacy_router.post("/weights")
 def update_weights(
     payload: Dict[str, Any],
     admin_user: SysUser = Depends(require_admin),
@@ -178,6 +172,31 @@ def update_weights(
 ):
     weights = payload.get("weights", {})
     threshold = payload.get("threshold", None)
+
+    if weights:
+        valid_keys = {"price_rise", "price_z", "volume_z", "band_persistence", "new_high"}
+        merged = dict(service.config.weights)
+        for k, v in weights.items():
+            if k in valid_keys:
+                try:
+                    val = float(v)
+                    if val < 0:
+                        raise HTTPException(status_code=400, detail=f"Weight '{k}' cannot be negative.")
+                    merged[k] = val
+                except (ValueError, TypeError):
+                    raise HTTPException(status_code=400, detail=f"Weight '{k}' must be a valid number.")
+        total_w = sum(merged.values())
+        if abs(total_w - 100.0) > 0.01:
+            raise HTTPException(status_code=400, detail=f"Model weights must sum to exactly 100%. Provided sum: {total_w}%.")
+
+    if threshold is not None:
+        try:
+            thresh_val = float(threshold)
+            if thresh_val < 0 or thresh_val > 100:
+                raise HTTPException(status_code=400, detail="Threshold must be between 0 and 100.")
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Threshold must be a valid number.")
+
     config = service.update_weights(weights, threshold)
     
     # Security Audit Trail logging
@@ -198,7 +217,6 @@ def update_weights(
 
 
 @router.post("/upload-eod")
-@legacy_router.post("/upload-eod")
 async def upload_eod(
     file: UploadFile = File(...),
     admin_user: SysUser = Depends(require_admin),

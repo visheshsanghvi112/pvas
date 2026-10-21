@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo, Fragment } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
@@ -11,7 +11,6 @@ import {
   TrendingUp,
   TrendingDown,
   Activity,
-  BarChart2,
   Zap,
   Maximize2,
   Minimize2,
@@ -19,30 +18,19 @@ import {
   FileText,
   FileDown,
   FileSpreadsheet,
-  Building,
-  Layers,
-  ArrowRight,
-  Calendar,
   Clock,
   ChevronLeft,
   ChevronRight,
-  Megaphone,
   Eye
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
-import { type ExchangeScope } from "@/components/ui/exchange-scope-selector";
 import { Toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import {
-  AlertDriversChart,
   ParameterRadarChart,
   SurveillanceStatisticalDeck,
   AnomalyEventMatrixChart,
-  VolumeChart,
-  UnifiedPriceVolumeChart,
   CombinedMarketChart,
   InfoTooltip
 } from "@/components/investigation/charts";
@@ -54,10 +42,10 @@ import {
   fetchCorporateActions,
   fetchAvailableTradingDates,
   downloadScripExcel,
-  getAuthHeaders,
   type ScripDetail,
   type ParticipantAudit,
-  type ClientDetail
+  type ClientDetail,
+  type ExchangeScope
 } from "@/lib/api";
 
 import { useUser } from "@/lib/user-context";
@@ -65,18 +53,6 @@ import { SurveillanceDossierPdf } from "@/components/investigation/surveillance-
 
 const TABS = ["Overview", "Shareholders", "Corporate Actions", "Participants"] as const;
 type TabType = typeof TABS[number];
-
-// ── PVASF scoring thresholds (mirrors pv_alert_surveillance.py) ──
-function scoreZone(score: number, threshold: number = 60): "High" | "Medium" | "Low" {
-  if (score >= threshold) return "High";
-  const mediumThreshold = Math.max(10, Math.round(threshold * 0.6));
-  if (score >= mediumThreshold) return "Medium";
-  return "Low";
-}
-function scoreColor(score: number, threshold: number = 60) {
-  const z = scoreZone(score, threshold);
-  return z === "High" ? "text-rose-600" : z === "Medium" ? "text-amber-600" : "text-emerald-600";
-}
 
 
 function DataTable({
@@ -186,7 +162,7 @@ function SectionHeader({
           type="button"
           onClick={onExpand}
           title="Expand Chart to Fullscreen"
-          className="opacity-0 group-hover:opacity-100 transition-all duration-200 px-2.5 py-1 rounded-lg bg-white border border-slate-200/90 text-slate-700 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/60 shadow-2xs text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
+          className="opacity-70 hover:opacity-100 transition-all duration-200 px-2.5 py-1 rounded-lg bg-slate-50 border border-slate-200/90 text-slate-700 hover:text-blue-600 hover:border-blue-300 hover:bg-blue-50/60 shadow-2xs text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
         >
           <Maximize2 className="w-3.5 h-3.5 text-blue-600" />
           <span className="text-xs">Fullscreen</span>
@@ -214,8 +190,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
 
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(urlAsOfDate);
-  const [windowDays, setWindowDays] = useState<number>(urlWindowDays);
-  const [exchange, setExchange] = useState<ExchangeScope>(urlExchange);
+  const [windowDays] = useState<number>(urlWindowDays);
+  const [exchange] = useState<ExchangeScope>(urlExchange);
   const [toastAlert, setToastAlert] = useState<{ show: boolean; msg: string }>({ show: false, msg: "" });
   
   const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
@@ -241,8 +217,8 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         
         const targetDate = urlAsOfDate || dates[0];
         if (urlAsOfDate && !dates.includes(urlAsOfDate)) {
-          // Auto-correct to nearest previous valid trading date
-          const nearest = dates.find((d) => d <= urlAsOfDate) || dates[0];
+          // Auto-correct to nearest previous valid trading date, or earliest archive session
+          const nearest = (dates.find((d) => d <= urlAsOfDate) || dates[dates.length - 1]) ?? dates[0];
           setToastAlert({ 
             show: true, 
             msg: `${urlAsOfDate} is a non-trading day. Automatically loaded the last active session (${nearest}).`
@@ -267,11 +243,22 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     loadDates();
   }, [urlAsOfDate, router, pathname, searchParams]);
 
-  // Keyboard shortcut: ESC exits Fullscreen mode or closes expanded chart modal
+  const [detail, setDetail] = useState<ScripDetail | null>(null);
+  const [participants, setParticipants] = useState<ParticipantAudit | null>(null);
+  const [client360, setClient360] = useState<ClientDetail | null>(null);
+  const [shBreakdown, setShBreakdown] = useState<any>(null);
+  const [corpActions, setCorpActions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedPan, setSelectedPan] = useState<string | null>(null);
+
+  // Keyboard shortcut: ESC exits Fullscreen mode, closes expanded chart modal, or closes Client 360 drawer
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        if (expandedChart) {
+        if (selectedPan) {
+          setSelectedPan(null);
+        } else if (expandedChart) {
           setExpandedChart(null);
         } else if (isFullscreen) {
           setIsFullscreen(false);
@@ -280,19 +267,23 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen, expandedChart]);
+  }, [isFullscreen, expandedChart, selectedPan]);
 
-  const [detail, setDetail] = useState<ScripDetail | null>(null);
-  const [participants, setParticipants] = useState<ParticipantAudit | null>(null);
-  const [client360, setClient360] = useState<ClientDetail | null>(null);
-  const [shBreakdown, setShBreakdown] = useState<any>(null);
-  const [corpActions, setCorpActions] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [selectedPan, setSelectedPan] = useState<string | null>(null);
+  // Lock body scroll when Client 360 drawer, expanded chart, or PDF dossier is active
+  useEffect(() => {
+    if (selectedPan || expandedChart || isDossierOpen) {
+      const original = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = original;
+      };
+    }
+  }, [selectedPan, expandedChart, isDossierOpen]);
 
   useEffect(() => {
+    // If dates are loading and selectedDate has not been initialized yet, wait for initialization
+    if (!selectedDate && availableDates.length > 0) return;
+    let isCancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
@@ -306,18 +297,27 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
           fetchShareholdingBreakdown(symbol).catch(() => null),
           fetchCorporateActions(symbol).catch(() => [])
         ]);
-        setDetail(d);
-        setParticipants(p ?? null);
-        setShBreakdown(sh ?? null);
-        setCorpActions(ca ?? []);
+        if (!isCancelled) {
+          setDetail(d);
+          setParticipants(p ?? null);
+          setShBreakdown(sh ?? null);
+          setCorpActions(ca ?? []);
+        }
       } catch (e: any) {
-        console.error("Failed to load investigation workspace data", e);
-        setError(e?.message || "Failed to load. Ensure backend is running.");
+        if (!isCancelled) {
+          console.error("Failed to load investigation workspace data", e);
+          setError(e?.message || "Failed to load. Ensure backend is running.");
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     }
     load();
+    return () => {
+      isCancelled = true;
+    };
   }, [symbol, selectedDate, windowDays, exchange]);
 
   useEffect(() => {
@@ -419,22 +419,10 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     );
   }
 
-  const { metrics, summary, history, score_breakdown, risk, company } = detail;
+  const { metrics, history, risk, company } = detail;
 
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
-
-  const handlePrevDay = () => {
-    if (canGoPrev) {
-      setSelectedDate(availableDates[dateIndex + 1]);
-    }
-  };
-
-  const handleNextDay = () => {
-    if (canGoNext) {
-      setSelectedDate(availableDates[dateIndex - 1]);
-    }
-  };
 
   /** Snap a date string to the nearest available trading date and update URL */
   const snapToTradingDate = (raw: string) => {
@@ -442,7 +430,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     let finalDate = raw;
     
     if (!availableDateSet.has(raw)) {
-      finalDate = availableDates.find((d) => d <= raw) || availableDates[0];
+      finalDate = (availableDates.find((d) => d <= raw) || availableDates[availableDates.length - 1]) ?? raw;
     }
     
     setSelectedDate(finalDate);
@@ -451,6 +439,18 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     newParams.set("asOfDate", finalDate);
     newParams.delete("exchange");
     router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+  };
+
+  const handlePrevDay = () => {
+    if (canGoPrev && availableDates[dateIndex + 1]) {
+      snapToTradingDate(availableDates[dateIndex + 1]);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (canGoNext && availableDates[dateIndex - 1]) {
+      snapToTradingDate(availableDates[dateIndex - 1]);
+    }
   };
 
   const formatDateDisplay = (dateStr: string) => {
@@ -667,7 +667,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                     title={isFullscreen ? "Exit Fullscreen (ESC)" : `Expand ${tab} to Fullscreen`}
                     className={cn(
                       "inline-flex items-center justify-center p-1 rounded-md transition-all duration-200",
-                      "opacity-0 group-hover:opacity-100 hover:bg-slate-200/80 text-slate-500 hover:text-blue-700",
+                      "opacity-60 hover:opacity-100 hover:bg-slate-200/80 text-slate-500 hover:text-blue-700",
                       isFullscreen && isTabActive && "opacity-100 bg-blue-100 text-blue-700"
                     )}
                   >
@@ -794,8 +794,6 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               const public_pct_t = promoter_pct_t != null ? Number((100 - promoter_pct_t).toFixed(2)) : null;
               const public_pct_180 = promoter_pct_180 != null ? Number((100 - promoter_pct_180).toFixed(2)) : null;
               const public_pct_diff = (public_pct_t != null && public_pct_180 != null) ? Number((public_pct_t - public_pct_180).toFixed(2)) : null;
-
-              const hasNoShareholderData = unique_pans_t == null && avg_pans_15d == null && promoter_pct_t == null && top1_pct_t == null;
 
               return (
                 <>
@@ -1343,9 +1341,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                               <div key={p.pair} className="flex flex-col gap-1 py-1">
                                 {/* Entity Names */}
                                 <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 leading-snug">
-                                  <span className="truncate max-w-[120px] sm:max-w-[140px] xl:max-w-[160px]" title={n1}>{n1}</span>
+                                  <span className="truncate max-w-[150px] sm:max-w-[190px] xl:max-w-[240px]" title={n1}>{n1}</span>
                                   <span className="text-slate-400 font-bold shrink-0">⇄</span>
-                                  <span className="truncate max-w-[120px] sm:max-w-[140px] xl:max-w-[160px]" title={n2}>{n2}</span>
+                                  <span className="truncate max-w-[150px] sm:max-w-[190px] xl:max-w-[240px]" title={n2}>{n2}</span>
                                 </div>
                                 {/* PAN Badges */}
                                 <div className="inline-flex items-center gap-1 font-mono text-[11px]">

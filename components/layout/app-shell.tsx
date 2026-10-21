@@ -11,18 +11,16 @@ import {
   AlertTriangle,
   ChevronDown,
   LayoutDashboard,
-  CheckCircle2,
   TrendingUp,
   History,
   User,
   LogIn,
   LogOut,
-  ShieldCheck,
   UserCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fetchWatchlist, type ScripSummary } from "@/lib/api";
-import { useUser, type UserRole } from "@/lib/user-context";
+import { useUser } from "@/lib/user-context";
 
 // Alert polling interval: refresh every 5 minutes
 const ALERT_POLL_INTERVAL_MS = 5 * 60 * 1000;
@@ -36,7 +34,7 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, setUserRole, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useUser();
+  const { currentUser, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useUser();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ScripSummary[]>([]);
@@ -210,14 +208,102 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className="flex-shrink-0 bg-white/95 backdrop-blur-md border-b border-slate-200/90 shadow-2xs" style={{ zIndex: 50 }}>
         <div className="flex items-center justify-between px-5 py-0 relative" style={{ height: "56px" }}>
 
-          {/* Centered Header Title */}
-          <Link href="/" className="absolute left-1/2 -translate-x-1/2 flex items-center group">
-            <h1 className="font-extrabold text-base text-slate-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors">
-              Price Volume Surveillance
-            </h1>
-          </Link>
+          {/* Left: Branding & Direct Navigation */}
+          <div className="flex items-center gap-3 shrink-0">
+            <Link href="/" className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center text-white font-black text-xs shadow-xs">
+                PV
+              </div>
+              <div className="hidden sm:block">
+                <span className="font-extrabold text-sm text-slate-900 tracking-tight leading-none group-hover:text-blue-600 transition-colors block">
+                  Price Volume Surveillance
+                </span>
+                <span className="text-[10px] text-slate-400 font-semibold tracking-wide">
+                  PVASF Engine
+                </span>
+              </div>
+            </Link>
 
-          <div className="flex-1" />
+            {/* Primary Desktop Navigation Pills */}
+            <nav className="hidden md:flex items-center gap-1 border-l border-slate-200/80 pl-3 ml-1">
+              {nav.map((item) => {
+                const Icon = item.icon;
+                const isActive = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all",
+                      isActive
+                        ? "bg-slate-900 text-white shadow-xs"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    )}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+
+          {/* Center: Global Scrip Quick-Search Bar */}
+          <div ref={searchRef} className="relative flex-1 max-w-xs mx-3">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onFocus={() => searchResults.length > 0 && setSearchOpen(true)}
+                placeholder="Search scrip (e.g. BINANIIND, SKMEGGPROD)..."
+                className="w-full h-8.5 pl-8 pr-7 text-xs bg-slate-100/90 hover:bg-slate-100 focus:bg-white border border-slate-200/90 rounded-xl outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-slate-900 placeholder:text-slate-400 font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => { setSearchQuery(""); setSearchResults([]); setSearchOpen(false); }}
+                  className="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  title="Clear search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Autocomplete Dropdown */}
+            {searchOpen && searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden z-50 divide-y divide-slate-100 max-h-72 overflow-y-auto animate-in fade-in-0 zoom-in-95">
+                {searchResults.map((scrip) => (
+                  <button
+                    key={scrip.symbol}
+                    type="button"
+                    onClick={() => handleSelectSymbol(scrip.symbol)}
+                    className="w-full flex items-center justify-between px-3.5 py-2.5 hover:bg-blue-50/60 text-left transition-colors cursor-pointer"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="font-extrabold text-xs text-slate-900 font-mono">{scrip.symbol}</div>
+                      <div className="text-[11px] text-slate-500 truncate max-w-[170px]">{scrip.company || scrip.ticker || "Listed Security"}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-mono text-xs font-bold text-slate-900">
+                        {scrip.latest_close != null ? `₹${Number(scrip.latest_close).toFixed(2)}` : "—"}
+                      </div>
+                      <span className={cn(
+                        "text-[9.5px] font-extrabold uppercase px-1.5 py-0.2 rounded border font-sans inline-block mt-0.5",
+                        (scrip.risk_score ?? scrip.score ?? 0) >= 60
+                          ? "bg-rose-50 text-rose-700 border-rose-200"
+                          : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      )}>
+                        Score {Math.round(scrip.risk_score ?? scrip.score ?? 0)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
           {/* Right Header Controls (Notifications + Profile Dropdown) */}
           <div className="flex items-center gap-3.5">
@@ -430,6 +516,37 @@ function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Reset form and errors when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setError("");
+      setUsername("");
+      setPassword("");
+    }
+  }, [isOpen]);
+
+  // Lock body scrolling while Login modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [isOpen]);
+
+  // Keyboard navigation: Escape key closes modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const handleManualLogin = async (e: React.FormEvent) => {
@@ -463,8 +580,13 @@ function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
   };
 
   return (
-    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in">
-      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden relative">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in"
+    >
+      <div className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden relative" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
         <div className="px-6 pt-6 pb-4 bg-slate-50 border-b border-slate-200/80 flex items-center justify-between">
           <div>

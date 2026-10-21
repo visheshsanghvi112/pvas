@@ -6,12 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronDown,
-  ChevronsLeft,
-  ChevronsRight,
-  Check,
-  Clock,
-  Sparkles,
-  Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -103,7 +97,6 @@ export function TradingDatePicker({
 
   const latestDate = availableDates[0];
   const earliestDate = availableDates[availableDates.length - 1];
-  const isLatest = selectedDate === latestDate;
 
   // Format selected date for button display: "11 Aug 2026"
   const formattedDisplay = useMemo(() => {

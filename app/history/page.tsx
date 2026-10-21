@@ -2,12 +2,12 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { History, Search, Download, Filter, RefreshCw, ShieldCheck } from "lucide-react";
+import { History, Search, Download, RefreshCw, ShieldCheck } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getAuthHeaders, fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth } from "@/lib/api";
 
 const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
 
@@ -30,6 +30,8 @@ function HistoryPageContent() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState(querySearch || "");
   const [actionFilter, setActionFilter] = useState("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
 
   useEffect(() => {
     if (querySearch) {
@@ -40,6 +42,11 @@ function HistoryPageContent() {
   useEffect(() => {
     fetchAuditLogs();
   }, []);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, actionFilter]);
 
   async function fetchAuditLogs() {
     setLoading(true);
@@ -67,6 +74,11 @@ function HistoryPageContent() {
     const matchesAction = actionFilter === "All" || log.action === actionFilter;
     return matchesSearch && matchesAction;
   });
+
+  const totalRecords = filteredLogs.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const startIndex = (currentPage - 1) * pageSize;
+  const paginatedLogs = filteredLogs.slice(startIndex, startIndex + pageSize);
 
   // Export CSV
   const handleExportCSV = () => {
@@ -119,7 +131,7 @@ function HistoryPageContent() {
                   <ShieldCheck className="h-4 w-4 text-blue-600" />
                   System Audit Trail
                   <span className="text-xs font-normal text-slate-500">
-                    ({filteredLogs.length} records)
+                    ({filteredLogs.length} of {auditLogs.length} records)
                   </span>
                 </CardTitle>
 
@@ -137,7 +149,7 @@ function HistoryPageContent() {
                   <select
                     value={actionFilter}
                     onChange={(e) => setActionFilter(e.target.value)}
-                    className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none"
+                    className="h-8.5 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 outline-none cursor-pointer"
                   >
                     <option value="All">All Actions</option>
                     {uniqueActions.map((act) => (
@@ -169,14 +181,14 @@ function HistoryPageContent() {
                           Loading security audit logs...
                         </td>
                       </tr>
-                    ) : filteredLogs.length === 0 ? (
+                    ) : paginatedLogs.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-5 py-8 text-center text-slate-400 font-sans">
                           No security audit records found matching criteria.
                         </td>
                       </tr>
                     ) : (
-                      filteredLogs.map((log) => (
+                      paginatedLogs.map((log) => (
                         <tr key={log.id} className="hover:bg-slate-50 transition-colors">
                           <td className="px-5 py-3.5 text-slate-500 whitespace-nowrap">{log.timestamp}</td>
                           <td className="px-5 py-3.5 font-sans font-bold text-slate-900">{log.username}</td>
@@ -196,13 +208,58 @@ function HistoryPageContent() {
                             </span>
                           </td>
                           <td className="px-5 py-3.5 font-bold text-slate-800">{log.target}</td>
-                          <td className="px-5 py-3.5 font-sans text-slate-600 max-w-sm leading-normal">{log.details}</td>
+                          <td className="px-5 py-3.5 font-sans text-slate-600 max-w-sm leading-normal break-words whitespace-pre-wrap">{log.details}</td>
                           <td className="px-5 py-3.5 text-slate-400 font-mono text-[11px]">{log.ip_address}</td>
                         </tr>
                       ))
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Table Footer with Pagination Controls */}
+              <div className="px-5 py-3 bg-slate-50/80 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-600">
+                <div className="flex items-center gap-2">
+                  <span>
+                    Showing <strong className="text-slate-900 font-mono">{totalRecords > 0 ? startIndex + 1 : 0}</strong>–<strong className="text-slate-900 font-mono">{Math.min(startIndex + pageSize, totalRecords)}</strong> of <strong className="text-slate-900 font-mono">{totalRecords}</strong> records
+                  </span>
+                  <span className="text-slate-300">•</span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-500">Per page:</span>
+                    <select
+                      value={pageSize}
+                      onChange={(e) => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                      className="bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-semibold text-slate-800 outline-none cursor-pointer"
+                    >
+                      <option value={15}>15</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    disabled={currentPage <= 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-white border-slate-200 cursor-pointer disabled:opacity-50"
+                  >
+                    Previous
+                  </Button>
+                  <span className="px-2 font-mono text-xs font-semibold text-slate-700">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    disabled={currentPage >= totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    className="h-8 px-2.5 text-xs font-semibold rounded-lg bg-white border-slate-200 cursor-pointer disabled:opacity-50"
+                  >
+                    Next
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

@@ -105,11 +105,11 @@ function VectorRadarChart({ metrics }: { metrics: ScripDetail["metrics"] }) {
   const levels = [1, 2, 3, 4, 5];
 
   const parameters = [
-    { label: "Price Rise", raw: rawScoreForPriceRise(metrics.price_rise_pct) },
-    { label: "Return Z", raw: rawScoreForZ(metrics.price_z) },
-    { label: "Volume Z", raw: rawScoreForZ(metrics.volume_z) },
-    { label: "Band Hits", raw: rawScoreForBandDays(metrics.band_hit_days) },
-    { label: "180D High", raw: rawScoreForNewHighDays(metrics.new_high_days) },
+    { label: "Price Rise", raw: metrics.price_rise_score ?? rawScoreForPriceRise(metrics.price_rise_pct) },
+    { label: "Return Z", raw: metrics.price_z_score ?? rawScoreForZ(metrics.price_z) },
+    { label: "Volume Z", raw: metrics.volume_z_score ?? rawScoreForZ(metrics.volume_z) },
+    { label: "Band Hits", raw: metrics.band_score ?? rawScoreForBandDays(metrics.band_hit_days) },
+    { label: "180D High", raw: metrics.new_high_score ?? rawScoreForNewHighDays(metrics.new_high_days) },
   ];
 
   const count = parameters.length;
@@ -288,7 +288,7 @@ export function SurveillanceDossierPdf({
   participants,
   selectedDate,
   windowDays,
-  exchange,
+  exchange: _exchange,
   isOpen,
   onClose,
   currentUser,
@@ -314,11 +314,11 @@ export function SurveillanceDossierPdf({
   const zone = getScoreZone(finalScore, detail.threshold);
 
   // Raw parameter scores (0-5)
-  const priceRiseRaw = rawScoreForPriceRise(metrics.price_rise_pct);
-  const priceZRaw = rawScoreForZ(metrics.price_z);
-  const volumeZRaw = rawScoreForZ(metrics.volume_z);
-  const bandRaw = rawScoreForBandDays(metrics.band_hit_days);
-  const newHighRaw = rawScoreForNewHighDays(metrics.new_high_days);
+  const priceRiseRaw = metrics.price_rise_score ?? rawScoreForPriceRise(metrics.price_rise_pct);
+  const priceZRaw = metrics.price_z_score ?? rawScoreForZ(metrics.price_z);
+  const volumeZRaw = metrics.volume_z_score ?? rawScoreForZ(metrics.volume_z);
+  const bandRaw = metrics.band_score ?? rawScoreForBandDays(metrics.band_hit_days);
+  const newHighRaw = metrics.new_high_score ?? rawScoreForNewHighDays(metrics.new_high_days);
   // Calibrated model weights and points contributions from detail.score_breakdown
   const sbMap = useMemo(() => {
     const map: Record<string, { weight: number; contribution: number }> = {};
@@ -357,6 +357,16 @@ export function SurveillanceDossierPdf({
   const handlePrint = () => {
     window.print();
   };
+
+  // Lock body scroll while PDF Preview modal is open
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = original;
+    };
+  }, [isOpen]);
 
   // Instant 1-Click Fast Print Trigger
   React.useEffect(() => {

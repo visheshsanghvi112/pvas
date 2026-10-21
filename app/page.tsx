@@ -1,20 +1,17 @@
 "use client";
 
-import { useEffect, useState, useMemo, useCallback, Suspense } from "react";
+import { useEffect, useState, useMemo, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import {
   Clock,
-  Calendar,
   ChevronLeft,
   ChevronRight,
   ShieldAlert,
 } from "lucide-react";
 import { AlertsTable, InfoTooltip } from "@/components/dashboard/alerts-table";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
-import { type ExchangeScope } from "@/components/ui/exchange-scope-selector";
 import { Toast } from "@/components/ui/toast";
-import { fetchWatchlist, fetchAvailableTradingDates, fetchModelWeights, type ScripSummary } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { fetchWatchlist, fetchAvailableTradingDates, fetchModelWeights, type ScripSummary, type ExchangeScope } from "@/lib/api";
 
 function DashboardContent() {
   const searchParams = useSearchParams();
@@ -34,8 +31,8 @@ function DashboardContent() {
   // Market Date & Surveillance Window State
   const [availableDates, setAvailableDates] = useState<string[]>([]);
   const [selectedDate, setSelectedDate] = useState<string>(urlAsOfDate);
-  const [windowDays, setWindowDays] = useState<number>(urlWindowDays);
-  const [exchange, setExchange] = useState<ExchangeScope>(urlExchange);
+  const [windowDays] = useState<number>(urlWindowDays);
+  const [exchange] = useState<ExchangeScope>(urlExchange);
   const availableDateSet = useMemo(() => new Set(availableDates), [availableDates]);
 
   // Initialize available dates from surveillance warehouse
@@ -47,8 +44,8 @@ function DashboardContent() {
         
         const targetDate = urlAsOfDate || dates[0];
         if (urlAsOfDate && !dates.includes(urlAsOfDate)) {
-          // Auto-correct to nearest previous valid trading date
-          const nearest = dates.find((d) => d <= urlAsOfDate) || dates[0];
+          // Auto-correct to nearest previous valid trading date, or earliest archive session
+          const nearest = (dates.find((d) => d <= urlAsOfDate) || dates[dates.length - 1]) ?? dates[0];
           setToastAlert({ 
             show: true, 
             msg: `${urlAsOfDate} is a non-trading day. Automatically loaded the last active session (${nearest}).`
@@ -88,24 +85,53 @@ function DashboardContent() {
     loadWeights();
   }, []);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
+
   // Fetch watchlist data whenever selectedDate, windowDays, or exchange changes
   const loadData = useCallback(async () => {
+    if (!selectedDate) return;
+
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     try {
-      const data = await fetchWatchlist(undefined, selectedDate || undefined, windowDays, exchange);
-      setScrips(data);
-    } catch (err) {
-      console.error("[Dashboard] Failed to load watchlist:", err);
+      const data = await fetchWatchlist(
+        undefined,
+        selectedDate,
+        windowDays,
+        exchange,
+        controller.signal
+      );
+      if (!controller.signal.aborted) {
+        if (data && data.length > 0) {
+          setScrips(data);
+        }
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError" && !controller.signal.aborted) {
+        console.error("[Dashboard] Failed to load watchlist:", err);
+      }
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
   }, [selectedDate, windowDays, exchange]);
 
   useEffect(() => {
-    if (selectedDate || availableDates.length === 0) {
+    if (selectedDate) {
       loadData();
     }
-  }, [selectedDate, availableDates.length, loadData]);
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [selectedDate, loadData]);
 
 
   // ── Date Navigation Helpers ──
@@ -123,12 +149,6 @@ function DashboardContent() {
 
   const canGoNext = dateIndex > 0;
   const canGoPrev = dateIndex < availableDates.length - 1;
-  const handlePrevDay = () => {
-    if (canGoPrev) setSelectedDate(availableDates[dateIndex + 1]);
-  };
-  const handleNextDay = () => {
-    if (canGoNext) setSelectedDate(availableDates[dateIndex - 1]);
-  };
 
   /** Snap a date string to the nearest available trading date and update URL */
   const snapToTradingDate = (raw: string) => {
@@ -136,7 +156,7 @@ function DashboardContent() {
     let finalDate = raw;
     
     if (!availableDateSet.has(raw)) {
-      finalDate = availableDates.find((d) => d <= raw) || availableDates[0];
+      finalDate = (availableDates.find((d) => d <= raw) || availableDates[availableDates.length - 1]) ?? raw;
     }
     
     setSelectedDate(finalDate);
@@ -144,6 +164,18 @@ function DashboardContent() {
     const newParams = new URLSearchParams(searchParams?.toString() || "");
     newParams.set("asOfDate", finalDate);
     router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
+  };
+
+  const handlePrevDay = () => {
+    if (canGoPrev && availableDates[dateIndex + 1]) {
+      snapToTradingDate(availableDates[dateIndex + 1]);
+    }
+  };
+
+  const handleNextDay = () => {
+    if (canGoNext && availableDates[dateIndex - 1]) {
+      snapToTradingDate(availableDates[dateIndex - 1]);
+    }
   };
 
   const fmtShort = (d: string) => {

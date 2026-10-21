@@ -4,17 +4,18 @@ import sys
 import json
 import re
 import ast
+import hashlib
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, cast
 import numpy as np
 import pandas as pd
-import zlib
 
 ROOT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 CONFIG_PATH = os.path.join(ROOT_DIR, "backend", "db", "model_config.json")
+CACHE_DIR = os.path.join(ROOT_DIR, "backend", "data", ".cache_summaries")
 
 from pv_alert_surveillance import (
     SurveillanceConfig,
@@ -57,6 +58,7 @@ class EODSurveillanceService:
         # Load genuine EOD pricing archives from daily_market_eod
         db_df = self._load_db_eod()
         self.current_df = db_df if db_df is not None else pd.DataFrame()
+        self._ticker_set = set(self.current_df["Ticker"].unique()) if not self.current_df.empty else set()
 
         # Load genuine participant trade logs from participant_daily_trades
         db_trades = self._load_db_trades()
@@ -64,6 +66,19 @@ class EODSurveillanceService:
 
         # Load genuine bilateral trade matches from counterparty_trade_pairs
         self.current_pairs_df = self._load_db_pairs()
+
+        # Pre-warm recent trading dates in background daemon thread
+        import threading
+        threading.Thread(target=self._prewarm_recent_dates, daemon=True).start()
+
+    def _prewarm_recent_dates(self) -> None:
+        """Pre-warms the top 10 most recent trading sessions so date switching is instantaneous."""
+        try:
+            dates = self.get_available_trading_dates()
+            for d in dates[:10]:
+                self.get_scrips_summary(as_of_date=d)
+        except Exception:
+            pass
 
     def _load_persisted_config(self) -> None:
         """Loads model weights and risk threshold from disk or latest compliance audit log."""
@@ -152,7 +167,10 @@ class EODSurveillanceService:
                 valid = (prev_c > 0) & (upper > 0)
                 df["Band"] = 0.05
                 df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
-                return clean_historical_data(df)
+                cleaned = clean_historical_data(df)
+                if not cleaned.empty and "Date" in cleaned.columns:
+                    cleaned["DateStr"] = cleaned["Date"].astype(str).str[:10]
+                return cleaned
         except Exception as e:
             print(f"[surveillance_service] DB EOD load error: {e}")
         finally:
@@ -191,7 +209,10 @@ class EODSurveillanceService:
                 valid = (prev_c > 0) & (upper > 0)
                 df["Band"] = 0.05
                 df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
-                return clean_historical_data(df)
+                cleaned = clean_historical_data(df)
+                if not cleaned.empty and "Date" in cleaned.columns:
+                    cleaned["DateStr"] = cleaned["Date"].astype(str).str[:10]
+                return cleaned
         except Exception as e:
             print(f"[surveillance_service] DB single EOD load error for {ticker}: {e}")
         finally:
@@ -382,48 +403,83 @@ class EODSurveillanceService:
 
     def get_scrips_summary(self, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> List[Dict[str, Any]]:
         """Calculates surveillance metrics for all scrips as of a specific EOD observation date."""
-        # Check in-memory summary cache for instant sub-millisecond repeat responses
-        weights_tuple = tuple(sorted(self.config.weights.items()))
-        cache_key = f"{as_of_date}_{window_days}_{exchange}_{self.config.threshold}_{weights_tuple}"
-        if hasattr(self, "_summary_cache") and cache_key in self._summary_cache:
-            return self._summary_cache[cache_key]
-
         if not hasattr(self, "current_df") or self.current_df is None or self.current_df.empty:
             db_df = self._load_db_eod()
             if db_df is not None and not db_df.empty:
                 self.current_df = db_df
+                self._ticker_set = set(self.current_df["Ticker"].unique())
 
         df_source = self.current_df
+
+        # Resolve observation date upfront to enable unified caching across None / "" / exact dates
+        avail = self.get_available_trading_dates()
         resolved_date = as_of_date
         if resolved_date:
-            while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
-                dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
-                resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+            try:
+                datetime.strptime(resolved_date, "%Y-%m-%d")
+                if avail:
+                    if resolved_date >= avail[0]:
+                        resolved_date = avail[0]
+                    elif resolved_date <= avail[-1]:
+                        resolved_date = avail[-1]
+                    else:
+                        resolved_date = next((d for d in avail if d <= resolved_date), avail[0])
+                else:
+                    while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
+                        dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
+                        resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+            except (ValueError, TypeError):
+                resolved_date = avail[0] if avail else None
+        else:
+            resolved_date = avail[0] if avail else None
 
+        # Check in-memory summary cache for instant sub-millisecond repeat responses
+        weights_tuple = tuple(sorted(self.config.weights.items()))
+        cache_key = f"{resolved_date}_{window_days}_{exchange}_{self.config.threshold}_{weights_tuple}"
+        if hasattr(self, "_summary_cache") and cache_key in self._summary_cache:
+            return self._summary_cache[cache_key]
+
+        # Check persistent disk cache for instant sub-millisecond cold hits
+        disk_cache_file: Optional[str] = None
+        try:
+            os.makedirs(CACHE_DIR, exist_ok=True)
+            key_hash = hashlib.md5(cache_key.encode("utf-8")).hexdigest()
+            disk_cache_file = os.path.join(CACHE_DIR, f"{key_hash}.json")
+            if os.path.exists(disk_cache_file):
+                with open(disk_cache_file, "r") as f:
+                    cached_results = json.load(f)
+                if isinstance(cached_results, list) and len(cached_results) > 0:
+                    if hasattr(self, "_summary_cache"):
+                        self._summary_cache[cache_key] = cached_results
+                    return cached_results
+        except Exception:
+            disk_cache_file = None
+
+        if resolved_date:
             if "DateStr" not in df_source.columns:
-                df_source["DateStr"] = df_source["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
+                df_source["DateStr"] = df_source["Date"].astype(str).str[:10]
             df_source = df_source[df_source["DateStr"] <= resolved_date]
 
         # Pre-group by ticker once into a dictionary for O(1) instant access (10x faster)
+        # Note: df_source is pre-sorted by (symbol, trade_date) from SQLite load, so df_raw is strictly chronological
         grouped_tickers = dict(tuple(df_source.groupby("Ticker", sort=False)))
         dilutions = self._load_all_dilution_factors()
         results = []
 
         for ticker, df_raw in grouped_tickers.items():
-            df_t = df_raw.sort_values(by="Date").reset_index(drop=True)
-            if len(df_t) < 30:
+            if len(df_raw) < 30:
                 continue
                 
             try:
                 dilution_mult = dilutions.get(ticker, 1.0)
-                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t, dilution_multiplier=dilution_mult)
-                t180_idx = max(0, len(df_t) - min(181, len(df_t)))
-                start_p = float(df_t["Close"].iloc[t180_idx])
-                end_p = float(df_t["Close"].iloc[-1])
+                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_raw, dilution_multiplier=dilution_mult)
+                t180_idx = max(0, len(df_raw) - min(181, len(df_raw)))
+                start_p = float(df_raw["Close"].iloc[t180_idx])
+                end_p = float(df_raw["Close"].iloc[-1])
                 change_pct = float(((end_p - start_p) / start_p) * 100)
                 
-                company_name = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
-                isin_code = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else "—"
+                company_name = str(df_raw["CompanyName"].iloc[-1]) if "CompanyName" in df_raw.columns and pd.notna(df_raw["CompanyName"].iloc[-1]) and str(df_raw["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
+                isin_code = str(df_raw["ISIN"].iloc[-1]) if "ISIN" in df_raw.columns and pd.notna(df_raw["ISIN"].iloc[-1]) and str(df_raw["ISIN"].iloc[-1]).strip() != "" else "—"
                 risk, status = self._risk_and_status(metrics.final_score)
 
                 # Determine exchange-adjusted metrics directly from calibrated engine
@@ -439,7 +495,7 @@ class EODSurveillanceService:
                 # 2. Data Quality / Feed Issue Detection
                 data_quality_flags = []
                 if resolved_date:
-                    latest_available = df_t["DateStr"].iloc[-1] if not df_t.empty else None
+                    latest_available = df_raw["DateStr"].iloc[-1] if not df_raw.empty else None
                     if latest_available != resolved_date:
                         # Data missing for this session date
                         if exchange == "ALL":
@@ -478,11 +534,25 @@ class EODSurveillanceService:
         results.sort(key=lambda x: x["risk_score"], reverse=True)
         if hasattr(self, "_summary_cache"):
             self._summary_cache[cache_key] = results
+        if disk_cache_file:
+            try:
+                with open(disk_cache_file, "w") as f:
+                    json.dump(results, f)
+            except Exception:
+                pass
         return results
 
     def get_scrip_detail(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15, exchange: str = "ALL") -> Dict[str, Any]:
         """Returns scrip EOD OHLCV price/volume history and calculated core PV metrics as of observation date."""
-        if hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty and ticker in self.current_df["Ticker"].values:
+        ticker_known = hasattr(self, "_ticker_set") and ticker in self._ticker_set
+        if not ticker_known and hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty:
+            ticker_known = ticker in self.current_df["Ticker"].values
+            if ticker_known:
+                if not hasattr(self, "_ticker_set"):
+                    self._ticker_set = set()
+                self._ticker_set.add(ticker)
+
+        if ticker_known:
             df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
         else:
             df_single = self._load_single_ticker_eod(ticker)
@@ -495,10 +565,17 @@ class EODSurveillanceService:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
             
         if as_of_date:
+            try:
+                datetime.strptime(as_of_date, "%Y-%m-%d")
+                target_date = as_of_date
+            except (ValueError, TypeError):
+                avail = self.get_available_trading_dates()
+                target_date = avail[0] if avail else as_of_date
+
             df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
-            df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
+            df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= target_date]).sort_values(by="Date").reset_index(drop=True)
             if df_t.empty:
-                raise ValueError(f"No price data for {ticker} on or before {as_of_date}")
+                raise ValueError(f"No price data for {ticker} on or before {target_date}")
 
         dilution_mult = self._get_dilution_multiplier(ticker, as_of_date)
         metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t, dilution_multiplier=dilution_mult)

@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { type ScripSummary, type ExchangeScope } from "@/lib/api";
@@ -56,7 +55,7 @@ export function AlertsTable({
   loading = false,
   asOfDate,
   windowDays = 15,
-  exchange = "ALL",
+  exchange: _exchange = "ALL",
   threshold,
 }: AlertsTableProps) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -138,14 +137,22 @@ export function AlertsTable({
 
   const sorted = useMemo(() => {
     return [...filtered].sort((a, b) => {
-      let va: string | number = a[sortField] ?? 0;
-      let vb: string | number = b[sortField] ?? 0;
-      if (typeof va === "string") {
-        va = va.toLowerCase();
-        vb = (vb as string).toLowerCase();
+      const rawA = a[sortField];
+      const rawB = b[sortField];
+      if (rawA == null && rawB == null) return 0;
+      if (rawA == null) return 1;
+      if (rawB == null) return -1;
+      if (typeof rawA === "string" || typeof rawB === "string") {
+        const sa = String(rawA).toLowerCase();
+        const sb = String(rawB).toLowerCase();
+        if (sa < sb) return sortOrder === "asc" ? -1 : 1;
+        if (sa > sb) return sortOrder === "asc" ? 1 : -1;
+        return 0;
       }
-      if (va < vb) return sortOrder === "asc" ? -1 : 1;
-      if (va > vb) return sortOrder === "asc" ? 1 : -1;
+      const numA = Number(rawA) || 0;
+      const numB = Number(rawB) || 0;
+      if (numA < numB) return sortOrder === "asc" ? -1 : 1;
+      if (numA > numB) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
   }, [filtered, sortField, sortOrder]);
@@ -451,8 +458,8 @@ export function AlertsTable({
           <thead className="sticky top-0 z-20 bg-slate-100/95 backdrop-blur-xs border-b border-slate-200 shadow-2xs">
             <tr>
               <th
-                className="px-5 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-slate-900 transition-colors"
-                style={{ width: "24%" }}
+                className="px-5 py-3 text-left text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none cursor-pointer hover:text-slate-900 transition-colors sticky left-0 z-30 bg-slate-100 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]"
+                style={{ width: "22%" }}
                 onClick={() => handleSort("symbol")}
               >
                 <span className="inline-flex items-center gap-1.5">
@@ -466,7 +473,7 @@ export function AlertsTable({
                 field="score"
                 label="PVASF Score"
                 info={`Composite surveillance risk score (0–100) combining price rally, momentum, volume burst, circuit hits, and new 6-month highs. Scores ${effThreshold} and above are shortlisted as High Risk.`}
-                width="16%"
+                width="15%"
                 sortField={sortField}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -475,7 +482,7 @@ export function AlertsTable({
                 field="price_rise_pct"
                 label="Price Rise %"
                 info="Highest price reached in the past 15 days compared to where the stock stood 6 months ago, adjusted for splits or bonus shares."
-                width="14%"
+                width="13%"
                 sortField={sortField}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -502,7 +509,7 @@ export function AlertsTable({
                 field="band_hit_days"
                 label="Circuit Hits"
                 info="Number of days in the past 15 sessions where the stock hit or came within 90% of its daily upper circuit limit."
-                width="11%"
+                width="9%"
                 sortField={sortField}
                 sortOrder={sortOrder}
                 onSort={handleSort}
@@ -511,13 +518,13 @@ export function AlertsTable({
                 field="new_high_days"
                 label="180D Highs"
                 info="Number of days in the past 15 sessions where the stock broke past its previous 6-month record to set a fresh high."
-                width="11%"
+                width="9%"
                 sortField={sortField}
                 sortOrder={sortOrder}
                 onSort={handleSort}
               />
 
-              <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none" style={{ width: "10%" }}>
+              <th className="px-4 py-3 text-right text-xs font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap select-none" style={{ width: "8%" }}>
                 Action
               </th>
             </tr>
@@ -538,8 +545,16 @@ export function AlertsTable({
               <tr>
                 <td colSpan={8} className="px-6 py-16 text-center bg-white border-b border-slate-200">
                   <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <div className="text-slate-700 font-bold text-sm">No scrips match filters</div>
-                  <p className="text-xs text-slate-400 mt-1">Try resetting the search keyword or risk filters</p>
+                  <div className="text-slate-700 font-bold text-sm">
+                    {asOfDate && (new Date(asOfDate).getDay() === 0 || new Date(asOfDate).getDay() === 6)
+                      ? "Weekend Selected (Market Closed)"
+                      : "No scrips match filters"}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                    {asOfDate && (new Date(asOfDate).getDay() === 0 || new Date(asOfDate).getDay() === 6)
+                      ? "Selected observation date falls on a weekend non-trading session. Use the date picker above to inspect a preceding trading session."
+                      : "Try resetting the search keyword or risk filters"}
+                  </p>
                   {hasActiveFilters && (
                     <button
                       type="button"
@@ -552,13 +567,13 @@ export function AlertsTable({
                 </td>
               </tr>
             ) : (
-              page.map((s, idx) => (
+              page.map((s) => (
                 <tr
                   key={s.symbol}
-                  className="transition-colors duration-75 border-b border-slate-200 hover:bg-slate-50/80 bg-white"
+                  className="transition-colors duration-75 border-b border-slate-200 hover:bg-slate-50/80 bg-white group"
                 >
-                  {/* Security */}
-                  <td className="px-5 py-4">
+                  {/* Security (Sticky Column) */}
+                  <td className="px-5 py-4 sticky left-0 bg-white group-hover:bg-slate-50/90 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
                     <div className="flex items-start gap-2.5">
                       <div className={cn("w-2.5 h-2.5 rounded-full mt-1 shrink-0", RISK_DOT[s.risk] || "bg-slate-300")} />
                       <div className="min-w-0">
@@ -566,7 +581,6 @@ export function AlertsTable({
                           href={`/analysis/${s.symbol}?${new URLSearchParams({
                             ...(asOfDate ? { asOfDate } : {}),
                             ...(windowDays ? { windowDays: String(windowDays) } : {}),
-                            ...(exchange && exchange !== "ALL" ? { exchange } : {}),
                           }).toString()}`}
                           className="font-bold text-sm text-slate-900 hover:text-blue-600 hover:underline leading-tight transition-colors"
                         >
@@ -651,7 +665,6 @@ export function AlertsTable({
                       href={`/analysis/${s.symbol}?${new URLSearchParams({
                         ...(asOfDate ? { asOfDate } : {}),
                         ...(windowDays ? { windowDays: String(windowDays) } : {}),
-                        ...(exchange && exchange !== "ALL" ? { exchange } : {}),
                       }).toString()}`}
                       className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-300 text-slate-800 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all shadow-2xs"
                     >

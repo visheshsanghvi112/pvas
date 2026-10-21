@@ -197,14 +197,6 @@ const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
 const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
 const CLIENTS_API_BASE = `${BASE_HOST}/api/v1/clients`;
 
-function hashString(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
 
 /**
  * Decodes the token's payload to determine if it is expired.
@@ -259,27 +251,41 @@ export async function ensureAuthToken(): Promise<string | null> {
 
   activeAuthPromise = (async () => {
     try {
-      localStorage.removeItem("pvasf_auth_token");
-      const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: "arao_analyst", password: "arao123" }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const newToken = data.access_token;
-        if (newToken) {
-          localStorage.setItem("pvasf_auth_token", newToken);
-          localStorage.removeItem("pvasf_logged_out");
-          return newToken;
+      // Retry up to 3 times to account for backend startup delays
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          localStorage.removeItem("pvasf_auth_token");
+          const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ username: "arao_analyst", password: "arao123" }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            const newToken = data.access_token;
+            if (newToken) {
+              localStorage.setItem("pvasf_auth_token", newToken);
+              localStorage.removeItem("pvasf_logged_out");
+              return newToken;
+            }
+          }
+          if (res.status >= 500 && attempt < 2) {
+            // Backend or proxy still starting up; back off and retry
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+            continue;
+          }
+        } catch (e) {
+          if (attempt < 2) {
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+            continue;
+          }
+          console.warn("[API] Auto-login provisioning failed:", e);
         }
       }
-    } catch (e) {
-      console.warn("[API] Auto-login provisioning failed:", e);
+      return null;
     } finally {
       activeAuthPromise = null;
     }
-    return null;
   })();
 
   return activeAuthPromise;
@@ -287,7 +293,8 @@ export async function ensureAuthToken(): Promise<string | null> {
 
 /**
  * Wrapper around standard fetch that automatically attaches the Authorization Bearer header,
- * pre-emptively validates token freshness, and retries once if the token expires (HTTP 401).
+ * pre-emptively validates token freshness, and retries once if the token expires (HTTP 401)
+ * or if the upstream backend is cold-starting (HTTP 500/502/503/504).
  */
 export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Response> {
   const targetUrl = (url.startsWith("http://") || url.startsWith("https://"))
@@ -305,12 +312,19 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
   try {
     res = await fetch(targetUrl, { ...init, headers });
   } catch (err: any) {
+    if (init?.signal?.aborted || err?.name === "AbortError") {
+      throw err;
+    }
     // Retry once after transient connection reset / socket hang up
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 300));
+    if (init?.signal?.aborted) {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    }
     res = await fetch(targetUrl, { ...init, headers });
   }
 
   if (res.status === 401 && typeof window !== "undefined") {
+    if (init?.signal?.aborted) return res;
     // Stale or expired token; clear and re-authenticate once
     localStorage.removeItem("pvasf_auth_token");
     token = await ensureAuthToken();
@@ -318,10 +332,18 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
       headers["Authorization"] = `Bearer ${token}`;
       res = await fetch(targetUrl, { ...init, headers });
     }
-  } else if ((res.status === 502 || res.status === 504) && typeof window !== "undefined") {
-    // Transient reverse-proxy hiccup; retry once
-    await new Promise((r) => setTimeout(r, 300));
-    res = await fetch(targetUrl, { ...init, headers });
+  } else if ((res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504) && typeof window !== "undefined") {
+    if (init?.signal?.aborted) return res;
+    // Transient reverse-proxy cold-start hiccup; retry after backoff
+    await new Promise((r) => setTimeout(r, 700));
+    if (init?.signal?.aborted) return res;
+    try {
+      res = await fetch(targetUrl, { ...init, headers });
+    } catch (retryErr: any) {
+      if (retryErr?.name === "AbortError" || init?.signal?.aborted) {
+        throw retryErr;
+      }
+    }
   }
 
   return res;
@@ -343,7 +365,8 @@ export async function fetchWatchlist(
   search?: string,
   asOfDate?: string,
   windowDays?: number,
-  exchange: ExchangeScope = "ALL"
+  exchange: ExchangeScope = "ALL",
+  signal?: AbortSignal
 ): Promise<ScripSummary[]> {
   const url = createApiUrl(`${API_BASE}/scrips`);
   if (search) url.searchParams.set("search", search);
@@ -352,8 +375,9 @@ export async function fetchWatchlist(
   if (exchange) url.searchParams.set("exchange", exchange);
   
   try {
-    const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
+    const res = await fetchWithAuth(url.toString(), { cache: "no-store", signal });
     if (!res.ok) {
+      if (signal?.aborted) return [];
       console.error(`[fetchWatchlist] API returned status ${res.status}`);
       return [];
     }
@@ -368,10 +392,29 @@ export async function fetchWatchlist(
       }));
     }
     return [];
-  } catch (err) {
+  } catch (err: any) {
+    if (err?.name === "AbortError" || signal?.aborted) {
+      // Intentionally aborted by newer user navigation; silently exit
+      return [];
+    }
     console.error("[fetchWatchlist] Failed to fetch watchlist:", err);
     return [];
   }
+}
+
+/**
+ * Safely normalizes backend error details (string, Pydantic error array, or object)
+ * into a human-readable string without returning [object Object].
+ */
+export function formatErrorDetail(detail: any): string {
+  if (!detail) return "";
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((d) => (d && typeof d === "object" ? (d.msg || JSON.stringify(d)) : String(d)))
+      .join("; ");
+  }
+  return typeof detail === "object" ? JSON.stringify(detail) : String(detail);
 }
 
 export async function fetchScripDetail(
@@ -396,7 +439,7 @@ export async function fetchScripDetail(
     let errDetail = "";
     try {
       const errJson = await res.json();
-      errDetail = errJson.detail || JSON.stringify(errJson);
+      errDetail = formatErrorDetail(errJson.detail) || JSON.stringify(errJson);
     } catch {
       errDetail = await res.text().catch(() => "");
     }
@@ -463,7 +506,13 @@ export async function fetchScripParticipants(scripId: string, asOfDate?: string,
 
   const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
+    let errText = "";
+    try {
+      const errJson = await res.json();
+      errText = formatErrorDetail(errJson.detail) || JSON.stringify(errJson);
+    } catch {
+      errText = await res.text().catch(() => "");
+    }
     throw new Error(`Failed to fetch participants for ${cleanId} (HTTP ${res.status}): ${errText || res.statusText}`);
   }
   return await res.json();
@@ -477,7 +526,13 @@ export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): P
   }
   const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
   if (!res.ok) {
-    const errText = await res.text().catch(() => "");
+    let errText = "";
+    try {
+      const errJson = await res.json();
+      errText = formatErrorDetail(errJson.detail) || JSON.stringify(errJson);
+    } catch {
+      errText = await res.text().catch(() => "");
+    }
     throw new Error(`Failed to fetch trade log for ${cleanId} (HTTP ${res.status}): ${errText || res.statusText}`);
   }
   const result = await res.json();
@@ -491,7 +546,14 @@ export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): P
 export async function fetchClient360(pan: string): Promise<ClientDetail> {
   const cleanPan = pan.toUpperCase();
   const res = await fetchWithAuth(`${CLIENTS_API_BASE}/pan/${cleanPan}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Failed to fetch client 360 for PAN ${cleanPan}`);
+  if (!res.ok) {
+    let msg = `Failed to fetch client 360 for PAN ${cleanPan}`;
+    try {
+      const errJson = await res.json();
+      if (errJson?.detail) msg += `: ${formatErrorDetail(errJson.detail)}`;
+    } catch (_) {}
+    throw new Error(msg);
+  }
   return await res.json();
 }
 
@@ -510,7 +572,14 @@ export async function saveModelWeights(weights: Record<string, number>, threshol
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ weights, threshold })
   });
-  if (!res.ok) throw new Error("Failed to save weights");
+  if (!res.ok) {
+    let msg = "Failed to save weights";
+    try {
+      const errData = await res.json();
+      if (errData?.detail) msg = formatErrorDetail(errData.detail);
+    } catch (_) {}
+    throw new Error(msg);
+  }
   return await res.json();
 }
 
@@ -523,8 +592,12 @@ export async function uploadEodFile(file: File) {
       body: formData
     });
     if (res.ok) return await res.json();
-    const err = await res.json();
-    return { error: err.detail || "Failed to upload file" };
+    let errDetail = "Failed to upload file";
+    try {
+      const err = await res.json();
+      if (err?.detail) errDetail = formatErrorDetail(err.detail);
+    } catch (_) {}
+    return { error: errDetail };
   } catch (e: any) {
     return { error: e.message || "Failed to connect to backend server" };
   }
@@ -558,7 +631,12 @@ export async function downloadScripExcel(
 
   const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/export-excel?${params.toString()}`);
   if (!res.ok) {
-    throw new Error(`Failed to download Excel dossier: ${res.statusText}`);
+    let msg = `Failed to download Excel dossier: ${res.statusText}`;
+    try {
+      const err = await res.json();
+      if (err?.detail) msg = formatErrorDetail(err.detail);
+    } catch (_) {}
+    throw new Error(msg);
   }
   const blob = await res.blob();
   const url = window.URL.createObjectURL(blob);

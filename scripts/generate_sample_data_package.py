@@ -36,7 +36,7 @@ DB_PATH = "backend/db/surveillance.db"
 PKG_DIR = "PVASF_Sample_Data_Package"
 FEEDS_DIR = os.path.join(PKG_DIR, "sample_data_feeds")
 PKG_XLSX = os.path.join(PKG_DIR, "PVASF_Sample_Data_Package.xlsx")
-DOWNLOADS_XLSX = "/Users/vishesh/Downloads/PVASF_Sample_Data.xlsx"
+DOWNLOADS_XLSX = os.path.expanduser("~/Downloads/PVASF_Sample_Data.xlsx")
 ZIP_PATH = "PVASF_Sample_Data_Package.zip"
 PROD_FULL_XLSX = "PVASF_Production_Full_Data.xlsx"
 

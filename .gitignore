@@ -23,11 +23,13 @@ __pycache__/
 .env.test.local
 .env.production.local
 agent_reference/
+scratch/
 *.db-wal
 *.db-shm
 
 # Local DB Backups
 *.backup*
+archive/
 
 
 # Large Raw Excel Data Feeds
@@ -37,4 +39,10 @@ client_data*.xlsx
 
 # SQLite Databases (prevent GitHub 100MB limit rejection)
 *.db
+
+# Runtime Cache
+.cache/
+.cache_summaries/
+backend/data/.cache_summaries/
+
 

@@ -32,9 +32,9 @@ async def lifespan(app: FastAPI):
 
     db = SessionLocal()
     try:
-        user_count = db.query(SysUser).count()
-        eod_count = db.query(DailyMarketEod).count()
-        if user_count == 0 or eod_count == 0:
+        has_user = db.query(SysUser.id).first() is not None
+        has_eod = db.query(DailyMarketEod.record_id).first() is not None
+        if not has_user or not has_eod:
             summary = seed_database(db)
             print(f"[startup] Seed summary: {summary}")
         else:
@@ -87,4 +87,13 @@ app.include_router(auth_router)
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    backend_dir = os.path.dirname(os.path.abspath(__file__))
+    uvicorn.run(
+        "backend.main:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=True,
+        reload_dirs=[backend_dir],
+        reload_includes=["*.py"],
+        reload_excludes=[".next/*", "node_modules/*", "*.db", "*.json", ".pytest_cache/*", ".git/*"]
+    )
