@@ -62,7 +62,7 @@ The platform evaluates right-tail statistical metrics:
 - **Price Z-Score** ($Z \ge 1.645\sigma$, 95th percentile anomaly)
 - **Volume Z-Score** ($Z \ge 1.645\sigma$, 95th percentile anomaly)
 - **Upper Circuit Band Persistence** ($\ge 90\%$ of dynamic daily price band ceiling)
-- **180-Day New High Breakout Frequency** (Count of rolling peak breakout sessions where $\text{High}_t \ge \text{rolling 180D peak}$)
+- **180-Day New High Breakout Frequency** (Count of rolling peak breakout sessions where $\text{High}_t > \text{rolling 180D peak}$)
 
 ---
 
@@ -114,7 +114,7 @@ To ensure rapid operational readiness and eliminate semantic impedance mismatch,
 1. **Zero Semantic Impedance Mismatch During Sourcing**:
    By directly mirroring the enterprise warehouse entities (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`, `client_identity_master`, `client_demat_accounts`), the framework eliminates artificial schema translations. Upstream Data Engineers and DBAs immediately recognize their production table definitions, column names (`close_price`, `gross_positive_ltp_value`, `client_pan`), and primary/foreign keys without needing to decipher custom application aliases.
 2. **Local Prototype as an Executable Data Contract**:
-   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 158 columns, 854,061+ genuine physical records across 2,191 scrips and 179 trading sessions [852,773 immutable market/participant/demat rows + 1,288 dynamic append-only audit trail records]). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
+   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 158 columns, 854,061+ genuine physical records across 2,191 scrips and 179 trading sessions [852,773 immutable market/participant/demat rows + 1,304+ dynamic append-only audit trail records]). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
 3. **Decoupled Application Boundary via Services & DTOs**:
    While the database models adhere 1:1 to institutional surveillance data nomenclature, the application routers and Next.js frontend interact strictly with sanitized Pydantic DTOs and REST contracts (`close_price`, `net_ltp_push`, `client_pan`). If the Relational Warehouse team provides data via materialized views (`v_daily_surveillance_summary`) or staging tables, only the internal SQLAlchemy ORM mapping in `backend/db/models.py` requires adjustment—the entire frontend and surveillance mathematical algorithms remain completely untouched.
 4. **Seamless Relational Warehouse Production Dialect Switch**:
@@ -239,7 +239,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql): Master 15-table production schema DDL with data contracts, constraints, foreign keys, and module annotations (158 columns total).
 - [`backend/db/model_config.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/model_config.json): Active persisted model configuration holding calibrated weights (`price_rise: 20.0`, `price_z: 20.0`, `volume_z: 20.0`, `band_persistence: 20.0`, `new_high: 20.0`) and alert triage threshold (`60.0`).
 - [`backend/db/seed.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/seed.py): Deterministic synthetic data generator creating 500 exchange clients, 500 depository accounts, 260 trading days of EOD data across 15 scrips, shareholding records, corporate actions, and system users.
-- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (854,061+ genuine physical records [852,773 immutable market/participant/demat rows + 1,288 dynamic append-only audit trail records] across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
+- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (854,061+ genuine physical records [852,773 immutable market/participant/demat rows + 1,304+ dynamic append-only audit trail records] across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
 
 #### Repositories Layer (`backend/repositories/`)
 - [`backend/repositories/client_identity_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/client_identity_repo.py): Data-access layer querying `client_identity_master` by legal entity PAN.
@@ -1016,7 +1016,7 @@ FROM counterparty_trade_pairs c;
  │    - scripts/ingest_market_eod.py -> daily_market_eod & market_baseline_stats (667,948)│
  │    - scripts/ingest_client_data.py -> participant_daily_trades, KYC & Demat (177,682) │
  │    - scripts/ingest_pan_pairs.py -> counterparty_trade_pairs (6,700 records, 16 cols)  │
- │    - trading_session_calendar (426 sessions) & compliance_audit_logs (1,288+ records)  │
+ │    - trading_session_calendar (426 sessions) & compliance_audit_logs (1,304+ records)  │
  └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                              │ SQLAlchemy 2.0 Pool (or SQLite Local DB)
  ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -1241,7 +1241,7 @@ A rigorous, multi-pass engineering audit was executed across all layers of the c
 
 ### 12.1 Live Physical Warehouse Scale Audit (854,061+ Genuine Records)
 
-The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **854,061+ genuine physical records** (comprising 852,773 immutable market, participant, demat, calendar, and alert case records + 1,288 dynamic append-only entries in `compliance_audit_logs`) across all 15 normalized tables (158 columns total), spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
+The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **854,061+ genuine physical records** (comprising 852,773 immutable market, participant, demat, calendar, and alert case records + 1,304+ dynamic append-only entries in `compliance_audit_logs`) across all 15 normalized tables (158 columns total), spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
 
 | # | Table Name | Module Alignment | Physical Row Count | Columns | Key Surveillance Role |
 | :-: | :--- | :--- | :---: | :---: | :--- |
@@ -1252,7 +1252,7 @@ The master relational database [`backend/db/surveillance.db`](file:///Users/vish
 | 5 | `participant_daily_trades` | Module 3: Participant Conduct | **58,898** | 17 | Client trade executions, Gross Positive/Negative LTP push |
 | 6 | `counterparty_trade_pairs` | Module 4: Counterparty Network| **6,700** | 16 | Matched buyer-seller pairs, pairwise LTP (Logic 1 & 2), wash trades |
 | 7 | `trading_session_calendar` | Module 7: Market Calendar | **426** | 4 | Authoritative exchange trading sessions and market holidays |
-| 8 | `compliance_audit_logs` | Module 8: Audit Trail | **1,288+** | 8 | Immutable regulatory security log, model calibrations (append-only) |
+| 8 | `compliance_audit_logs` | Module 8: Audit Trail | **1,304+** | 8 | Immutable regulatory security log, model calibrations (append-only) |
 | 9 | `surveillance_alert_cases` | Module 8: Alert Cases | **13** | 14 | Pre-populated historical triage cases (19 dynamic alerts on 2025-11-03) |
 | 10 | `portal_user_accounts` | Module 8: Officer Auth | **4** | 10 | Surveillance officers, PBKDF2 credentials, RBAC tiers |
 | 11 | `broker_daily_summary` | Module 7: Broker Totals | **0** | 9 | *Purged synthetic test data; awaiting live broker feed* |
@@ -1304,22 +1304,6 @@ The codebase is protected by four complementary automated test suites covering b
 
 2. **Data & Mathematical Parity Cross-Verification Suite ([`scripts/cross_verify_data_parity.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/cross_verify_data_parity.py))**:
    - Standalone parity audit script verifying complete mathematical and row-count parity between raw SQLite warehouse tables (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`) and FastAPI endpoint responses.
-
-3. **Comprehensive E2E Node.js Test Suite ([`scripts/verify_e2e.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/verify_e2e.mjs)) & Frontend API Contracts ([`scripts/test_frontend_api.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_api.mjs))**:
-   - Exercises multi-role authentication (`vishesh_admin`, `arao_analyst`, `guest_viewer`).
-   - Verifies active model weights and threshold (60.0) from `GET /api/v1/surveillance/weights` and on-disk [`backend/db/model_config.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/model_config.json).
-   - Validates RBAC enforcement: asserts Analyst and Viewer receive HTTP 403 Forbidden when attempting calibration updates.
-   - Tests mathematical consistency of scrip detail 5-parameter score breakdown ($\sum \text{contributions} \equiv \text{final\_score}$).
-   - Executes full calibration update-audit-restore cycle and validates SSR HTML generation across all pages.
-   - Validates all 14 frontend API contracts against active backend endpoints with 100% pass rate.
-
-4. **Headless Route Integration Suite ([`scripts/test_frontend_routes.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_routes.mjs))**:
-   - Programmatically requests all Next.js App Router endpoints (`/`, `/history`, `/settings`, `/analysis/TATAMOTORS`, `/analyse/TATAMOTORS` dynamic redirect).
-   - Validates HTTP 200 responses, confirms absence of unhandled React SSR exceptions, and verifies security token injection.
-
-5. **Static Analysis & Type Safety**:
-   - `npx tsc --noEmit`: `0 errors, 0 warnings` across all Next.js TypeScript files.
-   - `python3 -m compileall backend/ pv_alert_surveillance.py scripts/ tests/`: `0 errors` across all Python source modules.
 
 3. **Comprehensive E2E Node.js Test Suite ([`scripts/verify_e2e.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/verify_e2e.mjs)) & Frontend API Contracts ([`scripts/test_frontend_api.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_api.mjs))**:
    - Exercises multi-role authentication (`vishesh_admin`, `arao_analyst`, `guest_viewer`).

@@ -376,7 +376,7 @@ Administrative control panel restricted to `Admin` users:
 │  - 27 REST Endpoints across Surveillance, Auth, Clients & Trades Routers    │
 │  - Security: PBKDF2 Hashing (100k rounds), Bearer Token Auth, CORS Guard   │
 │  - Scoring Engine: Vectorized NumPy/Pandas Core Math (pv_alert_surveillance)│
-│  - Rate Limiter: LoginRateLimiter (Max 5 failed attempts / 5-min lockout)  │
+│  - Rate Limiter: LoginRateLimiter (Max 25 attempts / 60s window, 30s lockout) │
 └──────────────────────────────────────┬──────────────────────────────────────┘
                                        │
                         SQLAlchemy 2.0 ORM Engine
@@ -464,9 +464,9 @@ The FastAPI backend runs on port `8005`. Interactive Swagger documentation is av
 | Upload Market EOD Feeds | ✅ | ❌ (HTTP 403) | ❌ (HTTP 403) |
 
 ### 7.3 Authentication Rate Limiting & Brute-Force Defense
-`LoginRateLimiter` (`backend/security.py`) enforces strict brute-force defense:
-* Max **5 failed login attempts** per client IP within a rolling **5-minute window**.
-* Exceeding threshold triggers immediate **HTTP 429 Too Many Requests**.
+`LoginRateLimiter` (`backend/routers/auth.py`) enforces strict sliding-window brute-force defense:
+* Max **25 login attempts** per client IP within a rolling **60-second window**.
+* Exceeding threshold triggers immediate **HTTP 429 Too Many Requests** with a **30-second lockout penalty**.
 * Successful authentication resets the counter for that IP.
 
 ### 7.4 Default Surveillance Officer Accounts
@@ -621,7 +621,7 @@ UI_PVASF/
 │
 ├── backend/                                # FastAPI Python Backend Subsystem
 │   ├── main.py                             # Server Entrypoint, Security Headers, CORS (Port 8005)
-│   ├── security.py                         # PBKDF2 Password Hashing, Bearer Token Auth, LoginRateLimiter
+│   ├── security.py                         # PBKDF2 Password Hashing, Bearer Token Auth, RBAC Guards
 │   ├── db/                                 # Relational Database Subsystem
 │   │   ├── database.py                     # SQLAlchemy 2.0 Engine & Session Local Factory
 │   │   ├── models.py                       # 15 Normalized Table Models (158 Strongly-Typed Columns)
