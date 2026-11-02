@@ -19,7 +19,7 @@ To date, five production raw data Excel files have been delivered by the exchang
 | :--- | :--- | :---: | :---: | :---: | :---: | :--- | :---: |
 | [`result_part1.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part1.xlsx) | EOD Market OHLCV & Circuit Limits (Part 1) | 2025-02-11 $\rightarrow$ 2025-07-03 | 96 Days | **176,056** | 2,010 | **Section 1: Daily Market OHLCV** | **COMPLETE** |
 | [`result_part2.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/result_part2.xlsx) | EOD Market OHLCV & Circuit Limits (Part 2) | 2025-07-04 $\rightarrow$ 2025-11-03 | 83 Days | **157,918** | 2,155 | **Section 1: Daily Market OHLCV** | **COMPLETE** |
-| **Combined EOD Universe** | **Full 180-Day EOD Baseline Universe** | **2025-02-11 $\rightarrow$ 2025-11-03** | **179 Days** | **333,974** | **2,177** | **Section 1 (Complete)** | **ACTIVE IN DB** |
+| **Combined EOD Universe** | **Full 180-Day EOD Baseline Universe** | **2025-02-11 $\rightarrow$ 2025-11-03** | **179 Days** | **333,974** | **2,191** | **Section 1 (Complete)** | **ACTIVE IN DB** |
 | [`client_data.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/client_data.xlsx) | Participant Trading & Intraday LTP Impact | 2025-10-14 $\rightarrow$ 2025-11-03 | Up to 14 Days | **58,898** | 3 | **Section 2: Participant Conduct** | **ACTIVE IN DB** |
 | [`PAN_PAIR_GUJRAFFIA.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PAN_PAIR_GUJRAFFIA.xlsx) | Counterparty Matched Trades & Rings | 2025-10-14 $\rightarrow$ 2025-10-21 | 6 Days | **2,713** | 1 (`GUJRAFFIA`) | **Section 3: Matched Pairs** | **INGESTED & ACTIVE** |
 | [`PAN_PAIR_SKMEGGPROD.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PAN_PAIR_SKMEGGPROD.xlsx) | Counterparty Matched Trades & Rings | 2025-11-03 | 1 Day | **3,987** | 1 (`SKMEGGPROD`) | **Section 3: Matched Pairs** | **INGESTED & ACTIVE** |
@@ -31,7 +31,7 @@ To date, five production raw data Excel files have been delivered by the exchang
 
 ### 2.1. Functional Purpose
 These two files deliver **Section 1 ("Daily Market OHLCV & Price Trends")** of [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md#L6-L26).
-Because a 180-day archive for 2,177 listed companies exceeds 330,000 rows, the exchange split the delivery chronologically into two consecutive halves:
+Because a 180-day archive for 2,191 listed companies exceeds 330,000 rows, the exchange split the delivery chronologically into two consecutive halves:
 * **Part 1 (Feb 11 – Jul 03, 2025)**: Baseline historical window ($T-180$ to $T-84$).
 * **Part 2 (Jul 04 – Nov 03, 2025)**: Mid-to-recent observation window and alert trigger window ($T-83$ to $T$).
 
@@ -225,7 +225,7 @@ All incoming raw data from the five delivered Excel files has been parsed, clean
 
 ### 6.1. Table: `daily_market_eod` (from `result_part1.xlsx` & `result_part2.xlsx`)
 * **Total Records**: `333,974`
-* **Symbols Covered**: `2,177`
+* **Symbols Covered**: `2,191`
 * **Data Range**: `2025-02-11` to `2025-11-03`
 * **Data Integrity**:
   * Null Prices (`open_price`, `close_price`): **`0` (0.00%)**
@@ -263,5 +263,5 @@ Based on [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20cop
 | **Section 3: Counterparty Trading & Matched Pairs** | Bilateral matched buyer-seller pairs, pairwise LTP push | **COMPLETE (FOR ALERT SCRIPS)** | `PAN_PAIR_GUJRAFFIA.xlsx`, `PAN_PAIR_SKMEGGPROD.xlsx` | **Active**: 6,700 genuine matched trade records in `counterparty_trade_pairs`. Powers circular trade and wash sale detection. |
 | **Section 4: Shareholding Patterns (SHP)** | Quarterly promoter float, top 1% public, pledge %, substantial holders | **PENDING** | *(Awaiting quarterly filing feed)* | Tables (`shareholding_summary`, `large_shareholders_registry`) are empty (purged of fake data). Ready for ingestion upon arrival. |
 | **Section 5: Corporate Actions** | 15-day dividends, bonus issues, splits, record dates | **PENDING** | *(Awaiting corporate action feed)* | Table `corporate_events_feed` is empty (purged of fake data). Ready for ingestion upon arrival. |
-| **Section 6: Trading Calendar** | Trading vs. non-trading days, exchange holidays, Muhurat sessions | **COMPLETE** | `trading_session_calendar` | **Active**: 204 trading sessions mapped. |
+| **Section 6: Trading Calendar** | Trading vs. non-trading days, exchange holidays, Muhurat sessions | **COMPLETE** | `trading_session_calendar` | **Active**: 426 calendar dates (296 trading sessions) mapped. |
 | **Section 7: Client KYC Master** | Full legal names, PAN master registry | **COMPLETE** | `client_identity_master` | **Active**: 59,397 real PANs indexed with KYC entity names. |

@@ -6,6 +6,9 @@ ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -71,6 +74,8 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "http://localhost:8005",
+        "http://127.0.0.1:8005",
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -97,10 +102,11 @@ app.include_router(auth_router)
 if __name__ == "__main__":
     import uvicorn
     backend_dir = os.path.dirname(os.path.abspath(__file__))
+    port = int(os.environ.get("BACKEND_PORT", os.environ.get("PORT", "8005")))
     uvicorn.run(
         "backend.main:app",
         host="0.0.0.0",
-        port=8000,
+        port=port,
         reload=True,
         reload_dirs=[backend_dir],
         reload_includes=["*.py"],

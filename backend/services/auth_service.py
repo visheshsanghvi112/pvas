@@ -11,7 +11,7 @@ How This Service Works:
      Admin user, ensuring the system can never be permanently locked out.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -39,7 +39,7 @@ class AuthService:
         Used to track who did what (logins, user creation, role changes, settings updates).
         """
         log = SysAuditLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             username=username,
             role=role,
             action=action,
@@ -71,7 +71,7 @@ class AuthService:
             return None
 
         # Update last login timestamp
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(timezone.utc)
         self._db.commit()
 
         self.log_audit(
@@ -135,7 +135,7 @@ class AuthService:
             hashed_password=hashed,
             role=role,
             is_active=True,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(timezone.utc)
         )
         self._db.add(user)
         self._db.commit()

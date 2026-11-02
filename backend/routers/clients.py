@@ -13,7 +13,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
+from backend.db.models import SysUser
 from backend.services.client_service import ClientService
+from backend.services.auth_service import AuthService
 from backend.security import get_current_user
 
 router = APIRouter(
@@ -38,8 +40,22 @@ def _get_service(db: Session = Depends(get_db)) -> ClientService:
 def get_client_by_pan(
     pan: str,
     svc: ClientService = Depends(_get_service),
+    current_user: SysUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-    result = svc.get_client_by_pan(pan)
+    clean_pan = pan.strip().upper()
+    result = svc.get_client_by_pan(clean_pan)
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
+
+    # Compliance audit logging: record every PII inspection
+    auth_svc = AuthService(db)
+    auth_svc.log_audit(
+        username=current_user.username,
+        role=current_user.role,
+        action="LOOKUP_CLIENT_PAN",
+        target=clean_pan,
+        details=f"Retrieved Client 360 KYC & depository profile for PAN {clean_pan}"
+    )
+
     return result

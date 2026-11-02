@@ -58,7 +58,7 @@ const defaultGuestUser: UserProfile = {
 
 const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
   ? process.env.NEXT_PUBLIC_API_URL
-  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
+  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8005");
 const AUTH_API = `${BASE_HOST}/api/v1/auth`;
 
 const UserContext = createContext<UserContextType>({

@@ -16,7 +16,7 @@ import hashlib
 import hmac
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status, Header
@@ -26,7 +26,16 @@ from sqlalchemy.orm import Session
 from backend.db.database import get_db
 from backend.db.models import SysUser
 
-SECRET_KEY = os.getenv("PVASF_SECRET_KEY", "pvasf_surveillance_enterprise_secure_secret_2026")
+DEFAULT_DEV_SECRET = "pvasf_surveillance_enterprise_secure_secret_2026"
+SECRET_KEY = os.getenv("PVASF_SECRET_KEY", DEFAULT_DEV_SECRET)
+ENV_MODE = os.getenv("PVASF_ENV", os.getenv("ENVIRONMENT", "development")).lower()
+
+if ENV_MODE in ("production", "prod"):
+    if not os.getenv("PVASF_SECRET_KEY") or SECRET_KEY == DEFAULT_DEV_SECRET:
+        raise RuntimeError(
+            "FATAL SECURITY FAILURE: PVASF_SECRET_KEY must be set to a cryptographically secure key in production."
+        )
+
 ALGORITHM = "HS256"
 TOKEN_EXPIRE_HOURS = 24
 
@@ -78,7 +87,7 @@ def create_access_token(data: dict) -> str:
     The client sends this token in the 'Authorization: Bearer <token>' header.
     """
     payload = data.copy()
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload["iat"] = now.timestamp()
     payload["exp"] = (now + timedelta(hours=TOKEN_EXPIRE_HOURS)).timestamp()
     raw_payload = json.dumps(payload, sort_keys=True)
@@ -101,7 +110,7 @@ def decode_access_token(token: str) -> Optional[dict]:
         if not hmac.compare_digest(signature, expected_sig):
             return None
         payload = json.loads(raw_payload)
-        if payload.get("exp", 0) < datetime.utcnow().timestamp():
+        if payload.get("exp", 0) < datetime.now(timezone.utc).timestamp():
             return None
         return payload
     except Exception:

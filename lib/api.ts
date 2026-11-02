@@ -180,19 +180,24 @@ export interface ClientDetail {
 
 // Base API URLs pointing to FastAPI backend endpoints
 export function getBaseHost(): string {
+  // In the browser, always use same-origin to route through Next.js rewrite proxy (/api/*)
+  if (typeof window !== "undefined") {
+    return window.location.origin;
+  }
   if (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) {
     return process.env.NEXT_PUBLIC_API_URL;
   }
-  return typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8000";
+  return "http://127.0.0.1:8005";
 }
 
 export function createApiUrl(path: string): URL {
   return new URL(path, getBaseHost());
 }
 
-const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
-  ? process.env.NEXT_PUBLIC_API_URL
-  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8000");
+// In browser, empty string "" enables clean same-origin relative paths (/api/v1/...)
+const BASE_HOST = typeof window !== "undefined"
+  ? ""
+  : ((typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL) || "http://127.0.0.1:8005");
 const API_BASE = `${BASE_HOST}/api/v1/surveillance`;
 const TRADES_API_BASE = `${BASE_HOST}/api/v1/trades`;
 const CLIENTS_API_BASE = `${BASE_HOST}/api/v1/clients`;
@@ -246,8 +251,9 @@ export function getAuthHeaders(extraHeaders: Record<string, string> = {}): Recor
 }
 
 /**
- * Ensures an active auth token exists. If none is found or token is expired,
- * transparently logs in as the default analyst (single-flight across all concurrent calls).
+ * Ensures an active auth token exists.
+ * In development / demo mode, auto-provisions a session if no token is present and
+ * the user has not explicitly clicked 'Sign Out'.
  */
 export async function ensureAuthToken(): Promise<string | null> {
   if (typeof window === "undefined") return null;
@@ -257,6 +263,19 @@ export async function ensureAuthToken(): Promise<string | null> {
     return token;
   }
 
+  // If user explicitly clicked Sign Out, do not automatically re-authenticate
+  const wasLoggedOut = localStorage.getItem("pvasf_logged_out") === "true";
+  if (wasLoggedOut) {
+    return null;
+  }
+
+  // On internal networks, auto-login is active by default for seamless analyst workflow,
+  // unless explicitly disabled via NEXT_PUBLIC_DISABLE_AUTO_LOGIN=true.
+  const allowAutoLogin = process.env.NEXT_PUBLIC_DISABLE_AUTO_LOGIN !== "true";
+  if (!allowAutoLogin) {
+    return null;
+  }
+
   // If a login request is already in-flight, return the existing promise
   if (activeAuthPromise) {
     return activeAuthPromise;
@@ -264,6 +283,9 @@ export async function ensureAuthToken(): Promise<string | null> {
 
   activeAuthPromise = (async () => {
     try {
+      const demoUser = process.env.NEXT_PUBLIC_DEMO_USERNAME || "arao_analyst";
+      const demoPass = process.env.NEXT_PUBLIC_DEMO_PASSWORD || "arao123";
+
       // Retry up to 3 times to account for backend startup delays
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
@@ -272,7 +294,7 @@ export async function ensureAuthToken(): Promise<string | null> {
           const res = await fetch(`${BASE_HOST}/api/v1/auth/login`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: "arao_analyst", password: "arao123" }),
+            body: JSON.stringify({ username: demoUser, password: demoPass }),
           });
           if (res.ok) {
             const data = await res.json();
@@ -323,19 +345,37 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  let res: Response;
-  try {
-    res = await fetch(targetUrl, { ...init, headers });
-  } catch (err: any) {
-    if (init?.signal?.aborted || err?.name === "AbortError") {
-      throw err;
-    }
-    // Retry once after transient connection reset / socket hang up
-    await new Promise((r) => setTimeout(r, 300));
+  let res: Response | null = null;
+  let lastErr: any = null;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
     if (init?.signal?.aborted) {
       throw new DOMException("The user aborted a request.", "AbortError");
     }
-    res = await fetch(targetUrl, { ...init, headers });
+    try {
+      res = await fetch(targetUrl, { ...init, headers });
+      break;
+    } catch (err: any) {
+      lastErr = err;
+      if (init?.signal?.aborted || err?.name === "AbortError") {
+        throw err;
+      }
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 350 * (attempt + 1)));
+        continue;
+      }
+    }
+  }
+
+  if (!res) {
+    if (init?.signal?.aborted || lastErr?.name === "AbortError") {
+      throw lastErr;
+    }
+    console.warn(`[fetchWithAuth] Upstream endpoint ${targetUrl} temporarily unreachable, retrying shortly...`);
+    return new Response(JSON.stringify({ error: "Service temporarily unavailable" }), {
+      status: 503,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   if (res.status === 401 && typeof window !== "undefined") {
@@ -345,7 +385,11 @@ export async function fetchWithAuth(url: string, init?: RequestInit): Promise<Re
     token = await ensureAuthToken();
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;
-      res = await fetch(targetUrl, { ...init, headers });
+      try {
+        res = await fetch(targetUrl, { ...init, headers });
+      } catch (authRetryErr) {
+        // Silently preserve res if retry fails
+      }
     }
   } else if ((res.status === 500 || res.status === 502 || res.status === 503 || res.status === 504) && typeof window !== "undefined") {
     if (init?.signal?.aborted) return res;
@@ -371,7 +415,7 @@ export async function fetchAvailableTradingDates(): Promise<string[]> {
     if (!res.ok) return [];
     return await res.json();
   } catch (err) {
-    console.error("[fetchAvailableTradingDates] Failed to fetch dates:", err);
+    console.warn("[fetchAvailableTradingDates] Failed to fetch dates:", err);
     return [];
   }
 }
@@ -393,7 +437,7 @@ export async function fetchWatchlist(
     const res = await fetchWithAuth(url.toString(), { cache: "no-store", signal });
     if (!res.ok) {
       if (signal?.aborted) return [];
-      console.error(`[fetchWatchlist] API returned status ${res.status}`);
+      console.warn(`[fetchWatchlist] API returned status ${res.status}`);
       return [];
     }
     
@@ -412,7 +456,7 @@ export async function fetchWatchlist(
       // Intentionally aborted by newer user navigation; silently exit
       return [];
     }
-    console.error("[fetchWatchlist] Failed to fetch watchlist:", err);
+    console.warn("[fetchWatchlist] Watchlist request transient error, falling back gracefully:", err);
     return [];
   }
 }
@@ -535,7 +579,7 @@ export async function fetchScripParticipants(scripId: string, asOfDate?: string,
 
 export async function fetchTradeLog(symbol: string, exchange?: ExchangeScope): Promise<TradeRow[]> {
   const cleanId = symbol.toUpperCase();
-  const url = createApiUrl(`${TRADES_API_BASE}/?symbol=${cleanId}&page_size=100`);
+  const url = createApiUrl(`${TRADES_API_BASE}?symbol=${cleanId}&page_size=100`);
   if (exchange && exchange !== "ALL") {
     url.searchParams.set("exchange", exchange);
   }

@@ -4,7 +4,7 @@
 import fs from "fs";
 import path from "path";
 
-const BACKEND_HOST = process.env.BACKEND_HOST || "http://127.0.0.1:8000";
+const BACKEND_HOST = process.env.BACKEND_HOST || "http://127.0.0.1:8005";
 const FRONTEND_HOST = process.env.FRONTEND_HOST || "http://127.0.0.1:3000";
 
 function assert(condition, message) {

@@ -1,7 +1,7 @@
 // scripts/test_frontend_api.mjs
 // Verifies all frontend data contracts against live backend API (port 8000)
 
-const BASE = "http://127.0.0.1:8000";
+const BASE = process.env.TEST_URL || "http://127.0.0.1:3001";
 
 async function runTests() {
   console.log("=== FRONTEND API CONTRACT & ENDPOINT VERIFICATION ===\n");
@@ -76,7 +76,7 @@ async function runTests() {
   });
 
   // 10. Trade Surveillance Log
-  const tradesRes = await fetch(`${BASE}/api/v1/trades/?symbol=${sym}&page=1&page_size=50`, { headers: authHeaders });
+  const tradesRes = await fetch(`${BASE}/api/v1/trades?symbol=${sym}&page=1&page_size=50`, { headers: authHeaders });
   const trades = await tradesRes.json();
   console.log(`✓ 10. Trade surveillance matches: ${trades.data.length} trades returned (Total: ${trades.pagination.total})`);
   if (trades.data.length > 0) {

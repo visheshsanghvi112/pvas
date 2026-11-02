@@ -5,7 +5,7 @@ import json
 import re
 import ast
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Any, Optional, cast
 import numpy as np
 import pandas as pd
@@ -129,7 +129,7 @@ class EODSurveillanceService:
             payload = {
                 "weights": self.config.weights,
                 "threshold": self.config.threshold,
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.now(timezone.utc).isoformat()
             }
             with open(CONFIG_PATH, "w") as f:
                 json.dump(payload, f, indent=2)
@@ -707,42 +707,67 @@ class EODSurveillanceService:
                     pans_180_sum = sum(r.unique_holding_pans or 0 for r in prior_records)
                     unique_pans_holding_180 = pans_180_sum if pans_180_sum > 0 else None
                 else:
-                    unique_pans_holding_180 = unique_pans_holding_t
+                    unique_pans_holding_180 = None
 
             # Calculate real average daily trading PANs directly from participant_daily_trades
-            subq_15 = (
-                db.query(
-                    ParticipantDailyTrade.trade_date,
-                    func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
-                )
+            trade_dates_records = (
+                db.query(ParticipantDailyTrade.trade_date)
                 .filter(ParticipantDailyTrade.symbol == ticker)
                 .group_by(ParticipantDailyTrade.trade_date)
                 .order_by(ParticipantDailyTrade.trade_date.desc())
-                .limit(15)
-                .subquery()
+                .all()
             )
-            res_15 = db.query(func.avg(subq_15.c.daily_pans)).scalar()
-            if res_15 is not None:
-                avg_trading_pans_15d = round(float(res_15), 1)
+            distinct_trade_dates = [r[0] for r in trade_dates_records] if trade_dates_records else []
 
-            subq_180 = (
-                db.query(
-                    ParticipantDailyTrade.trade_date,
-                    func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
+            if distinct_trade_dates:
+                # 15D investigation window dates (up to latest 15 distinct trade sessions)
+                window_15_dates = distinct_trade_dates[:15]
+                subq_15 = (
+                    db.query(
+                        ParticipantDailyTrade.trade_date,
+                        func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
+                    )
+                    .filter(
+                        ParticipantDailyTrade.symbol == ticker,
+                        ParticipantDailyTrade.trade_date.in_(window_15_dates)
+                    )
+                    .group_by(ParticipantDailyTrade.trade_date)
+                    .subquery()
                 )
-                .filter(ParticipantDailyTrade.symbol == ticker)
-                .group_by(ParticipantDailyTrade.trade_date)
-                .subquery()
-            )
-            res_180 = db.query(func.avg(subq_180.c.daily_pans)).scalar()
-            if res_180 is not None:
-                avg_trading_pans_180d = round(float(res_180), 1)
+                res_15 = db.query(func.avg(subq_15.c.daily_pans)).scalar()
+                if res_15 is not None:
+                    avg_trading_pans_15d = round(float(res_15), 1)
 
+                # 180D historical baseline requires trade sessions outside/prior to the 15D alert window.
+                # If only the 15D alert window was ingested (<= 15 sessions), no historical baseline exists in participant feed.
+                baseline_dates = distinct_trade_dates[15:180]
+                if baseline_dates:
+                    subq_180 = (
+                        db.query(
+                            ParticipantDailyTrade.trade_date,
+                            func.count(func.distinct(ParticipantDailyTrade.client_pan)).label("daily_pans")
+                        )
+                        .filter(
+                            ParticipantDailyTrade.symbol == ticker,
+                            ParticipantDailyTrade.trade_date.in_(baseline_dates)
+                        )
+                        .group_by(ParticipantDailyTrade.trade_date)
+                        .subquery()
+                    )
+                    res_180 = db.query(func.avg(subq_180.c.daily_pans)).scalar()
+                    if res_180 is not None:
+                        avg_trading_pans_180d = round(float(res_180), 1)
+
+            # Upstream quarterly filing baseline fallback if real participant trade history prior to 15D is pending
+            if avg_trading_pans_180d is None and sh_records:
+                for r in sh_records:
+                    if r.avg_daily_trading_pans:
+                        avg_trading_pans_180d = float(r.avg_daily_trading_pans)
+                        break
             if avg_trading_pans_15d is None and sh_records:
                 for r in sh_records:
                     if r.avg_daily_trading_pans:
-                        avg_trading_pans_15d = r.avg_daily_trading_pans
-                        avg_trading_pans_180d = r.avg_daily_trading_pans
+                        avg_trading_pans_15d = float(r.avg_daily_trading_pans)
                         break
 
         except Exception as e:
@@ -766,6 +791,7 @@ class EODSurveillanceService:
 
     def _get_announcements(self, ticker: str) -> List[Dict[str, Any]]:
         """Retrieves official corporate announcements from Database for the given ticker."""
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import CorporateEventsFeed
@@ -774,7 +800,6 @@ class EODSurveillanceService:
                          .filter(CorporateEventsFeed.symbol == ticker)\
                          .order_by(CorporateEventsFeed.announcement_date.desc())\
                          .all()
-            db.close()
             if ann_list:
                 return [
                     {
@@ -787,6 +812,9 @@ class EODSurveillanceService:
                 ]
         except Exception as e:
             print(f"[surveillance_service] Announcements DB lookup error: {e}")
+        finally:
+            if db:
+                db.close()
 
         return []
 
@@ -805,7 +833,13 @@ class EODSurveillanceService:
             df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
 
         final_close = float(df_t["Close"].iloc[-1]) if not df_t.empty else 100.0
-        total_vol = float(df_t["Volume"].tail(window_days).sum()) if not df_t.empty else 1000000.0
+        if not df_t.empty:
+            total_vol = float(df_t["Volume"].tail(window_days).sum())
+        elif hasattr(self, "current_trades_df") and self.current_trades_df is not None and not self.current_trades_df.empty:
+            t_sub = self.current_trades_df[self.current_trades_df["Ticker"] == ticker] if "Ticker" in self.current_trades_df.columns else pd.DataFrame()
+            total_vol = float(t_sub["BuyVolume"].sum()) if not t_sub.empty and "BuyVolume" in t_sub.columns else 0.0
+        else:
+            total_vol = 0.0
         
         # Actual window Net Stock Price Movement (Close_T - Close_{T-window_days}) per PVASF_CORE_SPEC 4.1
         if len(df_t) >= (window_days + 1):
@@ -860,6 +894,7 @@ class EODSurveillanceService:
 
         # Resolve legal entity / individual names from ClientIdentityMaster
         pan_names: Dict[str, str] = {}
+        db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import ClientIdentityMaster
@@ -889,9 +924,11 @@ class EODSurveillanceService:
                 for pan_code, full_name in matches:
                     if pan_code and full_name:
                         pan_names[pan_code] = full_name
-            db.close()
         except Exception as e:
             print(f"[surveillance_service] PAN name lookup error: {e}")
+        finally:
+            if db:
+                db.close()
 
         return {
             "ticker": ticker,
@@ -899,7 +936,7 @@ class EODSurveillanceService:
                 {
                     "participant": row["PAN"],
                     "name": pan_names.get(row["PAN"], row.get("Name", "Unknown Entity")),
-                    "contribution": round((row["LTPContribution"] / tot_pos_ltp) * 100, 2),
+                    "contribution": round((row["LTPContribution"] / (tot_pos_ltp if float(row.get("LTPContribution", 0)) >= 0 else tot_neg_ltp)) * 100, 2),
                     "scrip_movement_contribution_pct": round((float(row.get("LTPContribution", 0)) / scrip_15d_price_change) * 100, 2) if scrip_15d_price_change > 0.05 else None,
                     "net_val": round(float(row.get("LTPContribution", 0)), 2),
                     "pos_val": round(float(row.get("PosContVal", max(0.0, float(row.get("LTPContribution", 0))))), 2),
@@ -1068,21 +1105,21 @@ class EODSurveillanceService:
 
             quarter_keys = sorted(quarters.keys(), reverse=True)
             latest_q = quarter_keys[0] if quarter_keys else None
-            prior_q = quarter_keys[-1] if len(quarter_keys) > 1 else latest_q
+            prior_q = quarter_keys[-1] if len(quarter_keys) > 1 else None
 
             prom_latest = [r for r in main_records if r.quarter_code == latest_q and "PROMOTER" in (r.category_type or "").upper()] if latest_q else []
             prom_prior = [r for r in main_records if r.quarter_code == prior_q and "PROMOTER" in (r.category_type or "").upper()] if prior_q else []
             promoter_shares_t = sum(p.total_shares_count or 0 for p in prom_latest) if prom_latest else None
             promoter_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in prom_latest), 2) if prom_latest else None
-            promoter_shares_180 = sum(p.total_shares_count or 0 for p in prom_prior) if prom_prior else promoter_shares_t
-            promoter_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in prom_prior), 2) if prom_prior else promoter_pct_t
+            promoter_shares_180 = sum(p.total_shares_count or 0 for p in prom_prior) if prom_prior else None
+            promoter_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in prom_prior), 2) if prom_prior else None
 
             top1_latest = [r for r in main_records if r.quarter_code == latest_q and "TOP_1_PCT" in (r.category_type or "").upper()] if latest_q else []
             top1_prior = [r for r in main_records if r.quarter_code == prior_q and "TOP_1_PCT" in (r.category_type or "").upper()] if prior_q else []
             top1_shares_t = sum(p.total_shares_count or 0 for p in top1_latest) if top1_latest else None
             top1_pct_t = round(sum(float(p.holding_percentage or 0.0) for p in top1_latest), 2) if top1_latest else None
-            top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else top1_shares_t
-            top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else top1_pct_t
+            top1_shares_180 = sum(p.total_shares_count or 0 for p in top1_prior) if top1_prior else None
+            top1_pct_180 = round(sum(float(p.holding_percentage or 0.0) for p in top1_prior), 2) if top1_prior else None
 
             major_shareholders = [
                 {

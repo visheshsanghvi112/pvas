@@ -107,7 +107,7 @@ function DashboardContent() {
         controller.signal
       );
       if (!controller.signal.aborted) {
-        if (data && data.length > 0) {
+        if (data) {
           setScrips(data);
         }
       }

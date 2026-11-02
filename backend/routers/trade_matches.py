@@ -37,6 +37,10 @@ def _get_service(db: Session = Depends(get_db)) -> TradeMatchesService:
 # ── 1. Paginated filtered trade list ─────────────────────────────────────────
 
 @router.get(
+    "",
+    include_in_schema=False,
+)
+@router.get(
     "/",
     summary="List trades with filters, pagination, and sorting",
     response_description="Paginated trade records",

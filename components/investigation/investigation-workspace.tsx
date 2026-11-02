@@ -20,8 +20,7 @@ import {
   FileSpreadsheet,
   Clock,
   ChevronLeft,
-  ChevronRight,
-  Eye
+  ChevronRight
 } from "lucide-react";
 import { RiskBadge } from "@/components/ui/badge";
 import { TradingDatePicker } from "@/components/ui/trading-date-picker";
@@ -318,7 +317,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
     return () => {
       isCancelled = true;
     };
-  }, [symbol, selectedDate, windowDays, exchange]);
+  }, [symbol, selectedDate, windowDays, exchange, availableDates.length]);
 
   useEffect(() => {
     if (selectedPan) {
@@ -532,21 +531,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleTriggerPdf(true)}
+                  onClick={() => handleTriggerPdf(false)}
                   className="h-8 text-xs font-bold px-3.5 rounded-xl border border-blue-300/80 bg-blue-50 text-blue-700 hover:bg-blue-100 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
-                  title="Download A4 PDF Dossier (Instant Print / Save as PDF)"
+                  title="Preview and Export Comprehensive Surveillance Dossier (PDF)"
                 >
                   <FileDown className="h-3.5 w-3.5 text-blue-600" />
-                  <span>Download PDF</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleTriggerPdf(false)}
-                  className="h-8 text-xs font-semibold px-3 rounded-xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-2xs transition-colors"
-                  title="Preview Full Dossier"
-                >
-                  <Eye className="h-3.5 w-3.5 text-slate-500" />
-                  <span>Preview</span>
+                  <span>Export Dossier (PDF)</span>
                 </button>
               </div>
             </div>
@@ -648,48 +638,47 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               return (
                 <button
                   key={tab}
+                  type="button"
                   onClick={() => setActiveTab(tab)}
                   className={cn(
-                    "whitespace-nowrap px-4 py-2 text-xs font-bold transition-all rounded-lg cursor-pointer flex items-center gap-1.5 group relative",
+                    "whitespace-nowrap px-4 py-2 text-xs font-bold transition-all rounded-lg cursor-pointer flex items-center gap-1.5",
                     isTabActive
                       ? "bg-white text-slate-900 shadow-sm border border-slate-200/80"
                       : "text-slate-600 hover:text-slate-900 hover:bg-white/50 font-medium"
                   )}
                 >
                   <span>{tab}</span>
-
-                  {/* Inline Fullscreen trigger on Hover */}
-                  <span
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsFullscreen(!isFullscreen);
-                    }}
-                    title={isFullscreen ? "Exit Fullscreen (ESC)" : `Expand ${tab} to Fullscreen`}
-                    className={cn(
-                      "inline-flex items-center justify-center p-1 rounded-md transition-all duration-200",
-                      "opacity-60 hover:opacity-100 hover:bg-slate-200/80 text-slate-500 hover:text-blue-700",
-                      isFullscreen && isTabActive && "opacity-100 bg-blue-100 text-blue-700"
-                    )}
-                  >
-                    {isFullscreen && isTabActive ? (
-                      <Minimize2 className="w-3.5 h-3.5" />
-                    ) : (
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    )}
-                  </span>
                 </button>
               );
             })}
           </div>
 
-          {isFullscreen && (
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
-              <span className="font-mono bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded">{detail.symbol}</span>
-              <span className="text-slate-400">·</span>
-              <span>Fullscreen Mode</span>
-              <span className="text-[10px] text-slate-400 font-mono bg-slate-200 px-1.5 py-0.5 rounded">ESC to exit</span>
-            </div>
-          )}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              title={isFullscreen ? "Exit Fullscreen (ESC)" : "Expand Workspace to Fullscreen"}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer shadow-2xs",
+                isFullscreen
+                  ? "bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100"
+                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300"
+              )}
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Exit Fullscreen</span>
+                  <span className="text-[10px] text-slate-400 font-mono bg-slate-200/80 px-1 py-0.5 rounded">ESC</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Expand Workspace</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -766,13 +755,13 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
         {activeTab === "Shareholders" && (
           <div className="space-y-6">
             {(() => {
-              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? detail.shareholders?.unique_pans_15d ?? null;
-              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? detail.shareholders?.unique_pans_180d ?? null;
+              const unique_pans_t = detail.shareholders?.unique_pans_holding_t ?? null;
+              const unique_pans_180 = detail.shareholders?.unique_pans_holding_180 ?? null;
               const unique_pans_diff = (unique_pans_t != null && unique_pans_180 != null) ? unique_pans_t - unique_pans_180 : null;
               const unique_pans_pct_diff = (unique_pans_diff != null && unique_pans_180 != null && unique_pans_180 > 0) ? Number(((unique_pans_diff / unique_pans_180) * 100).toFixed(1)) : null;
 
-              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? detail.shareholders?.unique_pans_15d ?? null;
-              const avg_pans_180d = detail.shareholders?.avg_trading_pans_180d ?? detail.shareholders?.unique_pans_180d ?? null;
+              const avg_pans_15d = detail.shareholders?.avg_trading_pans_15d ?? null;
+              const avg_pans_180d = detail.shareholders?.avg_trading_pans_180d ?? null;
               const avg_pans_diff = (avg_pans_15d != null && avg_pans_180d != null) ? avg_pans_15d - avg_pans_180d : null;
               const avg_pans_pct_diff = (avg_pans_diff != null && avg_pans_180d != null && avg_pans_180d > 0) ? Number(((avg_pans_diff / avg_pans_180d) * 100).toFixed(1)) : null;
 
@@ -789,8 +778,9 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
               const top1_pct_diff = (top1_pct_t != null && top1_pct_180 != null) ? Number((top1_pct_t - top1_pct_180).toFixed(2)) : null;
 
               const total_shares_approx = (promoter_pct_t != null && promoter_pct_t > 0 && promoter_shares_t != null) ? Math.round(promoter_shares_t / (promoter_pct_t / 100)) : null;
+              const total_shares_approx_180 = (promoter_pct_180 != null && promoter_pct_180 > 0 && promoter_shares_180 != null) ? Math.round(promoter_shares_180 / (promoter_pct_180 / 100)) : total_shares_approx;
               const public_shares_t = (total_shares_approx != null && promoter_shares_t != null) ? Math.max(0, total_shares_approx - promoter_shares_t) : null;
-              const public_shares_180 = (total_shares_approx != null && promoter_shares_180 != null) ? Math.max(0, total_shares_approx - promoter_shares_180) : null;
+              const public_shares_180 = (total_shares_approx_180 != null && promoter_shares_180 != null) ? Math.max(0, total_shares_approx_180 - promoter_shares_180) : null;
               const public_pct_t = promoter_pct_t != null ? Number((100 - promoter_pct_t).toFixed(2)) : null;
               const public_pct_180 = promoter_pct_180 != null ? Number((100 - promoter_pct_180).toFixed(2)) : null;
               const public_pct_diff = (public_pct_t != null && public_pct_180 != null) ? Number((public_pct_t - public_pct_180).toFixed(2)) : null;
@@ -1390,12 +1380,12 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                   </div>
 
 
-                  {/* Row 3: Net P&L — Top Beneficiaries */}
+                  {/* Row 3: Realized P&L — Top Beneficiaries */}
                   <Card>
                     <SectionHeader
-                      title="Net P&L — Top Trading Beneficiaries"
-                      subtitle="Net realized & unrealized gainers/position holders in 15D window"
-                      info="Net trading profit or loss (sells minus buys plus current holdings valued at latest close) over the 15-day window to identify who made money."
+                      title="Realized P&L — Top Trading Beneficiaries"
+                      subtitle="Top cash gainers with closed/matched trades (bought & sold) in 15D window"
+                      info="Identifies participants who both bought and sold shares during the 15-day window and extracted net cash trading profits. Long-term position accumulators who have not sold are excluded to eliminate false positives."
                     />
                     <DataTable
                       minWidth="min-w-[600px]"
@@ -1404,7 +1394,7 @@ export function InvestigationWorkspace({ symbol }: { symbol: string }) {
                       headers={[
                         <span key="h-name" className="whitespace-nowrap">PAN Holder Name</span>,
                         <span key="h-pnlpan" className="inline-flex items-center gap-1 whitespace-nowrap">Client PAN</span>,
-                        <span key="h-pnl" className="inline-flex items-center gap-1 whitespace-nowrap">Net P&L (₹) <InfoTooltip text="Total profit or loss generated by this participant during the 15-day observation window." /></span>,
+                        <span key="h-pnl" className="inline-flex items-center gap-1 whitespace-nowrap">Realized P&L (₹) <InfoTooltip text="Net cash profit realized on matched buy and sell trades during the 15-day observation window." /></span>,
                         <span key="h-bvol" className="inline-flex items-center gap-1 whitespace-nowrap">Buy Vol <InfoTooltip text="Total shares bought by this participant during the 15-day window." /></span>,
                         <span key="h-svol" className="inline-flex items-center gap-1 whitespace-nowrap">Sell Vol <InfoTooltip text="Total shares sold by this participant during the 15-day window." /></span>
                       ]}

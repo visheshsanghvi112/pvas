@@ -261,7 +261,7 @@ class TestProprietaryLeakPrevention:
         r"\b(AGG_|FACT_|DIM_|DECL_|ASD_|ACSD_|APPD_|DDCL_|FMSH_|FSHG_|FPRH_|FPUH_|FCAC_|FCDF_|FTRD_)\w*",
         re.IGNORECASE
     )
-    EXCLUDE_DIRS = {".git", "node_modules", ".next", "agent_reference", "__pycache__"}
+    EXCLUDE_DIRS = {".git", "node_modules", ".next", "agent_reference", "__pycache__", ".venv", "venv", ".pytest_cache"}
 
     def test_zero_warehouse_naming_leaks_in_active_code(self):
         """Scans all active code in backend, components, lib, app for proprietary warehouse abbreviations."""
@@ -436,4 +436,77 @@ class TestFastAPIEndpoints:
 
         resp = self.client.get("/api/v1/surveillance/dates", headers={"Authorization": f"Bearer {tampered_token}"})
         assert resp.status_code == 401, "Tampered token must be rejected with 401 Unauthorized"
+
+
+class TestSecurityHardenings:
+    """Validates the pragmatic security protections added across API boundaries."""
+
+    @classmethod
+    def setup_class(cls):
+        from fastapi.testclient import TestClient
+        from backend.main import app
+        cls.client = TestClient(app)
+
+    def test_eod_upload_rejects_disallowed_extension(self):
+        """File upload rejects non-spreadsheet extensions (e.g. .sh, .py, .exe)."""
+        login_resp = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "vishesh123"})
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Upload a malicious script
+        files = {"file": ("exploit.sh", b"echo 'bad script'", "text/plain")}
+        resp = self.client.post("/api/v1/surveillance/upload-eod", files=files, headers=headers)
+        assert resp.status_code == 400, "Non-spreadsheet file upload must be rejected with 400"
+        assert "Invalid file format" in resp.json()["detail"]
+
+    def test_pan_lookup_generates_audit_log(self):
+        """Viewing client PAN & Demat details creates a tamper-evident compliance audit log."""
+        login_resp = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "vishesh123"})
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Lookup a PAN
+        pan = "HWFTM1488X"
+        resp = self.client.get(f"/api/v1/clients/pan/{pan}", headers=headers)
+        assert resp.status_code == 200
+
+        # Verify audit trail contains the lookup
+        audit_resp = self.client.get("/api/v1/auth/audit-logs?limit=5", headers=headers)
+        assert audit_resp.status_code == 200
+        logs = audit_resp.json()
+        lookup_entry = next((l for l in logs if l.get("action") == "LOOKUP_CLIENT_PAN" and l.get("target") == pan), None)
+        assert lookup_entry is not None, "PAN lookup must be recorded in compliance audit log"
+        assert lookup_entry["username"] == "vishesh_admin"
+
+    def test_login_rate_limiter_throttles_excessive_failures(self):
+        """Repeated invalid password attempts triggers HTTP 429 Too Many Requests."""
+        from backend.routers.auth import _rate_limiter
+        _rate_limiter.record_success("testclient")
+
+        # Send failed login attempts up to max_attempts
+        for _ in range(_rate_limiter.max_attempts):
+            r = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "wrong_password"})
+            assert r.status_code == 401
+
+        # The next attempt must be locked out with HTTP 429
+        blocked = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "wrong_password"})
+        assert blocked.status_code == 429, "Excessive failed logins must be rate-limited with HTTP 429"
+        assert "Too many failed login attempts" in blocked.json()["detail"]
+
+        # Reset limiter for subsequent tests
+        _rate_limiter.record_success("testclient")
+
+    def test_eod_upload_rejects_oversized_payload(self):
+        """Files exceeding 50 MB are halted and rejected with HTTP 413 Payload Too Large."""
+        login_resp = self.client.post("/api/v1/auth/login", json={"username": "vishesh_admin", "password": "vishesh123"})
+        token = login_resp.json()["access_token"]
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # 50 MB + 2KB payload
+        oversized_data = b"date,open,high,low,close,volume\n" + (b"0" * (50 * 1024 * 1024 + 2048))
+        files = {"file": ("massive_trade.csv", oversized_data, "text/csv")}
+        resp = self.client.post("/api/v1/surveillance/upload-eod", files=files, headers=headers)
+        assert resp.status_code == 413, "Oversized upload must be rejected with 413 Payload Too Large"
+        assert "exceeds maximum allowed upload size" in resp.json()["detail"]
+
 

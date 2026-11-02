@@ -25,14 +25,14 @@ If the composite score $S_{\text{final}} \ge 60.0$, the security is shortlisted 
 
 | Documentation File | Target Role | Primary Purpose & Contents |
 | :--- | :--- | :--- |
-| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Full-Stack Engineers, System Architects, Compliance Leads | **Master System Architecture & Codebase Map (v10.1.0)**.<br/>Details full file-by-file module directory, 15-table warehouse (158 columns, 853,157+ genuine records), 26 API routes, RBAC permissions, UI component architecture, dual Excel/PDF export engines, and data lineage. |
+| **[`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md)** | Full-Stack Engineers, System Architects, Compliance Leads | **Master System Architecture & Codebase Map (v11.0.0)**.<br/>Details full file-by-file module directory, 15-table warehouse (158 columns, 854,061+ genuine records), 26 API routes, RBAC permissions, UI component architecture, dual Excel/PDF export engines, and data lineage. |
 | **[`surveillance_schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/surveillance_schema.sql)** | Data Engineers, Upstream Feed Teams | **Clean ANSI SQL Database Schema & Reference DDL**.<br/>Production ANSI SQL schema defining all 15 warehouse tables (158 columns), indexes, foreign keys, and 3 analytical views. |
 | **[`DATA_FEED_MAPPING_AUDIT.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_FEED_MAPPING_AUDIT.md)** | Data Architects, Upstream Data Engineering | **Data Feed Mapping Audit Matrix**.<br/>Exhaustive field-by-field mapping between upstream physical Excel files and the 15 normalized relational tables. |
 | **[`DATASET_OVERVIEW.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATASET_OVERVIEW.md)** | Data Architects, Compliance Auditors | **Authoritative Dataset Catalog**.<br/>Documents all 5 delivered Excel datasets (399,572 cumulative source records across 2,191 scrips and 179 sessions). |
 | **[`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md)** | Data Architects, Engineers & Surveillance Operations | **Data Request Specification**.<br/>Defines functional data contracts, analytical calculation rules, and field-level requirements across all 8 warehouse modules. |
-| **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)** | Quantitative Analysts, Surveillance Modelers | **Anomaly Metric Formulas & Scoring Rules**.<br/>Formal mathematical specifications, statistical distributions, circuit persistence logic, and 180D breakout conditions. |
-| **[`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py)** | QA Engineers, Compliance Auditors | **End-to-End Verification Test Suite**.<br/>15 automated tests validating DB integrity, views, leak prevention, math scoring, live API endpoints, and Excel exports. |
-| **[`tests/test_mathematical_edge_cases.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_mathematical_edge_cases.py)** | Quantitative Analysts, QA Engineers | **Mathematical & Statistical Edge Cases Test Suite**.<br/>8 automated tests verifying flat prices ($\sigma=0$), zero volume, short-history IPOs, extreme pump spikes, split dilutions, lookahead bias prevention, and cutoff boundaries. |
+| **[`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md)** | Quantitative Analysts, Surveillance Modelers | **Anomaly Metric Formulas & Scoring Rules**.<br/>Formal mathematical specifications, statistical distributions, circuit persistence logic, 180D breakout conditions, and Scrip Alphabet Allotment. |
+| **[`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py)** | QA Engineers, Compliance Auditors | **End-to-End Verification Test Suite**.<br/>22 automated tests with sandbox DB isolation via `tests/conftest.py` validating DB integrity, views, leak prevention, math scoring, edge cases, live API endpoints, rate limiting, and Excel exports. |
+| **[`scripts/cross_verify_data_parity.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/cross_verify_data_parity.py)** | Quantitative Analysts, QA Engineers | **Raw DB vs API Parity Audit Suite**.<br/>Standalone cross-verification script ensuring 100% mathematical and count parity between physical tables and API payloads. |
 
 ---
 
@@ -42,7 +42,7 @@ If the composite score $S_{\text{final}} \ge 60.0$, the security is shortlisted 
 - **Charting Engine**: Recharts (Screener-Style Dual-Axis Master Surveillance Chart with 20 DMA & 50 DMA, Real-Time Crosshair Tracker, Deliverable Volume Ratio, Parameter Radar Chart, 3-Pillar Statistical Deck)
 - **Backend API**: FastAPI (Python 3.9+, Pydantic v2, Uvicorn)
 - **Surveillance Engine**: Pure-Python `pv_alert_surveillance.py` (Vectorized NumPy/Pandas math)
-- **Data Layer**: SQLAlchemy 2.0 ORM with SQLite (Development/Local, 853,157+ genuine physical records) & Enterprise Relational Warehouse (Production MPP)
+- **Data Layer**: SQLAlchemy 2.0 ORM with SQLite (Development/Local, 854,061+ genuine physical records) & Enterprise Relational Warehouse (Production MPP)
 - **Security & Auth**: PBKDF2-HMAC-SHA256 password hashing, Bearer Token Auth, 1-click identity switching modal, RBAC middleware, and immutable compliance audit trail
 
 ---
@@ -51,6 +51,7 @@ If the composite score $S_{\text{final}} \ge 60.0$, the security is shortlisted 
 
 ```
 UI_PVASF/
+├── middleware.ts                           # Next.js 15 SSR Enterprise Security Middleware (Headers, CSP, Routing)
 ├── app/                                    # Next.js App Router Page Routes
 │   ├── page.tsx                            # Executive Surveillance Watchlist Dashboard (Route: /)
 │   ├── analysis/[symbol]/page.tsx          # Single-Stock Forensic Analysis Workspace (Route: /analysis/[symbol])
@@ -59,7 +60,7 @@ UI_PVASF/
 │
 ├── components/                             # Reusable React UI Components
 │   ├── layout/app-shell.tsx                # Main Layout Shell & User Profile Switcher Modal
-│   ├── dashboard/alerts-table.tsx          # Watchlist Table with Row Actions & Filters
+│   ├── dashboard/alerts-table.tsx          # Two-Tier Watchlist Deck with Scrip Alphabet Allotment & Sticky Scrip Column
 │   ├── investigation/                      # Stock Analysis Workspaces, Recharts, Participant Audits
 │   │   ├── charts.tsx                      # UnifiedPriceVolumeChart, ParameterRadarChart, Statistical Deck
 │   │   ├── investigation-workspace.tsx     # 4-Tab Forensic Workspace (Overview, Shareholders, Corporate Actions, Participants)
@@ -72,14 +73,14 @@ UI_PVASF/
 │   └── utils.ts                            # Tailwind CSS Helper Utilities
 │
 ├── backend/                                # FastAPI Python Backend
-│   ├── main.py                             # Server Entrypoint & CORS Setup
-│   ├── security.py                         # Password Hashing & Bearer Token Authentication
+│   ├── main.py                             # Server Entrypoint, Security Headers & CORS Setup
+│   ├── security.py                         # PBKDF2 Hashing (100k rounds) & Bearer Token Authentication
 │   ├── db/                                 # Database Engine, Models & Seeder
 │   │   ├── database.py                     # SQLAlchemy Engine & Session Factory
 │   │   ├── models.py                       # Relational Table ORM Models (15 Clean Tables, 158 Columns)
 │   │   ├── schema.sql                      # Master DDL with 15 Tables & 3 Analytical Views
 │   │   ├── model_config.json               # Active Calibrated Scoring Weights & Cutoff Threshold
-│   │   └── surveillance.db                 # Unified Production SQLite Database (853,157+ Records)
+│   │   └── surveillance.db                 # Unified Production SQLite Database (854,061+ Records)
 │   ├── repositories/                       # Clean Data Access Repositories (Trades, Clients)
 │   ├── routers/                            # REST API Endpoints (`surveillance`, `auth`, `clients`, `trades`)
 │   ├── schemas/                            # Pydantic v2 DTO Request/Response Contracts
@@ -89,20 +90,21 @@ UI_PVASF/
 │   ├── ingest_market_eod.py                # Market EOD Ingestion Pipeline (result_part1/part2.xlsx)
 │   ├── ingest_client_data.py               # Participant Execution Ingestion Pipeline (client_data.xlsx)
 │   ├── ingest_pan_pairs.py                 # Bilateral PAN Pair Ingestion Pipeline (PAN_PAIR_*.xlsx)
+│   ├── cross_verify_data_parity.py         # DB vs API 100% Mathematical Parity Verification Suite
 │   ├── test_frontend_api.mjs               # 14-Contract Frontend API Integration Test Suite
 │   ├── test_frontend_routes.mjs            # Headless Route Rendering Integration Test Suite
 │   └── verify_e2e.mjs                      # Multi-Role End-to-End Verification Runner
 │
-├── tests/                                  # Pytest Test Suites (23 Total Automated Tests)
-│   ├── test_surveillance_e2e.py            # 15 E2E Integrity, Model & Endpoint Tests
-│   └── test_mathematical_edge_cases.py     # 8 Deep Mathematical & Statistical Tests
+├── tests/                                  # Automated Pytest Test Suite (22 Total Tests)
+│   ├── conftest.py                         # Test Database Sandbox Isolation Fixture (sqlite3.backup API)
+│   └── test_surveillance_e2e.py            # 22 E2E Integrity, Model, Endpoint & Security Rate Limiting Tests
 │
 ├── archive/                                # Dedicated Storage for Historical DB Backups & SQL Dumps
 │   └── sql/surveillance_insert.sql         # 1.8 MB Historical Seed Data Dump
 │
 ├── pv_alert_surveillance.py                # Standalone Pure-Python Anomaly Engine & Math Formulas
 ├── surveillance_schema.sql                 # Clean ANSI SQL Database Schema & Views
-├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification (v10.1.0)
+├── SYSTEM_ARCHITECTURE_GUIDE.md            # Master Architecture & Technical Specification (v11.0.0)
 ├── PVASF_CORE_SPEC.md                      # PVASF Anomaly Metric Formulas & Score Mapping
 ├── DATA_REQUEST_SPEC.md                    # Data Feed Specification & Production Contracts
 ├── DATA_FEED_MAPPING_AUDIT.md              # Physical Data Feed to Relational Table Mapping Audit
@@ -122,7 +124,7 @@ If you clone this codebase onto a new machine or store backups externally (e.g.,
 
 | Priority | File Name | Size | Target Location in Project | Role & Importance |
 | :---: | :--- | :---: | :--- | :--- |
-| 🔴 **ESSENTIAL** | **`surveillance.db`** | **145 MB** | `backend/db/surveillance.db` | **Unified Relational Production Database**.<br/>Contains all **853,157+ physical records** across all 15 normalized tables (consolidated OHLCV, 180D baselines, KYC, demat registry, participant trades, counterparty pairs).<br/>**If you have this single file, the entire platform runs immediately with 100% full data without needing any ingestion steps.** |
+| 🔴 **ESSENTIAL** | **`surveillance.db`** | **145 MB** | `backend/db/surveillance.db` | **Unified Relational Production Database**.<br/>Contains all **854,061+ physical records** across all 15 normalized tables (consolidated OHLCV, 180D baselines, KYC, demat registry, participant trades, counterparty pairs).<br/>**If you have this single file, the entire platform runs immediately with 100% full data without needing any ingestion steps.** |
 
 ### 5.2 Upstream Raw Excel Deliverables (Required Only to Re-Run Ingestion Pipelines)
 
@@ -168,10 +170,10 @@ pip install -r backend/requirements.txt
 # 4. Initialize and seed the development SQLite database (if starting fresh without surveillance.db)
 python3 -c "from backend.db.database import init_db, SessionLocal; from backend.db.seed import seed_database; init_db(); db=SessionLocal(); seed_database(db); db.close()"
 
-# 5. Start FastAPI development server (runs on http://127.0.0.1:8000)
-python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
+# 5. Start FastAPI development server (runs on http://127.0.0.1:8005)
+python3 -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8005
 ```
-*Interactive OpenAPI Swagger documentation is available at `http://127.0.0.1:8000/docs`.*
+*Interactive OpenAPI Swagger documentation is available at `http://127.0.0.1:8005/docs`.*
 
 ---
 
@@ -198,7 +200,7 @@ Before committing code changes or deploying updates, internal engineers **must r
 # 1. Verify TypeScript type safety across all React components and API DTOs
 npx tsc --noEmit
 
-# 2. Run Python backend test suite (23 tests: 15 E2E integrity + 8 mathematical edge cases)
+# 2. Run Python backend test suite (22 comprehensive tests with sandbox isolation via tests/conftest.py)
 python3 -m pytest tests/ -v
 
 # 3. Test production Next.js build
@@ -245,7 +247,7 @@ Copy [`.env.example`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/.env.examp
 | `NODE_ENV` | `production` | Environment mode. |
 | `PVASF_SECRET_KEY` | *(Set in `.env`)* | Cryptographic HMAC secret for signing auth session tokens. Generate with `openssl rand -hex 32`. |
 | `DATABASE_URL` | `sqlite:///./backend/db/surveillance.db` | SQLAlchemy database connection string (SQLite for local, or PostgreSQL / MySQL for clustered MPP). |
-| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Backend API URL for the Next.js frontend proxy. |
+| `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8005` | Backend API URL for the Next.js frontend proxy. |
 
 ### 8.4 Default Surveillance Team Accounts (Change in Production)
 | Username | Default Password | Role | Department |

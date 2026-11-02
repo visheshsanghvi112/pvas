@@ -168,7 +168,7 @@ python3 scripts/ingest_client_data.py
 
 ---
 
-## 5. Counterparty Matched Trades (`PAN_PAIR_*.xlsx`)
+## 7. Counterparty Matched Trades (`PAN_PAIR_*.xlsx`)
 
 The exchange provided bilateral counterparty matched trade logs for the top alert scrips in two dedicated Excel files:
 

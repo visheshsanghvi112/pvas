@@ -1,9 +1,9 @@
 # Price-Volume Alert Surveillance Framework (PVASF)
 ## Master System Architecture, Algorithmic Engine & Technical Manual
 
-**Document Version:** 10.1.0 (Production Master Engineering Blueprint — Code-Verified Single Source of Truth)  
-**Target Systems:** Standardized 15-Table Relational Regulatory Data Warehouse (853,157+ Genuine Records, 158 Columns) | FastAPI Surveillance Engine (26 Endpoints) | Next.js 15 Enterprise Compliance Suite | Teradata MPP Enterprise Scale  
-**Scope:** Complete System Topology, Standardized Relational Data Model (15 Tables across 8 Functional Modules, 853,157+ Physical Records [852,773 immutable market/participant/demat/calendar rows + dynamic append-only compliance audit trail], 2,191 Listed Scrips, 179 Trading Sessions, 19 Dynamic Alert Shortlists on 2025-11-03, 13 Historical Triage Cases), 5 Core Mathematical Anomaly Metrics (with Gaussian & Modified Z-Scores), Active Model Configuration Persistence Engine (`backend/db/model_config.json` with Audit Trail Recovery), Calibrated 5-Parameter Equal Scoring ($w_1\dots w_5 = 20\%$) & Triage Cutoff Threshold ($60.0$), 3 Production-Grade Universal Ingestion Pipelines (`scripts/ingest_market_eod.py`, `scripts/ingest_client_data.py`, and `scripts/ingest_pan_pairs.py`), Ingestion of 5 Canonical Exchange Excel Datasets (`result_part1.xlsx`, `result_part2.xlsx`, `client_data.xlsx`, `PAN_PAIR_GUJRAFFIA.xlsx`, `PAN_PAIR_SKMEGGPROD.xlsx`), Participant Forensic Algorithms & Client 360° Demographics Intelligence, 15-Table Warehouse Physical Schemas (158 Columns with `pairwise_ltp_push_value_logic_2`), 3 Analytical Surveillance Views, Complete 26-Endpoint API Service Reference, Dual Dossier Export Engines (5-Sheet Institutional Excel Workbook & Vector-Accurate A4 PDF), Clean UI/UX Blueprint with Dynamic Risk Tiers & Calibrated Cutoffs, Strict Zero-Mock Data Policy with Clean Empty States for Pending Feeds (Shareholding Patterns & Corporate Actions), Pairwise LTP Push Logic 1 & 2 Storage with Clean Volume-Based UI Concentration, Major Shareholders Registry with Substantial Ownership (≥ 5%) Flags, Macro-Scale P&L Beneficiaries (`Cr`/`L`), Clean Date Navigation, RBAC Security, Multi-Stage Automated Verification Suites (`tests/test_surveillance_e2e.py` [15 passing tests], `tests/test_mathematical_edge_cases.py` [8 passing tests], `scripts/test_frontend_api.mjs` [14 passing contracts], `scripts/verify_e2e.mjs`, and `scripts/test_frontend_routes.mjs`), Archival Database Hygiene (`archive/database_backups/`), and Teradata Enterprise Data Warehouse Transition Architecture.  
+**Document Version:** 11.0.0 (Production Master Engineering Blueprint — Code-Verified Single Source of Truth)  
+**Target Systems:** Standardized 15-Table Relational Regulatory Data Warehouse (854,061+ Genuine Records, 158 Columns) | FastAPI Surveillance Engine (26 Endpoints) | Next.js 15 Enterprise Compliance Suite | Teradata MPP Enterprise Scale  
+**Scope:** Complete System Topology, Standardized Relational Data Model (15 Tables across 8 Functional Modules, 854,061+ Physical Records [852,773 immutable market/participant/demat/calendar rows + dynamic append-only compliance audit trail], 2,191 Listed Scrips, 179 Trading Sessions, 19 Dynamic Alert Shortlists on 2025-11-03, 13 Historical Triage Cases), 5 Core Mathematical Anomaly Metrics (with Gaussian & Modified Z-Scores), Active Model Configuration Persistence Engine (`backend/db/model_config.json` with Audit Trail Recovery), Calibrated 5-Parameter Equal Scoring ($w_1\dots w_5 = 20\%$) & Triage Cutoff Threshold ($60.0$), 3 Production-Grade Universal Ingestion Pipelines (`scripts/ingest_market_eod.py`, `scripts/ingest_client_data.py`, and `scripts/ingest_pan_pairs.py`), Ingestion of 5 Canonical Exchange Excel Datasets (`result_part1.xlsx`, `result_part2.xlsx`, `client_data.xlsx`, `PAN_PAIR_GUJRAFFIA.xlsx`, `PAN_PAIR_SKMEGGPROD.xlsx`), Participant Forensic Algorithms & Client 360° Demographics Intelligence, 15-Table Warehouse Physical Schemas (158 Columns with `pairwise_ltp_push_value_logic_2`), 3 Analytical Surveillance Views, Complete 26-Endpoint API Service Reference, Dual Dossier Export Engines (5-Sheet Institutional Excel Workbook & Vector-Accurate A4 PDF), Clean UI/UX Blueprint with Dynamic Risk Tiers & Calibrated Cutoffs, Strict Zero-Mock Data Policy with Clean Empty States for Pending Feeds (Shareholding Patterns & Corporate Actions), Pairwise LTP Push Logic 1 & 2 Storage with Clean Volume-Based UI Concentration, Major Shareholders Registry with Substantial Ownership (≥ 5%) Flags, Macro-Scale P&L Beneficiaries (`Cr`/`L`), Two-Tier Surveillance Toolbar with Scrip Alphabet Allotment Segmented Control (PVASF §2 & §5), Sticky Scrip Column, Clean Date Navigation, RBAC Security & Sliding-Window Rate Limiting, Multi-Stage Automated Verification Suites (`tests/test_surveillance_e2e.py` [22 passing tests with sandbox database isolation via `tests/conftest.py`], `scripts/cross_verify_data_parity.py`, `scripts/test_frontend_api.mjs` [14 passing contracts], `scripts/verify_e2e.mjs`, and `scripts/test_frontend_routes.mjs`), Archival Database Hygiene (`archive/database_backups/`), and Teradata Enterprise Data Warehouse Transition Architecture.  
 **Physical Schema References:** [`surveillance_schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/surveillance_schema.sql) | [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql)  
 **Data Specifications & Audits:** [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md) | [`DATA_FEED_MAPPING_AUDIT.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_FEED_MAPPING_AUDIT.md) | [`DATASET_OVERVIEW.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATASET_OVERVIEW.md)
 
@@ -44,7 +44,7 @@
 11. [Role-Based Access Control (RBAC) & Security Architecture](#11-role-based-access-control-rbac--security-architecture)
    - 11.1 [Operational RBAC Permissions Matrix](#111-operational-rbac-permissions-matrix)
 12. [Engineering Audit, Live Verification & Scaling Architecture](#12-engineering-audit-live-verification--scaling-architecture)
-   - 12.1 [Live Physical Warehouse Scale Audit (853,157+ Genuine Records)](#121-live-physical-warehouse-scale-audit-853157-genuine-records)
+   - 12.1 [Live Physical Warehouse Scale Audit (854,061+ Genuine Records)](#121-live-physical-warehouse-scale-audit-854061-genuine-records)
    - 12.2 [Automated Multi-Pass Test Suites](#122-automated-multi-pass-test-suites)
    - 12.3 [Teradata Enterprise Data Warehouse Scaling Architecture](#123-teradata-enterprise-data-warehouse-scaling-architecture)
 
@@ -104,7 +104,7 @@ The platform enforces a **Strictly Layered Boundary Pattern**. Database schemas,
 ┌─────────────────────────────────────────────▼────────────────────────────────────────────┐
 │                           15-TABLE REGULATORY DATA WAREHOUSE                             │
 │   [ 8 Functional Modules | Master DDL: backend/db/schema.sql & surveillance_schema.sql ] │
-│   [ Production/Local DB: backend/db/surveillance.db (853,157+ Genuine Records, 15 Tables, 158 Cols) | Scale: Teradata MPP ]│
+│   [ Production/Local DB: backend/db/surveillance.db (854,061+ Genuine Records, 15 Tables, 158 Cols) | Scale: Teradata MPP ]│
 └──────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -114,7 +114,7 @@ To ensure rapid operational readiness and eliminate semantic impedance mismatch,
 1. **Zero Semantic Impedance Mismatch During Sourcing**:
    By directly mirroring the enterprise warehouse entities (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`, `client_identity_master`, `client_demat_accounts`), the framework eliminates artificial schema translations. Upstream Data Engineers and DBAs immediately recognize their production table definitions, column names (`close_price`, `gross_positive_ltp_value`, `client_pan`), and primary/foreign keys without needing to decipher custom application aliases.
 2. **Local Prototype as an Executable Data Contract**:
-   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 158 columns, 853,157+ genuine physical records across 2,191 scrips and 179 trading sessions [852,773 immutable market/participant/demat rows + dynamic append-only audit trail]). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
+   The local SQLite database (`backend/db/surveillance.db`), master DDL script (`surveillance_schema.sql`), and schema specification (`backend/db/schema.sql`) serve as a **live, fully populated executable specification** (15 tables, 158 columns, 854,061+ genuine physical records across 2,191 scrips and 179 trading sessions [852,773 immutable market/participant/demat rows + 1,288 dynamic append-only audit trail records]). When communicating with the data warehouse team, this schema acts as an exact physical contract defining the precise column grain, mathematical inputs, and cardinality required by the surveillance engine.
 3. **Decoupled Application Boundary via Services & DTOs**:
    While the database models adhere 1:1 to institutional surveillance data nomenclature, the application routers and Next.js frontend interact strictly with sanitized Pydantic DTOs and REST contracts (`close_price`, `net_ltp_push`, `client_pan`). If the Relational Warehouse team provides data via materialized views (`v_daily_surveillance_summary`) or staging tables, only the internal SQLAlchemy ORM mapping in `backend/db/models.py` requires adjustment—the entire frontend and surveillance mathematical algorithms remain completely untouched.
 4. **Seamless Relational Warehouse Production Dialect Switch**:
@@ -142,7 +142,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 ### 3.1 Project Root Specifications, Test Suites & Core Scripts
 - [`surveillance_schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/surveillance_schema.sql): Master ANSI SQL DDL defining all 15 tables, indexes, and full pre-populated seed data for SQLite, PostgreSQL, and ANSI SQL compliance.
 - [`archive/sql/surveillance_insert.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/archive/sql/surveillance_insert.sql): Standalone pre-populated seed data script with 11,000+ operational records across all 15 tables (relocated to `archive/sql/`).
-- [`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md): Master technical manual and architectural blueprint (Version 10.1.0, 853,157+ genuine records, 158 columns, 3 ingestion pipelines).
+- [`SYSTEM_ARCHITECTURE_GUIDE.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/SYSTEM_ARCHITECTURE_GUIDE.md): Master technical manual and architectural blueprint (Version 11.0.0, 854,061+ genuine records, 158 columns, 3 ingestion pipelines).
 - [`README.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/README.md): Primary system documentation, quick-start guide, operational procedures, and architectural overview.
 - [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md): Module-by-module data contract and sanitized warehouse extraction specification for upstream data engineering teams.
 - [`DATA_FEED_MAPPING_AUDIT.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_FEED_MAPPING_AUDIT.md): Comprehensive audit catalog and field-level physical mapping matrix documenting the transformation from the 5 upstream Excel datasets to the 15 warehouse relational tables.
@@ -153,17 +153,19 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`scripts/ingest_market_eod.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/ingest_market_eod.py): Universal production-grade market EOD data ingestion pipeline supporting `.xlsx`, `.csv`, `.parquet`, `.feather`, non-destructive SQLite UPSERT (`ON CONFLICT(symbol, trade_date) DO UPDATE`), multi-level pandas index flattening (`droplevel(0)`), trading session calendar auto-registration, and batch verification (333,974 records ingested from `result_part1.xlsx` and `result_part2.xlsx`).
 - [`scripts/ingest_client_data.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/ingest_client_data.py): High-performance client trade execution ingestion pipeline ingesting 58,898 genuine records from `client_data.xlsx` across 3 active scrips (`TDPOWERSYS`, `SKMEGGPROD`, `GUJRAFFIA`), populating `participant_daily_trades`, mapping client PANs, resolving trading member IDs, buy/sell quantities, turnover, and gross LTP impact.
 - [`scripts/ingest_pan_pairs.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/ingest_pan_pairs.py): Bilateral matched pair ingestion pipeline ingesting 6,700 genuine trade pairings from `PAN_PAIR_GUJRAFFIA.xlsx` (2,713 pairs) and `PAN_PAIR_SKMEGGPROD.xlsx` (3,987 pairs), populating `counterparty_trade_pairs`, computing pairwise matched volume, turnover, and storing both Logic 1 and Logic 2 pairwise LTP push values.
+- [`scripts/cross_verify_data_parity.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/cross_verify_data_parity.py): Standalone parity audit script verifying complete mathematical and row-count parity between raw SQLite warehouse tables and backend API payloads.
 - [`scripts/generate_sample_data_package.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/generate_sample_data_package.py): Database export tool querying `backend/db/surveillance.db` directly to generate clean, verified 13-sheet sample Excel packages (`PVASF_Sample_Data_Package.xlsx`, `PVASF_Production_Full_Data.xlsx`, and `PVASF_Sample_Data_Package.zip`) and 13 CSV feeds in `PVASF_Sample_Data_Package/sample_data_feeds/`.
 - [`PVASF_Sample_Data_Package/`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_Sample_Data_Package): Standardized deliverables directory containing 13 CSV data feeds, data request specification, sample schema, and comprehensive multi-sheet Excel workbook.
 - [`PVASF_Production_Full_Data.xlsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_Production_Full_Data.xlsx): Complete production workbook export containing full physical table snapshots generated directly from `backend/db/surveillance.db`.
 - [`scripts/verify_e2e.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/verify_e2e.mjs): Complete automated Node.js ES-module end-to-end verification suite testing backend health, date catalog, JWT authentication, watchlist retrieval, scrip detail, participant forensics, Excel export binary streaming, and frontend route rendering.
 - [`scripts/test_frontend_routes.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_routes.mjs): Automated headless route integration suite validating Next.js frontend pages (`/`, `/analysis/TATAMOTORS`, `/history`, `/settings`) with HTTP 200 checks, HTML integrity, and asset checks.
 - [`scripts/test_frontend_api.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_api.mjs): Automated frontend API integration verification script testing JWT auth, watchlist queries, scrip details, and participant lookups (14/14 contracts verified).
-- [`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py): Comprehensive 15-test automated end-to-end verification suite testing database integrity, foreign keys, 15-table coverage, 3 analytical views, SQLAlchemy 2.0 ORM models, mathematical scoring, OCCL precision and spec adherence, proprietary leak prevention, live FastAPI endpoints, and binary Excel streaming (15 passed).
-- [`tests/test_mathematical_edge_cases.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_mathematical_edge_cases.py): Deep mathematical and statistical edge-case verification suite with 8 automated tests (zero variance flat prices $\sigma=0$, zero volume days, short history IPOs, extreme pump anomalies, corporate action dilution adjustments, lookahead bias prevention, boundary cutoff conditions, and forensic DB integrity; 8 passed; 23 total passing Pytest tests).
+- [`tests/conftest.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/conftest.py): Master Pytest fixture suite managing test database isolation by snapshotting the production database into `pvasf_test_surveillance_isolated.db` using SQLite's native `sqlite3.backup` API, ensuring hermetic test isolation and zero state pollution on `surveillance.db`.
+- [`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py): Comprehensive 22-test automated end-to-end verification suite testing database integrity, foreign keys, 15-table coverage, 3 analytical views, SQLAlchemy 2.0 ORM models, mathematical scoring, OCCL precision and spec adherence, proprietary leak prevention, live FastAPI endpoints, sliding-window rate limiting, and binary Excel streaming (22 passed).
+- [`middleware.ts`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/middleware.ts): Next.js 15 enterprise security middleware enforcing HTTP security headers (`X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Opener-Policy`, `X-DNS-Prefetch-Control`, `X-XSS-Protection`) and routing guards.
 - [`pv_alert_surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/pv_alert_surveillance.py): Pure-Python standalone calculation engine implementing `SurveillanceEngine`, `MarketMetricsResult`, `ParticipantAuditResult`, and CLI test runners with zero web dependencies.
-- [`package.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/package.json): Next.js 15 application manifest, npm scripts (`dev`, `build`, `start`, `lint`), and frontend dependency definitions (Tailwind CSS, Lucide icons, Recharts, Radix UI).
-- [`next.config.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/next.config.mjs): Next.js runtime configuration defining API rewrites routing `/api/v1/:path*` to the FastAPI backend (`http://127.0.0.1:8000`).
+- [`package.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/package.json): Next.js 15 application manifest, npm scripts (`dev`, `build`, `start`, `lint`, `test`, `test:e2e`), and frontend dependency definitions (Tailwind CSS, Lucide icons, Recharts, Radix UI).
+- [`next.config.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/next.config.mjs): Next.js runtime configuration defining enterprise HTTP security headers (CSP, HSTS) and API rewrites routing `/api/v1/:path*` to the FastAPI backend (`http://127.0.0.1:8005`).
 - [`tailwind.config.ts`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tailwind.config.ts): Design system theme configuration with institutional slate color palettes, font definitions, and container queries.
 - [`postcss.config.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/postcss.config.mjs): PostCSS pipeline configuration with Tailwind CSS and Autoprefixer.
 - [`tsconfig.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tsconfig.json): TypeScript configuration enforcing strict type checking, path aliases (`@/*`), and Next.js compiler optimizations.
@@ -175,7 +177,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 ### 3.2 Next.js 15 Application Routing Layer (`app/`)
 - [`app/layout.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/layout.tsx): Root application layout configuring font typography, metadata, and wrapping the view tree inside `UserProvider` and `AppShell`.
 - [`app/globals.css`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/globals.css): Global styling, custom scrollbars, institutional slate color tokens, Tailwind directives, and authoritative `@media print` layout engine enforcing A4 page breaks (`page-break-after: always`, `height: 275mm`, zero header/footer bleed) isolating `#surveillance-dossier-print-root`.
-- [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx): Executive Surveillance Watchlist Dashboard (Route: `/`). Houses the `TradingDatePicker` with clean date display (purged of cluttered `T-` and `Latest` badges, popover directly opening to calendar grid), quick day-shifters (`Prev Day`, `Next Day` only, purged of `Latest EOD`), 4 subtle pastel risk summary cards (`High Risk`, `Medium`, `Low`, `All Risks`), clean URL parameters with automatic stripping of legacy `exchange` query strings, 15D analysis window indicator readout badge, risk distribution progress bar, and `AlertsTable` with direct 'Analyze' navigation.
+- [`app/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/page.tsx): Executive Surveillance Watchlist Dashboard (Route: `/`). Houses the `TradingDatePicker` with clean date display (purged of cluttered `T-` and `Latest` badges, popover directly opening to calendar grid), quick day-shifters (`Prev Day`, `Next Day` only, purged of `Latest EOD`), 4 subtle pastel risk summary cards (`High Risk`, `Medium`, `Low`, `All Risks`), clean URL parameters with automatic stripping of legacy `exchange` query strings, 15D analysis window indicator readout badge, dynamic cutoff badge (`Score ≥ 60.0`), risk distribution progress bar, and `AlertsTable` with direct 'Analyze' navigation, sticky `Scrip` column, and two-tier surveillance toolbar featuring segmented Scrip Alphabet Allotment control (`ALL`, `A-E`, `F-J`, `K-O`, `P-T`, `U-Z` per PVASF §2 & §5).
 - [`app/analysis/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analysis/%5Bsymbol%5D/page.tsx): Single-stock forensic investigation workspace (Route: `/analysis/[symbol]`). Orchestrates the 4 surveillance tabs (`Overview`, `Shareholders`, `Corporate Actions`, `Participants`), participant drilldowns, and top command bar export actions.
 - [`app/analyse/[symbol]/page.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/analyse/%5Bsymbol%5D/page.tsx): Backward-compatible route alias performing an asynchronous server redirect: `redirect('/analysis/${symbol}')`.
 - [`app/not-found.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/app/not-found.tsx): Institutional 404 error page. Catches unmapped routes or missing scrip identifiers and presents a stylized slate recovery card with navigation back to the Surveillance Dashboard.
@@ -185,9 +187,9 @@ Every file in the repository has been inspected code-by-code and verified agains
 
 ### 3.3 UI Component Library (`components/`)
 - **Layout**:
-  - [`components/layout/app-shell.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/layout/app-shell.tsx): Application frame with global search (keyboard shortcut `/`), watchlist notification bell (5-minute background poll), user profile pill, and 1-click role switcher.
+  - [`components/layout/app-shell.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/layout/app-shell.tsx): Application frame with global search (keyboard shortcut `/` and `Cmd+K`), watchlist notification bell (5-minute background poll with `99+` notification badge formatting), user profile pill, and 1-click role switcher.
 - **Dashboard**:
-  - [`components/dashboard/alerts-table.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/dashboard/alerts-table.tsx): High-performance surveillance watchlist table featuring 4 subtle pastel Risk KPI cards (`High Risk`, `Medium`, `Low`, `All Risks` with alert score ranges), non-clipping downward tooltips, column sorting, pagination, risk badges, clean URLs (purged of exchange scope params), and direct "Analyze" action triggers.
+  - [`components/dashboard/alerts-table.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/dashboard/alerts-table.tsx): High-performance surveillance watchlist table featuring 4 subtle pastel Risk KPI cards (`High Risk`, `Medium`, `Low`, `All Risks` with alert score ranges), two-tier controls toolbar (Tier 1: Search + Export CSV / Reset filters; Tier 2: Scrip Alphabet Allotment segmented control `ALL | A-E | F-J | K-O | P-T | U-Z`, Triggers bar, and live scrip count), sticky first column (`Scrip`), non-clipping downward tooltips, column sorting, pagination, risk badges, clean URLs (purged of exchange scope params), and direct "Analyze" action triggers.
 - **Forensic Investigation**:
   - [`components/investigation/investigation-workspace.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/investigation/investigation-workspace.tsx): Master forensic analysis workspace orchestrating 4 primary tabs (`Overview`, `Shareholders`, `Corporate Actions`, `Participants`), unified observation bar with clean calendar date picker, top command bar export actions, **High-Resolution Fullscreen Chart Modal** (`expandedChart` with sticky header, symbol badge, subtitle, and ESC shortcut), and the **Client 360° Demographics Slide-Over Drawer** (`selectedPan`, dynamically resolving `tm_id` from `participant_daily_trades.trading_member_id`). Enforces a strict zero-mock data policy: displays clean institutional empty states when quarterly filing data or corporate actions are pending. In `Shareholders`, features 4 streamlined KPI cards, Table 1 (Capital Structure), Table 2 (PAN Demographics with clean percentage deltas), and **Table 3: Major Shareholders Registry** with substantial ownership flags (`Substantial (≥ 5%)`, `Promoter`, `Standard`). In `Participants`, renders Gross Positive and Gross Negative LTP Contribution tables (Row 1), Concentrated Volume Share and Counterparty Concentration (`n1 ⇄ n2`, `p1 ⇄ p2`, Row 2), and **Enhanced Net P&L — Top Trading Beneficiaries** with macro scale notation (`+₹X.XX Cr` or `+₹X.XX L`, Row 3). Reversal pairs (RTR) and circular trading loops are evaluated via the engine and exported in the Excel dossier.
   - [`components/investigation/charts.tsx`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/components/investigation/charts.tsx): Streamlined visualization suite containing `CombinedMarketChart` (dual-axis master chart with 20/50 DMA and 15D window overlay, 6M/180D baseline default, 5-range timeframe selector `15D (Window) | 1M | 3M | 6M (180D Baseline) | Max`, `15D Window` highlight toggle, `Pump Anomaly Detected` quick-zoom shortcut, live cursor crosshair HUD tracker with Date, Close, Open, High, Low, % vs Day 1, 20 DMA, 50 DMA, Volume, Delivery % [`D: xx%`], dynamic volume surge indicators, and embedded `ChartGuideButton`), `SurveillanceStatisticalDeck` (3-pillar layout: **Price Rise**, **Price Z-Score**, **Volume Z-Score** using clean human terms, professional statistical thresholds, zero clause section numbers, and adaptive baseline day labels for short histories), price band breakout card (`AnomalyEventMatrixChart` with clean `5% daily exchange price band` format), and `ParameterRadarChart`.
@@ -209,7 +211,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`lib/utils.ts`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/lib/utils.ts): Utility functions (`cn` for Tailwind class merging with `clsx` and `tailwind-merge`).
 
 ### 3.5 FastAPI Backend Architecture (`backend/`)
-- [`backend/main.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/main.py): Server entrypoint mounting CORS middleware, database lifespan initialization with smart idempotent check (verifies row count in `portal_user_accounts` and `daily_market_eod` before triggering seeding), and mounting all 4 production routers.
+- [`backend/main.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/main.py): Server entrypoint mounting restricted CORS middleware (`localhost:3000`, `127.0.0.1:3000`, `localhost:8000`, `127.0.0.1:8000`, `localhost:8005`, `127.0.0.1:8005`), enterprise HTTP security headers middleware (`add_security_headers`), database lifespan initialization with smart idempotent check (verifies row count in `portal_user_accounts` and `daily_market_eod` before triggering seeding), and mounting all 4 production routers.
 - [`backend/security.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/security.py): Security subsystem implementing PBKDF2-HMAC-SHA256 password hashing (100,000 iterations + 16B salt), HMAC-SHA256 signed access tokens (24-hour expiration), token decoders, and RBAC role guards (`require_admin`, `require_analyst`, `require_viewer`).
 - [`backend/requirements.txt`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/requirements.txt): Python backend dependencies manifest.
 
@@ -237,7 +239,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`backend/db/schema.sql`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/schema.sql): Master 15-table production schema DDL with data contracts, constraints, foreign keys, and module annotations (158 columns total).
 - [`backend/db/model_config.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/model_config.json): Active persisted model configuration holding calibrated weights (`price_rise: 20.0`, `price_z: 20.0`, `volume_z: 20.0`, `band_persistence: 20.0`, `new_high: 20.0`) and alert triage threshold (`60.0`).
 - [`backend/db/seed.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/seed.py): Deterministic synthetic data generator creating 500 exchange clients, 500 depository accounts, 260 trading days of EOD data across 15 scrips, shareholding records, corporate actions, and system users.
-- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (853,157+ genuine physical records [852,773 immutable market/participant/demat rows + dynamic append-only audit trail] across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
+- [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db): Production & local SQLite database (854,061+ genuine physical records [852,773 immutable market/participant/demat rows + 1,288 dynamic append-only audit trail records] across 15 tables and 2,191 distinct scrips) for high-performance surveillance and offline verification.
 
 #### Repositories Layer (`backend/repositories/`)
 - [`backend/repositories/client_identity_repo.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/repositories/client_identity_repo.py): Data-access layer querying `client_identity_master` by legal entity PAN.
@@ -248,7 +250,7 @@ Every file in the repository has been inspected code-by-code and verified agains
 - [`backend/routers/surveillance.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/surveillance.py): Endpoints for `/health`, `/dates`, `/watchlist`, `/scrips`, `/scrip/{id}`, `/scrip/{id}/participants`, `/scrip/{id}/shareholding-breakdown`, `/scrip/{id}/corporate-actions`, `/scrip/{id}/export-excel` (streaming 5-sheet Excel workbook), `GET /weights`, `POST /weights` (updating weights, persisting to `model_config.json`, and writing audit trail), and `/upload-eod` (12 endpoints total; 26 application endpoints system-wide).
 - [`backend/routers/trade_matches.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/trade_matches.py): Endpoints for paginated trade records (`/api/v1/trades/`), `/stats/daily`, `/analysis/wash-trades`, `/analysis/algo-breakdown`, `/participant/{clnt_token}`, and single trade composite PK lookups (6 endpoints total).
 - [`backend/routers/clients.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/clients.py): Minimal client endpoint `/api/v1/clients/pan/{pan}` powering the Client 360° Demographics drawer (1 endpoint).
-- [`backend/routers/auth.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/auth.py): Security endpoints for `/login`, `/me`, `/users` (list/create), `/users/{id}/role`, `/users/{id}/toggle`, and `/audit-logs` (7 endpoints total).
+- [`backend/routers/auth.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/routers/auth.py): Security endpoints for `/login`, `/me`, `/users` (list/create), `/users/{id}/role`, `/users/{id}/toggle`, and `/audit-logs`, fortified by an in-memory sliding-window rate limiter (`LoginRateLimiter`: max 25 attempts per 60s, 30s lockout penalty) protecting authentication endpoints against brute force attacks (7 endpoints total).
 
 #### Schemas Layer (`backend/schemas/`)
 - [`backend/schemas/common.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/schemas/common.py): Pydantic models for pagination metadata (`PaginationMeta`) and generic paged envelopes (`PagedResponse`).
@@ -562,10 +564,14 @@ When an investigator opens the forensic workspace for a shortlisted scrip, the b
    - Employs a directed graph Depth-First Search (DFS) algorithm detecting closed loops of length 3 to 5 ($A \to B \to C \to A$) with canonical rotation deduplication and rotated bottleneck volume calculation:
      $$V_{\text{bottleneck}} = \min(e_1, e_2, \dots, e_k)$$
    - Analyzed by backend algorithms and exported in the Excel dossier.
-6. **Net P&L — Top Trading Beneficiaries ("Profit Extraction" Metric)**:
-   - Computes participant cash-flow gains during the 15-day window:
-     $$\text{Net PnL} = \text{Sell Value} - \text{Buy Value} + \left( (\text{Buy Qty} - \text{Sell Qty}) \times P_{\text{Latest Close}} \right)$$
-   - Displayed in Row 3 of the Participants tab with color-coded net P&L ($+₹$ profit in emerald, $-₹$ loss in rose) and enhanced with macro-scale notation badges (`+₹X.XX Cr` or `+₹X.XX L`) alongside exact rupee values.
+6. **Realized P&L — Top Trading Beneficiaries ("Profit Extraction" Metric)**:
+   - **Active Production Logic (Clean Closed-Trade Realization)**:
+     To eliminate false positives on genuine retail long-term investors (who buy and hold without selling), the engine strictly requires round-trip trading activity ($\text{Buy Volume} > 0 \land \text{Sell Volume} > 0$):
+     $$\text{Matched Vol} = \min(\text{Buy Qty}, \text{Sell Qty})$$
+     $$\text{Realized PnL} = \text{Matched Vol} \times \left( \frac{\text{Sell Value}}{\text{Sell Qty}} - \frac{\text{Buy Value}}{\text{Buy Qty}} \right)$$
+     Ranked descending to identify participants who successfully extracted cash profits during the surveillance window. Displayed in Row 3 of the Participants tab with macro-scale badges (`+₹X.XX Cr` / `+₹X.XX L`).
+   - **Future Scope / Surveillance Roadmap (Position Accumulator Intelligence)**:
+     Dedicated subsystem to track unclosed open positions ($\text{Sell Volume} = 0$) held by syndicate accumulators prior to the dump phase. Will incorporate float concentration filters ($> 5\%$ of total window volume) and a dedicated "Accumulators" toggle to prevent conflating genuine retail long-term holders with manipulative accumulators.
 7. **Same-Broker Wash Trade Identification**:
    - Flags internal broker crossing when the buying and selling Trading Member tokens match (`buyer_tm_id == seller_tm_id`).
 8. **Client 360° Identity Resolution & Demat Intelligence**:
@@ -1006,11 +1012,11 @@ FROM counterparty_trade_pairs c;
  └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                              │ High-Performance Python Ingestion Pipelines
  ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
- │ 1. INGESTION PIPELINES & 15-TABLE REGULATORY WAREHOUSE (853,157+ Genuine Records)      │
+ │ 1. INGESTION PIPELINES & 15-TABLE REGULATORY WAREHOUSE (854,061+ Genuine Records)      │
  │    - scripts/ingest_market_eod.py -> daily_market_eod & market_baseline_stats (667,948)│
  │    - scripts/ingest_client_data.py -> participant_daily_trades, KYC & Demat (177,682) │
  │    - scripts/ingest_pan_pairs.py -> counterparty_trade_pairs (6,700 records, 16 cols)  │
- │    - trading_session_calendar (426 sessions) & compliance_audit_logs (384+ records)    │
+ │    - trading_session_calendar (426 sessions) & compliance_audit_logs (1,288+ records)  │
  └───────────────────────────────────────────┬────────────────────────────────────────────┘
                                              │ SQLAlchemy 2.0 Pool (or SQLite Local DB)
  ┌───────────────────────────────────────────▼────────────────────────────────────────────┐
@@ -1033,10 +1039,10 @@ FROM counterparty_trade_pairs c;
       ▼                                      ▼                                      ▼
 Dashboard (Route: `/`)             Forensic Workspace                    Audit Trail (Route: `/history`)
 - Watchlist Table & Clean URLs     (Route: `/analysis/[symbol]`)         - Immutable compliance_audit_logs
-- Trading Date Picker (Auto-fall)  - 4-Tab Forensic Investigation        - Action Filter & CSV Export
-- 4 Subtle Pastel Risk KPI Cards   - Client 360° Demographics Drawer     - Search Pre-fill Integration
-- 15D Analysis Window Readout      - Major Shareholders Table (≥5% flag) - Full Operational History
-- Risk Distribution Progress Bar   - Enhanced Macro P&L (`Cr`/`L`)       - Live User Event Logging
+- Two-Tier Surveillance Toolbar    - 4-Tab Forensic Investigation        - Action Filter & CSV Export
+- Alphabet Segmented Allotment     - Client 360° Demographics Drawer     - Search Pre-fill Integration
+- Sticky Scrip Column & Triggers   - Major Shareholders Table (≥5% flag) - Full Operational History
+- 4 Subtle Pastel Risk KPI Cards   - Enhanced Macro P&L (`Cr`/`L`)       - Live User Event Logging
 ```
 
 > [!NOTE]
@@ -1051,7 +1057,7 @@ When backing up the system externally (e.g. Google Drive, AWS S3, local encrypte
 
 | Priority | File Name | Size | Target Location in Project | Role & Importance |
 | :---: | :--- | :---: | :--- | :--- |
-| 🔴 **ESSENTIAL** | **`surveillance.db`** | **145 MB** | `backend/db/surveillance.db` | **Unified Relational Production Database**.<br/>Contains all **853,157+ physical records** across all 15 normalized tables (OHLCV, 180D baselines, KYC, demat accounts, participant trades, counterparty pairs).<br/>**If you preserve this single file, the entire platform runs immediately with 100% full data without needing any ingestion steps.** |
+| 🔴 **ESSENTIAL** | **`surveillance.db`** | **145 MB** | `backend/db/surveillance.db` | **Unified Relational Production Database**.<br/>Contains all **854,061+ physical records** across all 15 normalized tables (OHLCV, 180D baselines, KYC, demat accounts, participant trades, counterparty pairs).<br/>**If you preserve this single file, the entire platform runs immediately with 100% full data without needing any ingestion steps.** |
 | 🟡 **RAW FEED** | **`result_part1.xlsx`** | 19.1 MB | Project Root (`/`) | `scripts/ingest_market_eod.py` (EOD Market Part 1: 176k rows) |
 | 🟡 **RAW FEED** | **`result_part2.xlsx`** | 17.2 MB | Project Root (`/`) | `scripts/ingest_market_eod.py` (EOD Market Part 2: 158k rows) |
 | 🟡 **RAW FEED** | **`client_data.xlsx`** | 4.3 MB | Project Root (`/`) | `scripts/ingest_client_data.py` (Participant trades & KYC: 58k rows) |
@@ -1078,7 +1084,7 @@ When backing up the system externally (e.g. Google Drive, AWS S3, local encrypte
 
 | Page Route | Purpose | Key UI Components & Interactions |
 | :--- | :--- | :--- |
-| **`/`** | Executive Watchlist Dashboard | **Trading Date Picker** (clean date display, holiday-aware auto-fallback with Toast alert, popover directly opening to calendar grid), quick day-shifters (`Prev Day`, `Next Day` only, purged of `Latest EOD`), 4 subtle pastel Risk KPI summary cards (`High Risk`, `Medium`, `Low`, `All Risks`), 15D Analysis Window indicator readout badge, Risk Distribution Progress Bar, and **Watchlist Table** with 1-click sortable headers, clean URLs (purged of exchange params), and direct "Analyze" action triggers. |
+| **`/`** | Executive Watchlist Dashboard | **Trading Date Picker** (clean date display, holiday-aware auto-fallback with Toast alert, popover directly opening to calendar grid), quick day-shifters (`Prev Day`, `Next Day` only, purged of `Latest EOD`), 4 subtle pastel Risk KPI summary cards (`High Risk`, `Medium`, `Low`, `All Risks`), 15D Analysis Window indicator readout badge, dynamic triage cutoff badge (`Score ≥ 60.0`), Risk Distribution Progress Bar, and **Watchlist Table** featuring a **Two-Tier Controls Toolbar** (Tier 1: Search + Export CSV / Reset filters; Tier 2: Scrip Alphabet Allotment segmented control `ALL | A-E | F-J | K-O | P-T | U-Z` per PVASF §2 & §5, Triggers bar, and live scrip count), sticky first column (`Scrip`), 1-click sortable headers, clean URLs (purged of exchange params), and direct "Analyze" action triggers. |
 | **`/analysis/[symbol]`** | Forensic Analysis Workspace | **Clean Top Command Bar** with direct institutional export actions (`Download Excel`, `Download PDF`, `Preview`), unified observation bar, **Client 360° Demographics Slide-Over Drawer** (with dynamic TM ID resolution), and **4 Dedicated Surveillance Tabs** adhering to the Zero-Mock Data Policy:<br/>• **`Overview`**: Dual-Axis Master Chart (default 6M/180D baseline, 20 & 50 DMA toggles, traded volume, Screener Delivery %, 15D window overlay), 3-Pillar Statistical Deck (**Price Rise**, **Price Z-Score**, **Volume Z-Score** with clean statistical labels and zero clause section numbers), Price Band Breakout Card (clean 5% daily price band format), Anomaly Event Breakout Matrix, 5-Parameter Radar, and Alert Drivers Chart.<br/>• **`Shareholders`**: Executive Day $t$ / 15D KPI summary cards, Comparative Table 1 (Capital Structure Day $t$ vs $T-180$), Comparative Table 2 (PAN Delivery Demographics with percentage-only Net Change), and **Table 3: Major Shareholders Registry** with substantial ownership badges (`Substantial (≥ 5%)`, `Promoter`, `Standard`). Renders clean empty state when quarterly filings are pending.<br/>• **`Corporate Actions`**: Exchange disclosures timeline, board meetings, bonus/split/dividend events, and dilution adjustment factors. Renders clean empty state when disclosures are pending.<br/>• **`Participants`**: Row 1: Side-by-side tables for **Gross Positive LTP Contribution** ($+₹$ lifting ask) and **Gross Negative LTP Contribution** ($-₹$ hitting bids) with legal entity names; Row 2: **Concentrated Volume Share** and **Counterparty Concentration** (`n1 ⇄ n2`, `p1 ⇄ p2`, with pairwise LTP push preserved in DB but ignored in active display to prioritize volume); Row 3: **Enhanced Net P&L — Top Trading Beneficiaries** with macro scale labels (`+₹X.XX Cr` or `+₹X.XX L`) alongside exact rupee values. |
 | **`/analyse/[symbol]`** | Backward-Compatible Route Alias | Asynchronous server redirect forwarding traffic to `/analysis/[symbol]`. |
 | **`/history`** | Immutable System Audit Trail | Live feed from `compliance_audit_logs`, action filtering, search query pre-fill (`/history?search=SYMBOL`), and CSV exporter. |
@@ -1130,6 +1136,7 @@ To eliminate simulated mock workflows, reduce cognitive overhead, and maintain i
 10. **Corporate Actions & Gross LTP Naming Alignment**: Renamed the 3rd workspace tab and 4th Excel worksheet to **"Corporate Actions"** (and PDF dossier Page 4 to **"Regulatory Disclosures & Corporate Actions"**), accurately reflecting corporate actions (splits, bonuses, dividends, AGMs, dilution factors) alongside regulatory disclosures. Renamed LTP tables to **"Gross Positive LTP Contribution"** and **"Gross Negative LTP Contribution"** with full legal entity name resolution from `client_identity_master`.
 11. **Strict Zero-Mock Data Policy**: Completely purged synthetic mock test data from 5 warehouse tables (`broker_daily_summary`, `large_shareholders_registry`, `shareholding_summary`, `corporate_events_feed`, `price_dilution_factors`). UI tabs, Excel export sheets, and PDF pages display clean, institutional empty-state notices when upstream filings are pending, guaranteeing that every figure presented in the system is 100% empirical and verifiable against source feeds.
 12. **High-Resolution Fullscreen Chart Modal & Live HUD Toolbar**: Added a dedicated high-definition modal overlay (`expandedChart`) accessible via chart maximize buttons, featuring a sticky header with security symbol badge, title/subtitle, and ESC keyboard trigger. Integrated a live cursor crosshair HUD toolbar into the master surveillance chart displaying date, close price, % gain vs baseline, 20 DMA, 50 DMA, volume, delivery % (`D: xx%`), and dynamic volume surge badges (`Extreme Anomaly ≥ 3x 15D MA` in rose, `Elevated Surge ≥ 1.5x 15D MA` in amber), alongside 5 surveillance timeframes (`15D (Window) | 1M | 3M | 6M (180D Baseline) | Max`), interactive `15D Window` highlight toggle, and `Pump Anomaly Detected` quick-zoom trigger.
+13. **Two-Tier Surveillance Toolbar & Scrip Alphabet Allotment**: Restructured the watchlist table controls into an ergonomic two-tier Bloomberg-style layout: Tier 1 houses the search input (`Search scrip, company or ISIN...`) on the left and utility actions (`Reset filters`, `Export CSV`) on the right; Tier 2 houses the **Scrip Alphabet Allotment** segmented control (`ALL`, `A-E`, `F-J`, `K-O`, `P-T`, `U-Z` per regulatory allocation guidelines PVASF §2 & §5), vertical separator, 5 quick trigger toggle pills (`Price ≥ 15%`, `Price Z ≥ 1.65σ`, `Vol Z ≥ 1.65σ`, `Circuit ≥ 3d`, `180D Highs ≥ 1`), and a live scrip counter indicator (`Showing X of Y scrips`). Frozen sticky styling is applied to the first table column (`Scrip`), preserving stock identity during horizontal scrolling across wide viewports.
 
 ---
 
@@ -1215,6 +1222,16 @@ The platform enforces strict Role-Based Access Control across three operational 
 2. **Token Authentication**: Issues signed HMAC-SHA256 tokens expiring after **24 hours**. Clients transmit tokens via the `Authorization: Bearer <token>` HTTP header.
 3. **Anti-Lockout Protection**: `AuthService` prevents deactivating or demoting the last remaining active Admin user, ensuring system governance cannot be orphaned.
 4. **Immutable Audit Trail**: All authentication events (`LOGIN_SUCCESS`, `LOGIN_FAILED`), role modifications, and model weight calibrations automatically write immutable records to `compliance_audit_logs` capturing timestamp, username, role, action narrative, and client IP address.
+5. **FastAPI Security Headers & Origin Restriction**: `backend/main.py` enforces the `add_security_headers` middleware and restricts `CORSMiddleware` strictly to authorized origins (`http://localhost:3000`, `http://127.0.0.1:3000`, `http://localhost:8000`, `http://127.0.0.1:8000`, `http://localhost:8005`, `http://127.0.0.1:8005`), rejecting wildcard access.
+6. **Next.js 15 Middleware Security Enforcement**: `middleware.ts` intercepts all Next.js incoming requests, injecting strict enterprise HTTP headers:
+   - `X-Frame-Options: DENY` (clickjacking defense)
+   - `X-Content-Type-Options: nosniff` (MIME-sniffing prevention)
+   - `Referrer-Policy: strict-origin-when-cross-origin`
+   - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+   - `Cross-Origin-Opener-Policy: same-origin`
+   - `X-DNS-Prefetch-Control: on`
+   - `X-XSS-Protection: 1; mode=block`
+7. **In-Memory Sliding-Window Rate Limiting**: `backend/routers/auth.py` deploys `LoginRateLimiter` to protect `/api/v1/auth/login` against brute force credential attacks (maximum 25 login attempts per rolling 60-second window, imposing a 30-second lockout penalty).
 
 ---
 
@@ -1222,9 +1239,9 @@ The platform enforces strict Role-Based Access Control across three operational 
 
 A rigorous, multi-pass engineering audit was executed across all layers of the codebase to guarantee that this architecture guide represents an authoritative, 100% verified blueprint.
 
-### 12.1 Live Physical Warehouse Scale Audit (853,157+ Genuine Records)
+### 12.1 Live Physical Warehouse Scale Audit (854,061+ Genuine Records)
 
-The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **853,157+ genuine physical records** (comprising 852,773 immutable market, participant, demat, calendar, and alert case records + dynamic append-only entries in `compliance_audit_logs`) across all 15 normalized tables (158 columns total), spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
+The master relational database [`backend/db/surveillance.db`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/surveillance.db) was queried directly via the SQLite catalog engine. The warehouse hosts **854,061+ genuine physical records** (comprising 852,773 immutable market, participant, demat, calendar, and alert case records + 1,288 dynamic append-only entries in `compliance_audit_logs`) across all 15 normalized tables (158 columns total), spanning **2,191 distinct exchange-listed scrips** and **179 distinct trading sessions** (2025-02-11 to 2025-11-03):
 
 | # | Table Name | Module Alignment | Physical Row Count | Columns | Key Surveillance Role |
 | :-: | :--- | :--- | :---: | :---: | :--- |
@@ -1235,7 +1252,7 @@ The master relational database [`backend/db/surveillance.db`](file:///Users/vish
 | 5 | `participant_daily_trades` | Module 3: Participant Conduct | **58,898** | 17 | Client trade executions, Gross Positive/Negative LTP push |
 | 6 | `counterparty_trade_pairs` | Module 4: Counterparty Network| **6,700** | 16 | Matched buyer-seller pairs, pairwise LTP (Logic 1 & 2), wash trades |
 | 7 | `trading_session_calendar` | Module 7: Market Calendar | **426** | 4 | Authoritative exchange trading sessions and market holidays |
-| 8 | `compliance_audit_logs` | Module 8: Audit Trail | **384+** | 8 | Immutable regulatory security log, model calibrations (append-only) |
+| 8 | `compliance_audit_logs` | Module 8: Audit Trail | **1,288+** | 8 | Immutable regulatory security log, model calibrations (append-only) |
 | 9 | `surveillance_alert_cases` | Module 8: Alert Cases | **13** | 14 | Pre-populated historical triage cases (19 dynamic alerts on 2025-11-03) |
 | 10 | `portal_user_accounts` | Module 8: Officer Auth | **4** | 10 | Surveillance officers, PBKDF2 credentials, RBAC tiers |
 | 11 | `broker_daily_summary` | Module 7: Broker Totals | **0** | 9 | *Purged synthetic test data; awaiting live broker feed* |
@@ -1243,7 +1260,7 @@ The master relational database [`backend/db/surveillance.db`](file:///Users/vish
 | 13 | `shareholding_summary` | Module 5: Shareholder Stats | **0** | 11 | *Purged synthetic test data; awaiting exchange quarterly float feed* |
 | 14 | `corporate_events_feed` | Module 6: Corporate Events | **0** | 10 | *Purged synthetic test data; awaiting corporate announcements feed* |
 | 15 | `price_dilution_factors` | Module 6: Corporate Actions | **0** | 5 | *Purged synthetic test data; awaiting corporate adjustment feed* |
-| **Σ** | **15 Normalized Tables** | **8 Functional Modules** | **853,157+** | **158** | **Authoritative Relational Regulatory Data Warehouse** |
+| **Σ** | **15 Normalized Tables** | **8 Functional Modules** | **854,061+** | **158** | **Authoritative Relational Regulatory Data Warehouse** |
 
 #### Operational Scale Benchmarks
 - **Watchlist Triage Query Latency**: **~6.15 s** cold calculation across all 2,117 active scrips; **< 1 ms** cached in-memory response evaluated against the calibrated 60.0 threshold.
@@ -1252,38 +1269,57 @@ The master relational database [`backend/db/surveillance.db`](file:///Users/vish
 
 ### 12.2 Automated Multi-Pass Test Suites
 
-The codebase is protected by four complementary automated test suites covering backend unit logic, database integrity, mathematical edge cases, API contracts, model calibration persistence, and frontend SSR route rendering (23 automated Pytest test modules total):
+The codebase is protected by four complementary automated test suites covering backend unit logic, database integrity, mathematical edge cases, API contracts, model calibration persistence, and frontend SSR route rendering (22 automated Pytest test modules total):
 
-1. **Pytest End-to-End Test Suite ([`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py))**:
-   - Executes 15 comprehensive test modules against live database fixtures and FastAPI test clients:
-     - `test_database_exists`: Confirms master database presence.
-     - `test_database_integrity_and_fks`: Validates SQLite integrity check (`ok`) and foreign key consistency.
-     - `test_table_coverage`: Asserts all 15 production tables exist.
-     - `test_analytical_views`: Validates all 3 SQL views (`v_daily_surveillance_summary`, `v_participant_conduct_ranking`, `v_counterparty_concentration`).
-     - `test_symbol_and_row_coverage`: Asserts $\ge 2,000$ scrips and $\ge 300,000$ market records.
-     - `test_orm_query_all_15_entities`: Verifies SQLAlchemy 2.0 ORM queries against all 15 declarative models.
-     - `test_orm_client_demat_foreign_key_join`: Validates relational joins between `ClientDematAccount` and `ClientIdentityMaster`.
-     - `test_engine_synthetic_pump_scoring`: Validates 5 mathematical anomaly algorithms against synthetic pump profiles.
-     - `test_engine_interoperability_with_db`: Tests calculation engine against live database records.
-     - `test_occl_mathematical_precision_and_spec_adherence`: Validates mathematical formula precision, OCCL pricing, lookbacks, and scoring threshold boundaries against regulatory specifications.
-     - `test_zero_warehouse_naming_leaks_in_active_code`: Enforces zero internal warehouse prefixes across active code.
-     - `test_zero_teradatasql_dependencies`: Verifies zero deprecated proprietary drivers in active dependencies.
-     - `test_health_check`: Verifies `GET /api/v1/surveillance/health` returns status `ONLINE`.
-     - `test_unauthenticated_request_rejected`: Validates HTTP 401 guard on protected endpoints.
-     - `test_authenticated_flow_admin_and_analyst`: Tests full officer flow (login, dates, watchlist, scrip detail, participants, shareholding, corporate actions, and binary Excel dossier streaming).
-   - **Result**: `15 passed in 20.12s` (100% pass rate).
+1. **Pytest End-to-End Suite with Sandbox Database Isolation ([`tests/test_surveillance_e2e.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_surveillance_e2e.py) & [`tests/conftest.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/conftest.py))**:
+   - Executes 22 comprehensive test modules organized across 5 test classes against an isolated SQLite sandbox database initialized via SQLite's native `sqlite3.backup` API (`pvasf_test_surveillance_isolated.db`), guaranteeing zero state mutation or test pollution against live `surveillance.db`:
+     - **Database Integrity & ORM Coverage (`TestSurveillanceDatabase`)**:
+       1. `test_database_exists`: Confirms master database presence (`backend/db/surveillance.db`).
+       2. `test_database_integrity_and_fks`: Validates SQLite integrity check (`ok`) and foreign key consistency.
+       3. `test_table_coverage`: Asserts all 15 production tables exist.
+       4. `test_analytical_views`: Validates all 3 SQL views (`v_daily_surveillance_summary`, `v_participant_conduct_ranking`, `v_counterparty_concentration`).
+       5. `test_symbol_and_row_coverage`: Asserts $\ge 2,000$ scrips and $\ge 300,000$ market records.
+       6. `test_orm_query_all_15_entities`: Verifies SQLAlchemy 2.0 ORM queries against all 15 declarative models.
+       7. `test_orm_client_demat_foreign_key_join`: Validates relational joins between `ClientDematAccount` and `ClientIdentityMaster`.
+     - **Mathematical Scoring Engine (`TestScoringEngine`)**:
+       8. `test_engine_synthetic_pump_scoring`: Validates 5 mathematical anomaly algorithms against synthetic pump profiles.
+       9. `test_engine_interoperability_with_db`: Tests calculation engine against live database records.
+       10. `test_occl_mathematical_precision_and_spec_adherence`: Validates mathematical formula precision, OCCL pricing, lookbacks, and scoring threshold boundaries against regulatory specifications.
+     - **Proprietary Leak Prevention (`TestProprietaryLeakPrevention`)**:
+       11. `test_zero_warehouse_naming_leaks_in_active_code`: Enforces zero internal warehouse prefixes across active code.
+       12. `test_zero_teradatasql_dependencies`: Verifies zero deprecated proprietary drivers in active dependencies.
+     - **Live FastAPI Endpoints & RBAC Security (`TestFastAPIEndpoints`)**:
+       13. `test_health_check`: Verifies `GET /api/v1/surveillance/health` returns status `ONLINE`.
+       14. `test_unauthenticated_request_rejected`: Validates HTTP 401 guard on protected endpoints.
+       15. `test_authenticated_flow_admin_and_analyst`: Tests full officer flow (login, dates, watchlist, scrip detail, participants, shareholding, corporate actions, and binary Excel dossier streaming).
+       16. `test_rbac_forbidden_on_non_admin_weight_change`: Asserts Analyst or Viewer attempting model weight modifications receives HTTP 403 Forbidden.
+       17. `test_rbac_forbidden_on_non_admin_user_management`: Asserts Analyst attempting user creation or status toggling receives HTTP 403 Forbidden.
+       18. `test_tampered_token_rejected`: Confirms tampered or invalid JWT signatures receive HTTP 401 Unauthorized.
+     - **Security Hardenings & Rate Limiting (`TestSecurityHardenings`)**:
+       19. `test_eod_upload_rejects_disallowed_extension`: Validates that non-spreadsheet uploads (.sh, .py, .exe) receive HTTP 400.
+       20. `test_pan_lookup_generates_audit_log`: Verifies Client 360 PAN inspection generates a tamper-evident compliance audit trail record.
+       21. `test_login_rate_limiter_throttles_excessive_failures`: Validates sliding-window rate limiting on login attempts with HTTP 429 lockout.
+       22. `test_eod_upload_rejects_oversized_payload`: Verifies payload size limiting rejecting files > 50 MB with HTTP 413 Payload Too Large.
+   - **Result**: `22 passed in 16.80s` (100% pass rate).
 
-2. **Pytest Mathematical Edge Cases Suite ([`tests/test_mathematical_edge_cases.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/tests/test_mathematical_edge_cases.py))**:
-   - Executes 8 deep statistical, mathematical, and algorithmic edge-case tests:
-     - `test_zero_variance_flat_pricing`: Validates that constant flat pricing ($\sigma = 0$) evaluates with Z = 0.0 and final score 0.0 without division-by-zero crashes or NaN corruption.
-     - `test_zero_volume_illiquid`: Verifies that illiquid or inactive stocks with 0 volume across observation windows evaluate cleanly.
-     - `test_short_history_ipo`: Confirms that newly listed IPOs with brief histories (e.g. 35 sessions) evaluate without index errors.
-     - `test_extreme_outlier_pump`: Validates that extreme pump-and-dump anomalies (+300% surge, 50x volume spike, upper circuit persistence) achieve maximal 5-point scores across all dimensions ($S_{\text{final}} \ge 80.0$).
-     - `test_corporate_action_dilution`: Verifies that stock split and bonus dilution factors adjust historical base prices correctly without false pump alerts.
-     - `test_watchlist_cutoff_boundary`: Validates strict boundary inclusion at exactly $60.0$ threshold ($S_{\text{final}} \ge 60.0$).
-     - `test_lookahead_bias_prevention`: Ensures temporal isolation; no observation window leaks data past the active `as_of_date`.
-     - `test_participant_forensic_db_integrity`: Confirms presence and non-emptiness of active participant trades and counterparty pairs.
-   - **Result**: `8 passed in 3.82s` (100% pass rate; 23 total passing Pytest tests across the project).
+2. **Data & Mathematical Parity Cross-Verification Suite ([`scripts/cross_verify_data_parity.py`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/cross_verify_data_parity.py))**:
+   - Standalone parity audit script verifying complete mathematical and row-count parity between raw SQLite warehouse tables (`daily_market_eod`, `participant_daily_trades`, `counterparty_trade_pairs`) and FastAPI endpoint responses.
+
+3. **Comprehensive E2E Node.js Test Suite ([`scripts/verify_e2e.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/verify_e2e.mjs)) & Frontend API Contracts ([`scripts/test_frontend_api.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_api.mjs))**:
+   - Exercises multi-role authentication (`vishesh_admin`, `arao_analyst`, `guest_viewer`).
+   - Verifies active model weights and threshold (60.0) from `GET /api/v1/surveillance/weights` and on-disk [`backend/db/model_config.json`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/backend/db/model_config.json).
+   - Validates RBAC enforcement: asserts Analyst and Viewer receive HTTP 403 Forbidden when attempting calibration updates.
+   - Tests mathematical consistency of scrip detail 5-parameter score breakdown ($\sum \text{contributions} \equiv \text{final\_score}$).
+   - Executes full calibration update-audit-restore cycle and validates SSR HTML generation across all pages.
+   - Validates all 14 frontend API contracts against active backend endpoints with 100% pass rate.
+
+4. **Headless Route Integration Suite ([`scripts/test_frontend_routes.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_routes.mjs))**:
+   - Programmatically requests all Next.js App Router endpoints (`/`, `/history`, `/settings`, `/analysis/TATAMOTORS`, `/analyse/TATAMOTORS` dynamic redirect).
+   - Validates HTTP 200 responses, confirms absence of unhandled React SSR exceptions, and verifies security token injection.
+
+5. **Static Analysis & Type Safety**:
+   - `npx tsc --noEmit`: `0 errors, 0 warnings` across all Next.js TypeScript files.
+   - `python3 -m compileall backend/ pv_alert_surveillance.py scripts/ tests/`: `0 errors` across all Python source modules.
 
 3. **Comprehensive E2E Node.js Test Suite ([`scripts/verify_e2e.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/verify_e2e.mjs)) & Frontend API Contracts ([`scripts/test_frontend_api.mjs`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/scripts/test_frontend_api.mjs))**:
    - Exercises multi-role authentication (`vishesh_admin`, `arao_analyst`, `guest_viewer`).

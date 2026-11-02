@@ -63,6 +63,9 @@ export function AlertsTable({
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [riskTab, setRiskTab] = useState<string>(selectedRiskFilter);
 
+  // Allotted Alphabet filter (PVASF §2 & §5)
+  const [alphabetRange, setAlphabetRange] = useState<string>("ALL");
+
   // Trigger filters
   const [filterPriceSpike, setFilterPriceSpike] = useState(false);
   const [filterPriceZ, setFilterPriceZ] = useState(false);
@@ -82,6 +85,7 @@ export function AlertsTable({
     setCurrentPage(1);
   }, [
     searchTerm,
+    alphabetRange,
     riskTab,
     filterPriceSpike,
     filterPriceZ,
@@ -114,8 +118,22 @@ export function AlertsTable({
       const matchCircuitHits = !filterCircuitHits || s.band_hit_days >= 3;
       const matchNewHighs = !filterNewHighs || s.new_high_days >= 1;
 
+      const matchAlphabet =
+        alphabetRange === "ALL" ||
+        (() => {
+          const first = (s.symbol || "").trim().toUpperCase()[0];
+          if (!first) return false;
+          if (alphabetRange === "A-E") return first >= "A" && first <= "E";
+          if (alphabetRange === "F-J") return first >= "F" && first <= "J";
+          if (alphabetRange === "K-O") return first >= "K" && first <= "O";
+          if (alphabetRange === "P-T") return first >= "P" && first <= "T";
+          if (alphabetRange === "U-Z") return first >= "U" && first <= "Z";
+          return true;
+        })();
+
       return (
         matchQuery &&
+        matchAlphabet &&
         matchRisk &&
         matchPriceSpike &&
         matchPriceZ &&
@@ -127,6 +145,7 @@ export function AlertsTable({
   }, [
     scrips,
     searchTerm,
+    alphabetRange,
     riskTab,
     filterPriceSpike,
     filterPriceZ,
@@ -182,7 +201,8 @@ export function AlertsTable({
 
   const hasActiveFilters =
     Boolean(searchTerm) ||
-    riskTab !== "All" ||
+    alphabetRange !== "ALL" ||
+    riskTab !== selectedRiskFilter ||
     filterPriceSpike ||
     filterPriceZ ||
     filterVolZ ||
@@ -191,7 +211,8 @@ export function AlertsTable({
 
   const resetFilters = () => {
     setSearchTerm("");
-    handleRiskTabChange("All");
+    setAlphabetRange("ALL");
+    handleRiskTabChange(selectedRiskFilter);
     setFilterPriceSpike(false);
     setFilterPriceZ(false);
     setFilterVolZ(false);
@@ -279,7 +300,7 @@ export function AlertsTable({
       key: "All",
       label: "All Risks",
       count: scrips.length,
-      subtitle: "Total Securities",
+      subtitle: "Total Scrips",
       dot: "bg-slate-400",
       activeCardClass: "bg-slate-50 border-slate-300 ring-2 ring-slate-400/20 shadow-xs",
       activeBadge: "bg-slate-200/80 text-slate-800 border-slate-300",
@@ -368,33 +389,92 @@ export function AlertsTable({
       </div>
 
       {/* ── Controls Toolbar ── */}
-      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/70 px-5 py-2.5 space-y-2">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Search */}
-            <div className="flex items-center gap-2.5 bg-white border border-slate-300/80 rounded-xl px-3.5 h-10 w-72 sm:w-80 shadow-2xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
-              <Search className="h-4 w-4 text-slate-400 shrink-0" />
-              <input
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search symbol, company or ISIN..."
-                className="w-full bg-transparent border-none outline-none text-xs sm:text-[13px] text-slate-800 placeholder:text-slate-400 font-medium"
-              />
-              {searchTerm && (
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm("")}
-                  className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              )}
+      <div className="flex-shrink-0 border-b border-slate-200 bg-slate-50/80 px-5 py-2.5 space-y-2.5">
+        {/* Row 1: Search (left) & Actions (right) */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Search */}
+          <div className="flex items-center gap-2.5 bg-white border border-slate-300/80 rounded-xl px-3.5 h-10 w-80 sm:w-96 shadow-2xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+            <Search className="h-4 w-4 text-slate-400 shrink-0" />
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search scrip, company or ISIN..."
+              className="w-full bg-transparent border-none outline-none text-xs sm:text-[13px] text-slate-800 placeholder:text-slate-400 font-medium"
+            />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm("")}
+                className="text-slate-400 hover:text-slate-600 shrink-0 cursor-pointer"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Right Action Buttons */}
+          <div className="flex items-center gap-2.5">
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={resetFilters}
+                className="text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer transition-colors px-2.5 py-1.5 rounded-lg hover:bg-slate-200/60"
+              >
+                Reset filters
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={exportCSV}
+              className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Export CSV</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Row 2: Surveillance Filters Bar (Scrip Alphabet Allotment + Risk Triggers) */}
+        <div className="flex flex-wrap items-center justify-between gap-y-2 gap-x-4 pt-1.5 border-t border-slate-200/70">
+          <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2">
+            {/* Scrip Alphabet Filter (PVASF §2 & §5) */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider select-none flex items-center gap-1">
+                Alphabet:
+                <InfoTooltip text="Filters scrips allocated to surveillance officers by alphabet range per PVASF §2 & §5." />
+              </span>
+              <div className="inline-flex items-center p-0.5 bg-slate-200/70 rounded-lg border border-slate-300/60 shadow-2xs">
+                {[
+                  { key: "ALL", label: "All" },
+                  { key: "A-E", label: "A–E" },
+                  { key: "F-J", label: "F–J" },
+                  { key: "K-O", label: "K–O" },
+                  { key: "P-T", label: "P–T" },
+                  { key: "U-Z", label: "U–Z" },
+                ].map((b) => (
+                  <button
+                    key={b.key}
+                    type="button"
+                    onClick={() => setAlphabetRange(b.key)}
+                    className={cn(
+                      "px-2.5 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer",
+                      alphabetRange === b.key
+                        ? "bg-white text-slate-900 font-bold shadow-2xs border border-slate-200/60"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/70"
+                    )}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Subtle Divider */}
+            <div className="h-4 w-px bg-slate-300 hidden sm:block" />
 
             {/* Triggers Bar */}
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider select-none mr-0.5">
+              <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider select-none mr-0.5">
                 Triggers:
               </span>
               <TriggerPill
@@ -430,24 +510,10 @@ export function AlertsTable({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="text-xs font-semibold text-slate-500 hover:text-slate-900 cursor-pointer transition-colors underline underline-offset-2 px-2"
-              >
-                Reset filters
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={exportCSV}
-              className="inline-flex items-center gap-1.5 px-3.5 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span>Export CSV</span>
-            </button>
+          {/* Right indicator: Scrip count */}
+          <div className="text-[11px] font-medium text-slate-500 select-none">
+            Showing <strong className="text-slate-800 font-bold">{filtered.length}</strong> of{" "}
+            <strong className="text-slate-800 font-bold">{scrips.length}</strong> scrips
           </div>
         </div>
       </div>
@@ -463,8 +529,8 @@ export function AlertsTable({
                 onClick={() => handleSort("symbol")}
               >
                 <span className="inline-flex items-center gap-1.5">
-                  Security
-                  <InfoTooltip text="Stock ticker symbol, company name, and ISIN code." />
+                  Scrip
+                  <InfoTooltip text="Scrip ticker symbol, registered company name, and ISIN code." />
                   <SortIcon field="symbol" current={sortField} order={sortOrder} />
                 </span>
               </th>
@@ -572,7 +638,7 @@ export function AlertsTable({
                   key={s.symbol}
                   className="transition-colors duration-75 border-b border-slate-200 hover:bg-slate-50/80 bg-white group"
                 >
-                  {/* Security (Sticky Column) */}
+                  {/* Scrip (Sticky Column) */}
                   <td className="px-5 py-4 sticky left-0 bg-white group-hover:bg-slate-50/90 z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.08)]">
                     <div className="flex items-start gap-2.5">
                       <div className={cn("w-2.5 h-2.5 rounded-full mt-1 shrink-0", RISK_DOT[s.risk] || "bg-slate-300")} />
@@ -703,20 +769,6 @@ export function AlertsTable({
           </span>
         </div>
 
-        <div className="hidden lg:flex items-center gap-3 text-xs font-medium text-slate-500">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-rose-500" />
-            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "High").length}</strong> High
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-amber-500" />
-            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "Medium").length}</strong> Medium
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500" />
-            <strong className="text-slate-700">{scrips.filter((r) => r.risk === "Low").length}</strong> Low
-          </span>
-        </div>
 
         {pageSize > 0 && totalPages > 1 ? (
           <div className="flex items-center gap-1">

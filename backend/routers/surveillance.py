@@ -216,14 +216,31 @@ def update_weights(
     }
 
 
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
+ALLOWED_EXTENSIONS = (".csv", ".xlsx", ".xls")
+
+
 @router.post("/upload-eod")
 async def upload_eod(
     file: UploadFile = File(...),
     admin_user: SysUser = Depends(require_admin),
     db: Session = Depends(get_db)
 ):
-    contents = await file.read()
-    filename = file.filename or "upload.csv"
+    filename = (file.filename or "upload.csv").strip()
+    if not any(filename.lower().endswith(ext) for ext in ALLOWED_EXTENSIONS):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file format '{filename}'. Permitted formats: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Read with hard size ceiling to protect server memory against DoS
+    contents = await file.read(MAX_UPLOAD_SIZE + 1024)
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File exceeds maximum allowed upload size of {MAX_UPLOAD_SIZE // (1024 * 1024)} MB."
+        )
+
     res = service.load_eod_csv(contents, filename)
     if "error" in res:
         raise HTTPException(status_code=400, detail=res["error"])

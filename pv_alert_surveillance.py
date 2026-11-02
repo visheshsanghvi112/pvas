@@ -59,7 +59,7 @@ def normalize_columns(df: pd.DataFrame, standard_cols: List[str]) -> pd.DataFram
                     col_map[existing_cols[rule_key]] = std
                     break
                     
-    df.rename(columns=col_map, inplace=True)
+    df = df.rename(columns=col_map)
     return df
 
 
@@ -540,7 +540,7 @@ class SurveillanceEngine:
           4.3 Counterparty Concentration ("Collusion" Metric): Highlights bilateral trading rings.
           4.4 Trade Reversal Ratio ("RTR / Wash Trade" Metric): Quantifies synchronized round-tripping.
           4.5 Circular Trading Loops ("Cycle Detection"): Graph DFS isolating directed rings (A->B->C->A).
-          4.6 Mark-to-Market PnL ("Profit-Makers" Metric): Realized cash gains + unrealized inventory value.
+          4.6 Realized Closed-Trade PnL ("Profit-Makers" Metric): Closed-trade net cash profit on matched buy/sell volume.
         """
         if trades_df.empty:
             return ParticipantAuditResult()
@@ -569,7 +569,15 @@ class SurveillanceEngine:
         if "NegContVal" not in df.columns:
             df["NegContVal"] = df["LTPContribution"].apply(lambda x: abs(min(0.0, float(x))))
 
-        ltp_group = df.groupby("PAN").agg({
+        df["PosContVal"] = pd.to_numeric(df["PosContVal"], errors="coerce").fillna(0.0)
+        df["NegContVal"] = pd.to_numeric(df["NegContVal"], errors="coerce").fillna(0.0)
+        df["LTPContribution"] = pd.to_numeric(df["LTPContribution"], errors="coerce").fillna(0.0)
+
+        # Filter out invalid or placeholder PAN identifiers (omnibus pools, UNKNOWN, empty)
+        valid_pan_mask = ~df["PAN"].astype(str).str.strip().str.upper().isin(["UNKNOWN", "NAN", "NONE", ""])
+        df_valid = df[valid_pan_mask]
+
+        ltp_group = df_valid.groupby("PAN").agg({
             "LTPContribution": "sum",
             "PosContVal": "sum",
             "NegContVal": "sum"
@@ -623,10 +631,13 @@ class SurveillanceEngine:
         # --- 4.2 Volume Share (The "Dominance" Metric) ---
         # Formula: (Individual PAN Volume over 15d / Total Gross Market Volume Legs over 15d) * 100
         # Denominator represents 2 * Total Scrip Volume (each exchange trade comprises 1 buyer + 1 seller leg)
-        df["PANVolume"] = df["BuyVolume"] + df["SellVolume"]
-        vol_group = df.groupby("PAN")["PANVolume"].sum().reset_index()
+        df_valid = df_valid.copy()
+        df_valid["PANVolume"] = df_valid["BuyVolume"] + df_valid["SellVolume"]
+        vol_group = df_valid.groupby("PAN")["PANVolume"].sum().reset_index()
         total_market_legs = max(1.0, 2.0 * total_exchange_vol)
-        vol_group["VolumeSharePercent"] = (vol_group["PANVolume"] / total_market_legs) * 100.0
+        if total_exchange_vol <= 0 and not vol_group.empty and float(vol_group["PANVolume"].sum()) > 0:
+            total_market_legs = float(vol_group["PANVolume"].sum())
+        vol_group["VolumeSharePercent"] = ((vol_group["PANVolume"] / total_market_legs) * 100.0).clip(lower=0.0, upper=100.0)
         top_vol = vol_group.sort_values("VolumeSharePercent", ascending=False).head(5).to_dict("records")
 
         # Extract directed flow mapping between counterparties
@@ -663,11 +674,12 @@ class SurveillanceEngine:
                 pair_dict[pair_name] = pair_dict.get(pair_name, 0.0) + vol
 
         if pair_dict:
+            denom_exchange_vol = max(total_exchange_vol, max(pair_dict.values()) if pair_dict else 1.0, 1.0)
             top_pairs = [
                 {
                     "Pair": pair_name,
                     "Volume": vol,
-                    "SharePercent": (vol / max(1.0, total_exchange_vol)) * 100.0
+                    "SharePercent": min(100.0, round((vol / denom_exchange_vol) * 100.0, 2))
                 }
                 for pair_name, vol in sorted(pair_dict.items(), key=lambda x: x[1], reverse=True)[:5]
             ]
@@ -688,18 +700,26 @@ class SurveillanceEngine:
             v_a_b = flows.get((A, B), 0.0)
             v_b_a = flows.get((B, A), 0.0)
             gross = v_a_b + v_b_a
-            if gross > 0:
-                rtr = (2.0 * min(v_a_b, v_b_a) / gross) * 100.0
+            if gross > 0 and v_a_b > 0 and v_b_a > 0:
+                rev_vol = min(v_a_b, v_b_a)
+                rtr = (2.0 * rev_vol / gross) * 100.0
                 reversal_list.append({
                     "Pair": f"{A} <-> {B}",
                     "PAN1": A,
                     "PAN2": B,
                     "Vol_A_to_B": float(v_a_b),
                     "Vol_B_to_A": float(v_b_a),
+                    "ReversedVolume": float(rev_vol),
                     "GrossVolume": float(gross),
                     "ReversalRatio": round(rtr, 2)
                 })
-        top_reversals = sorted(reversal_list, key=lambda x: (x["ReversalRatio"], x["GrossVolume"]), reverse=True)[:10]
+        # Rank by quantum of synchronized reversed shares descending, then RTR percentage
+        # (Prioritizes material multi-thousand share manipulation rings over trivial 1-share trades)
+        top_reversals = sorted(
+            reversal_list,
+            key=lambda x: (min(x["Vol_A_to_B"], x["Vol_B_to_A"]), x["ReversalRatio"]),
+            reverse=True
+        )[:10]
 
         # --- 4.5 Circular Trade Loops Detection ---
         # Graph Cycle Finder: Identifies directed loops of length 3 to 5 (e.g. A -> B -> C -> A)
@@ -769,9 +789,12 @@ class SurveillanceEngine:
             })
         top_loops = sorted(loop_results, key=lambda x: (x["RotatedVolume"], -x["Length"]), reverse=True)[:10]
 
-        # --- 4.6 Profit-Makers (MTM PnL Analysis) ---
-        # Formula: Net PnL = Total Sell Value - Total Buy Value + (Net Remaining Position * Latest Close Price)
-        # Rationale: Identifies the primary beneficiaries extracting cash profits during the pump.
+        # --- 4.6 Profit-Makers (Realized Closed-Trade PnL Analysis) ---
+        # Formula: Realized PnL = Matched Volume * (Avg Sell Price - Avg Buy Price)
+        # Rationale: Identifies participants extracting actual cash profits during the pump.
+        # Strict Realized Logic: Requires both BuyVolume > 0 and SellVolume > 0.
+        # Pure position accumulators (SellVolume == 0) are excluded to prevent false positives
+        # on genuine long-term retail buyers (future scope: Position Accumulator Intelligence).
         pnl_df = df.groupby("PAN").agg({
             "BuyVolume": "sum",
             "SellVolume": "sum",
@@ -781,15 +804,36 @@ class SurveillanceEngine:
 
         pnl_records = []
         for _, row in pnl_df.iterrows():
-            net_pos = row["BuyVolume"] - row["SellVolume"]
-            pnl = row["SellValue"] - row["BuyValue"] + (net_pos * final_close)
+            pan_clean = str(row["PAN"]).strip().upper()
+            if not pan_clean or pan_clean in ("UNKNOWN", "NONE", "NAN", ""):
+                continue
+
+            buy_vol = float(row["BuyVolume"]) if pd.notna(row["BuyVolume"]) else 0.0
+            sell_vol = float(row["SellVolume"]) if pd.notna(row["SellVolume"]) else 0.0
+            # Strictly require round-trip closed trading activity (both bought and sold)
+            if buy_vol <= 0.0 or sell_vol <= 0.0:
+                continue
+
+            buy_val = float(row["BuyValue"]) if pd.notna(row["BuyValue"]) else 0.0
+            sell_val = float(row["SellValue"]) if pd.notna(row["SellValue"]) else 0.0
+
+            matched_vol = min(buy_vol, sell_vol)
+            avg_buy = buy_val / buy_vol if buy_vol > 0.0 else 0.0
+            avg_sell = sell_val / sell_vol if sell_vol > 0.0 else 0.0
+            realized_pnl = matched_vol * (avg_sell - avg_buy)
+
+            # Only positive cash gainers qualify as trading beneficiaries
+            if realized_pnl <= 0.0:
+                continue
+
             pnl_records.append({
-                "PAN": row["PAN"],
-                "BuyVolume": int(row["BuyVolume"]),
-                "SellVolume": int(row["SellVolume"]),
-                "NetPnL": round(pnl, 2)
+                "PAN": pan_clean,
+                "BuyVolume": int(buy_vol),
+                "SellVolume": int(sell_vol),
+                "NetPnL": round(realized_pnl, 2)
             })
 
+        # Rank participants by realized cash profits descending (top gainers)
         top_profit = sorted(pnl_records, key=lambda x: x["NetPnL"], reverse=True)[:5]
 
         return ParticipantAuditResult(
@@ -997,13 +1041,25 @@ def print_dashboard(report: ScripSurveillanceReport, threshold: float):
     # Participant Details
     print("Participant Audit (Last 15 days):")
     
-    print("\n  Top 5 LTP Price Impact Contributors:")
-    if participant.ltp_contributors:
+    print("\n  Top 5 Gross Positive LTP Pushers (+INR):")
+    if getattr(participant, "pos_ltp_contributors", None) and participant.pos_ltp_contributors:
+        print("    " + f"{'PAN':<15} | {'Gross Pos LTP Push':<22}")
+        for p in participant.pos_ltp_contributors[:5]:
+            print("    " + f"{p['PAN']:<15} | {p['PosContVal']:>22.2f}")
+    elif participant.ltp_contributors:
         print("    " + f"{'PAN':<15} | {'Net LTP Contrib (Price)':<22}")
-        for p in participant.ltp_contributors:
+        for p in participant.ltp_contributors[:5]:
             print("    " + f"{p['PAN']:<15} | {p['LTPContribution']:>22.4f}")
     else:
         print("    No participant trade records found.")
+
+    print("\n  Top 5 Gross Negative LTP Pullers (-INR):")
+    if getattr(participant, "neg_ltp_contributors", None) and participant.neg_ltp_contributors:
+        print("    " + f"{'PAN':<15} | {'Gross Neg LTP Pull':<22}")
+        for p in participant.neg_ltp_contributors[:5]:
+            print("    " + f"{p['PAN']:<15} | {p['NegContVal']:>22.2f}")
+    else:
+        print("    No negative price suppressors found.")
 
     print("\n  Top 5 Volume Share Concentrators:")
     if participant.volume_share:
@@ -1037,13 +1093,13 @@ def print_dashboard(report: ScripSurveillanceReport, threshold: float):
     else:
         print("    No circular trading loops detected.")
 
-    print("\n  Top 5 Participant Profit-Makers (MTM PnL):")
+    print("\n  Top 5 Participant Profit-Makers (Realized PnL):")
     if participant.profit_makers:
-        print("    " + f"{'PAN':<15} | {'Buy Qty':<10} | {'Sell Qty':<10} | {'Net MTM PnL (INR)':<18}")
+        print("    " + f"{'PAN':<15} | {'Buy Qty':<10} | {'Sell Qty':<10} | {'Realized PnL (INR)':<18}")
         for p in participant.profit_makers:
             print("    " + f"{p['PAN']:<15} | {p['BuyVolume']:>10,} | {p['SellVolume']:>10,} | {p['NetPnL']:>17.2f}")
     else:
-        print("    No trade records to calculate PnL.")
+        print("    No matched buy/sell trades to calculate realized PnL.")
     print("=" * 72 + "\n")
 
 # ----------------------------------------------------------------------

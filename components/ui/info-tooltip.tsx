@@ -34,6 +34,11 @@ export function InfoTooltip({
 
   useEffect(() => {
     setMounted(true);
+    return () => {
+      if (closeTimerRef.current) {
+        clearTimeout(closeTimerRef.current);
+      }
+    };
   }, []);
 
   const calculatePosition = useCallback(() => {
@@ -128,21 +133,27 @@ export function InfoTooltip({
       }
     };
 
-    const handleScrollOrResize = () => {
+    const handleScrollOrResize = (e?: Event) => {
+      if (e && e.target && tooltipRef.current && tooltipRef.current.contains(e.target as Node)) {
+        return;
+      }
       setIsOpen(false);
       setIsPinned(false);
     };
 
+    const onScroll = (e: Event) => handleScrollOrResize(e);
+    const onResize = () => handleScrollOrResize();
+
     document.addEventListener("mousedown", handleOutsideClick);
     document.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("scroll", handleScrollOrResize, true);
-    window.addEventListener("resize", handleScrollOrResize);
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onResize);
 
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
       document.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("scroll", handleScrollOrResize, true);
-      window.removeEventListener("resize", handleScrollOrResize);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onResize);
     };
   }, [isOpen, calculatePosition]);
 

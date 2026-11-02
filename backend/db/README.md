@@ -12,7 +12,7 @@ This directory is the **single source of truth** for all database models, DDL de
 | **`models.py`** | **Declarative ORM**: 15 SQLAlchemy 2.0 mapped models covering all entities in [`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md) and [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md). |
 | **`schema.sql`** | **Canonical DDL**: ANSI SQL / SQLite / PostgreSQL compliant DDL containing all 15 table definitions, primary keys, foreign keys, and indexes. |
 | **`seed.py`** | **Self-Contained Seeding Engine**: Generates and inserts all synthetic operational records across 15 scrips, 500 clients, multi-date participant trade logs, matched trade pairs, and quarterly shareholding filings. |
-| **`surveillance.db`** | **Active Production SQLite Database**: The live operational database used by the FastAPI backend server (`http://localhost:8000`). |
+| **`surveillance.db`** | **Active Production SQLite Database**: The live operational database used by the FastAPI backend server (`http://localhost:8005`). |
 
 ---
 
@@ -80,7 +80,7 @@ If you are setting up the project on another computer or maintaining external ba
 
 | File Name | Location in Project | Size | Role & Importance |
 | :--- | :--- | :---: | :--- |
-| **`surveillance.db`** | `backend/db/surveillance.db` | **145 MB** | **🔴 PRIMARY OPERATIONAL DATABASE (853,157+ records)**.<br/>If you keep this single file and place it here, the entire platform runs with full production data immediately. |
+| **`surveillance.db`** | `backend/db/surveillance.db` | **145 MB** | **🔴 PRIMARY OPERATIONAL DATABASE (854,061+ records)**.<br/>If you keep this single file and place it here, the entire platform runs with full production data immediately. |
 | **`result_part1.xlsx`** | Project root (`/`) | 19.1 MB | Raw EOD Market feed (Feb–Jul 2025). Used by `scripts/ingest_market_eod.py`. |
 | **`result_part2.xlsx`** | Project root (`/`) | 17.2 MB | Raw EOD Market feed (Jul–Nov 2025). Used by `scripts/ingest_market_eod.py`. |
 | **`client_data.xlsx`** | Project root (`/`) | 4.3 MB | Raw participant trade executions & KYC. Used by `scripts/ingest_client_data.py`. |

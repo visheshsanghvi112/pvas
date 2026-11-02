@@ -2,8 +2,6 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import Stack from '@mui/material/Stack';
-import ToggleButton from '@mui/material/ToggleButton';
-import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import { RadarChart as MuiRadarChart } from '@mui/x-charts/RadarChart';
 import type { HighlightItemIdentifier } from '@mui/x-charts/models';
 import Box from '@mui/material/Box';
@@ -108,10 +106,10 @@ export function AnomalyEventMatrixChart({
   const totalBandHits = metrics?.band_hit_days ?? last15.filter((d) => d.hitPriceBand).length;
   const displayBandPct = bandPercent > 1 ? bandPercent : Math.round(bandPercent * 100);
 
-  const peakStatLabel = isFull180 ? "Hit 180-day high" : `Hit ${historyDays}-day high`;
+  const peakStatLabel = isFull180 ? "Hit 180-day high" : "Hit record high";
   const peakStatSub = isFull180
     ? "Days in past 15 where the scrip's intraday high exceeded its prior 180-day peak"
-    : `Days in past 15 where the scrip exceeded its prior peak across available ${historyDays} sessions`;
+    : "Days in past 15 where the scrip's intraday high exceeded its prior baseline peak";
 
   const Stat = ({
     count, label, sub, color, score, scoreTooltip
@@ -215,7 +213,7 @@ export function ParameterRadarChart({
 
   function scorePriceRise(r: number) {
     if (r > 150) return 5;
-    if (r >= 76) return 3;
+    if (r > 75) return 3;
     if (r >= 15) return 1;
     return 0;
   }
@@ -238,11 +236,11 @@ export function ParameterRadarChart({
     return 0;
   }
 
-  const sPrice = scorePriceRise(Number(metrics.price_rise_pct) || 0);
-  const sPriceZ = scoreZ(Number(metrics.price_z) || 0);
-  const sVolZ = scoreZ(Number(metrics.volume_z) || 0);
-  const sBand = scoreBand(Number(metrics.band_hit_days) || 0);
-  const sHigh = scoreNewHigh(Number(metrics.new_high_days) || 0);
+  const sPrice = (metrics as any)?.price_rise_score ?? scorePriceRise(Number(metrics.price_rise_pct) || 0);
+  const sPriceZ = (metrics as any)?.price_z_score ?? scoreZ(Number(metrics.price_z) || 0);
+  const sVolZ = (metrics as any)?.volume_z_score ?? scoreZ(Number(metrics.volume_z) || 0);
+  const sBand = (metrics as any)?.band_score ?? scoreBand(Number(metrics.band_hit_days) || 0);
+  const sHigh = (metrics as any)?.new_high_score ?? scoreNewHigh(Number(metrics.new_high_days) || 0);
 
   const series = [
     {
@@ -274,11 +272,6 @@ export function ParameterRadarChart({
       fillArea,
     }));
 
-  const handleHighlightedSeries = (_event: any, newHighlightedSeries: string | null) => {
-    setHighlightedItem(
-      newHighlightedSeries !== null ? { seriesId: newHighlightedSeries } : null
-    );
-  };
 
   const leftCards = [
     { label: "Price Rise", score: sPrice, rawVal: `${Number(metrics.price_rise_pct || 0) >= 0 ? "+" : ""}${Number(metrics.price_rise_pct || 0).toFixed(1)}%`, wt: weights?.price_rise ?? 20 },
@@ -338,26 +331,6 @@ export function ParameterRadarChart({
 
   return (
     <Stack spacing={2.5} sx={{ alignItems: 'center', width: '100%' }}>
-      {/* MUI ToggleButtonGroup Top Controls */}
-      <ToggleButtonGroup
-        value={highlightedItem?.seriesId ?? null}
-        exclusive
-        onChange={handleHighlightedSeries}
-        aria-label="highlighted series"
-        fullWidth
-        size="small"
-      >
-        {series.map((item) => (
-          <ToggleButton
-            key={item.id}
-            value={item.id}
-            aria-label={`series ${item.labelStr}`}
-            sx={{ textTransform: 'none', fontWeight: 700, fontSize: '0.8rem' }}
-          >
-            {item.labelStr}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
 
       {/* 3-Column Centered Layout: Left 3 Cards | Center Large Radar Chart | Right Cards */}
       <div className="w-full grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
@@ -403,10 +376,7 @@ export function ParameterRadarChart({
             return (
               <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-xl p-3.5 shadow-xs flex flex-col justify-between">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-300">Risk Profile</span>
-                  <span className="text-[10px] font-bold bg-blue-500/30 text-blue-300 px-2 py-0.5 rounded-full border border-blue-400/30">
-                    Scoring Engine
-                  </span>
+                  <span className="text-xs font-bold text-slate-300">Composite Risk Profile</span>
                 </div>
                 <div className="mt-2 mb-1 flex items-baseline justify-between">
                   <span className="text-2xl font-black font-mono text-amber-400">
@@ -1329,13 +1299,13 @@ export function SurveillanceStatisticalDeck({
 
   const historyDays = history.length;
   const isFull180 = historyDays >= 170;
-  const baselineLabel = isFull180 ? "Closing Price (T-180)" : `Baseline Close (T-${historyDays})`;
+  const baselineLabel = isFull180 ? "Closing Price (T-180)" : "Baseline Closing Price";
   const baselineTooltip = isFull180
     ? "The closing price 180 trading days (~6 months) ago, used as the baseline for Price Rise calculation against historical baseline."
     : `Earliest available closing price in current dataset (${historyDays} sessions ago on ${history[0]?.date}). Lookback is adjusted to available depth.`;
   const obsSubtitle = isFull180
     ? "Observation: 15-Day High vs T-180 Baseline"
-    : `Observation: 15-Day High vs T-${historyDays} Baseline (${historyDays}d available)`;
+    : "Observation: 15-Day High vs Historical Baseline";
 
   return (
     <div className="space-y-4">
@@ -1351,11 +1321,6 @@ export function SurveillanceStatisticalDeck({
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               {weights?.price_rise ?? 20}% of Score
             </span>
-            {!isFull180 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200" title={`Historical depth is ${historyDays} sessions, which is less than the standard 180 trading sessions.`}>
-                ⚠️ {historyDays}d History
-              </span>
-            )}
           </div>
           <span className="text-xs font-semibold text-slate-500">
             {obsSubtitle}

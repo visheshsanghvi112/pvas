@@ -1,5 +1,5 @@
 {
-  "python.defaultInterpreterPath": "/Users/vishesh/env/bin/python",
+  "python.defaultInterpreterPath": "/Users/vishesh/.venvs/pvasf_py31317/bin/python",
   "python.analysis.extraPaths": [
     "${workspaceFolder}"
   ],
