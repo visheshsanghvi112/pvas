@@ -1,13 +1,13 @@
 # PVASF — Data Feed Audit & Specification Mapping
 ## What We Wanted vs. What We Got
 
-**Document Version:** 2.1.0  
+**Document Version:** 2.2.0 (Production Code & Warehouse Verified)  
 **Framework Target:** Price-Volume Alert Surveillance Framework (PVASF)  
 **Primary Specifications:**  
 * [`PVASF_CORE_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/PVASF_CORE_SPEC.md) (Core Surveillance Engine & Mathematical Formulas)  
 * [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20copy/DATA_REQUEST_SPEC.md) (Formal Data Delivery Schema)  
 **Database Target:** `backend/db/surveillance.db` (SQLite relational warehouse)  
-**Last Updated:** 2026-10-01  
+**Last Updated:** 2026-11-02  
 
 ---
 
@@ -111,9 +111,9 @@ The 58,898 rows cover three scrips across differing session observation periods:
 
 | Scrip Symbol | Total Trade Records | Unique Client PANs | Trading Days Present | Date Span | Observation Window Completeness |
 | :--- | :---: | :---: | :---: | :---: | :--- |
-| **`TDPOWERSYS`** | **55,893** | 22,410 | **14 Days** | Oct 14, 2025 $\rightarrow$ Nov 03, 2025 | **Complete** (~15-day statutory observation window) |
-| **`GUJRAFFIA`** | **1,235** | 812 | **6 Days** | Oct 14, 2025 $\rightarrow$ Oct 21, 2025 | **Partial** (6 sessions) |
-| **`SKMEGGPROD`** | **1,770** | 1,770 | **1 Day** | Nov 03, 2025 | **Single Session Snapshot** (Peak trigger day) |
+| **`TDPOWERSYS`** | **55,893** | **55,892** | **14 Days** | Oct 14, 2025 $\rightarrow$ Nov 03, 2025 | **Complete** (~15-day statutory observation window) |
+| **`GUJRAFFIA`** | **1,235** | **1,235** | **6 Days** | Oct 14, 2025 $\rightarrow$ Oct 21, 2025 | **Partial** (6 sessions) |
+| **`SKMEGGPROD`** | **1,770** | **1,770** | **1 Day** | Nov 03, 2025 | **Single Session Snapshot** (Peak trigger day) |
 
 ---
 
@@ -250,6 +250,33 @@ All incoming raw data from the five delivered Excel files has been parsed, clean
   * Both Logic 1 and Logic 2 LTP push values populated: **`100%`**
 * **Schema Types**: Strongly typed as `BIGINT`, `NUMERIC(20, 2)`, `NUMERIC(15, 2)`, `VARCHAR(10)`.
 
+### 6.4. Table: `market_baseline_stats` (Computed Rolling 180-Day Baselines)
+* **Total Records**: `333,974`
+* **Symbols Covered**: `2,191`
+* **Data Range**: `2025-02-11` to `2025-11-03`
+* **Data Integrity**:
+  * Baseline Volume Mean ($\mu_V$) & Std Dev ($\sigma_V$): **`100% Populated`**
+  * Baseline Return Mean ($\mu_R$) & Std Dev ($\sigma_R$): **`100% Populated`**
+  * Rolling 180-Day Peak High Price (`peak_high_180d`): **`100% Populated`**
+* **Schema Types**: Strongly typed as `DECIMAL(15, 2)`, `DECIMAL(18, 2)`, `DECIMAL(12, 6)`.
+
+### 6.5. Tables: `client_identity_master` & `client_demat_accounts` (KYC & Demat Master)
+* **Total Identity Records (`client_identity_master`)**: `59,397` real legal entities (all Indian PAN format)
+* **Total Demat Account Records (`client_demat_accounts`)**: `59,387` depository accounts (NSDL / CDSL)
+* **Referential Integrity**: **`100% Match`** (Zero orphaned depository accounts).
+
+### 6.6. Tables: `trading_session_calendar` & `compliance_audit_logs`
+* **Calendar Sessions (`trading_session_calendar`)**: `426` calendar dates mapped (296 trading sessions, 130 non-trading/holidays) from `2025-08-01` to `2026-09-30`.
+* **Regulatory Audit Logs (`compliance_audit_logs`)**: `1,304+` immutable audit trail entries capturing user actions, model calibrations, and IP addresses.
+* **Portal Users (`portal_user_accounts`)**: `4` active surveillance officers across `Admin`, `Analyst`, and `Viewer` RBAC roles.
+
+### 6.7. Zero-Mock Clean States (Pending Feeds)
+* `shareholding_summary`: **`0 records`** (Clean state; awaiting quarterly filings)
+* `large_shareholders_registry`: **`0 records`** (Clean state; awaiting substantial holders filing)
+* `corporate_events_feed`: **`0 records`** (Clean state; awaiting corporate disclosures feed)
+* `price_dilution_factors`: **`0 records`** (Clean state; awaiting corporate actions multiplier feed)
+* `broker_daily_summary`: **`0 records`** (Clean state; awaiting broker aggregate feed)
+
 ---
 
 ## 7. Specification Gap Analysis (Complete Status Tracking)
@@ -258,10 +285,11 @@ Based on [`DATA_REQUEST_SPEC.md`](file:///Users/vishesh/Downloads/UI_PVASF%20cop
 
 | Spec Section | Scope / Description | Delivery Status | Source File | Action / Implementation Status |
 | :--- | :--- | :---: | :---: | :--- |
-| **Section 1: Daily Market OHLCV** | 180-day price, volume, circuit bands, 52w high/low | **COMPLETE** | `result_part1.xlsx`, `result_part2.xlsx` | **Active**: 333,974 rows in `daily_market_eod`. Powers all 5 core alert metrics, Z-scores, and dynamic circuit bands. |
+| **Section 1: Daily Market OHLCV** | 180-day price, volume, circuit bands, 52w high/low | **COMPLETE** | `result_part1.xlsx`, `result_part2.xlsx` | **Active**: 333,974 rows in `daily_market_eod` and 333,974 rows in `market_baseline_stats`. Powers all 5 core alert metrics. |
 | **Section 2: Participant Trading & LTP** | 15-day client PAN buys, sells, aggressor qty, $\pm$ LTP push | **COMPLETE (FOR TARGET SCRIPS)** | `client_data.xlsx` | **Active**: 58,898 genuine rows in `participant_daily_trades`. Powers participant concentration and $\pm$ LTP push rankings. |
 | **Section 3: Counterparty Trading & Matched Pairs** | Bilateral matched buyer-seller pairs, pairwise LTP push | **COMPLETE (FOR ALERT SCRIPS)** | `PAN_PAIR_GUJRAFFIA.xlsx`, `PAN_PAIR_SKMEGGPROD.xlsx` | **Active**: 6,700 genuine matched trade records in `counterparty_trade_pairs`. Powers circular trade and wash sale detection. |
 | **Section 4: Shareholding Patterns (SHP)** | Quarterly promoter float, top 1% public, pledge %, substantial holders | **PENDING** | *(Awaiting quarterly filing feed)* | Tables (`shareholding_summary`, `large_shareholders_registry`) are empty (purged of fake data). Ready for ingestion upon arrival. |
-| **Section 5: Corporate Actions** | 15-day dividends, bonus issues, splits, record dates | **PENDING** | *(Awaiting corporate action feed)* | Table `corporate_events_feed` is empty (purged of fake data). Ready for ingestion upon arrival. |
+| **Section 5: Corporate Actions** | 15-day dividends, bonus issues, splits, record dates | **PENDING** | *(Awaiting corporate action feed)* | Tables `corporate_events_feed` and `price_dilution_factors` are empty (purged of fake data). Ready for ingestion upon arrival. |
 | **Section 6: Trading Calendar** | Trading vs. non-trading days, exchange holidays, Muhurat sessions | **COMPLETE** | `trading_session_calendar` | **Active**: 426 calendar dates (296 trading sessions) mapped. |
-| **Section 7: Client KYC Master** | Full legal names, PAN master registry | **COMPLETE** | `client_identity_master` | **Active**: 59,397 real PANs indexed with KYC entity names. |
+| **Section 7: Client KYC Master** | Full legal names, PAN master registry, depository accounts | **COMPLETE** | `client_identity_master`, `client_demat_accounts` | **Active**: 59,397 real PANs indexed with KYC entity names, 59,387 linked depository accounts. |
+| **Section 8: Scoring & Compliance Audit** | Alert scores, case notes, RBAC users, and immutable audit logs | **COMPLETE** | `surveillance_alert_cases`, `portal_user_accounts`, `compliance_audit_logs` | **Active**: 13 historical triage cases, 4 active officers, 1,304+ immutable audit logs. |
