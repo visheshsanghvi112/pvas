@@ -32,9 +32,14 @@ scratch/
 archive/
 
 
-# Large Raw Excel Data Feeds
+# Data Feeds, Spreadsheets & Sample Packages (Prevent sensitive regulatory data in git)
 result_part*.xlsx
 client_data*.xlsx
+PAN_PAIR_*.xlsx
+PVASF_*.xlsx
+*.xlsx
+*.zip
+PVASF_Sample_Data_Package/
 
 
 # SQLite Databases (prevent GitHub 100MB limit rejection)
