@@ -83,8 +83,8 @@ def clean_historical_data(df: pd.DataFrame) -> pd.DataFrame:
     df = df.sort_values(["Ticker", "Date"])
     df = df.drop_duplicates(subset=["Ticker", "Date"], keep="last")
     
-    # Enforce non-negative values
-    df = df[(df["Close"] >= 0) & (df["Volume"] >= 0)]
+    # Enforce strictly positive close prices and non-negative volumes
+    df = df[(df["Close"] > 0) & (df["Volume"] >= 0)]
     return df
 
 
@@ -254,10 +254,10 @@ class SurveillanceEngine:
         Higher score = bigger pump.
 
         Scoring tiers:
-          - Under 15% rise  -> Score 0 (Normal market movement)
-          - 15% to 75% rise -> Score 1 (Moderate rally)
-          - 76% to 150% rise-> Score 3 (High price pump)
-          - More than 150%  -> Score 5 (Extreme outlier pump)
+          - Under 15% rise   -> Score 0 (Normal market movement)
+          - 15% to 75% rise  -> Score 1 (Moderate rally)
+          - >75% to 150% rise-> Score 3 (High price pump)
+          - More than 150%   -> Score 5 (Extreme outlier pump)
         """
         if pct < 15:
             return 0
@@ -331,9 +331,70 @@ class SurveillanceEngine:
             return 1
         return 0
 
+    def compute_daily_event_flags(
+        self, df: pd.DataFrame, band_percent: Optional[float] = None, recent_days: Optional[int] = None
+    ) -> tuple[pd.Series, pd.Series, float]:
+        """
+        Computes per-session boolean flags for Upper Circuit Hits and 180-Day New High breakouts
+        using the canonical engine rules so summary metrics and chart overlays never diverge.
+        """
+        if "Close" not in df.columns:
+            df = normalize_columns(df, ["Ticker", "Date", "Open", "High", "Low", "Close", "Volume"])
+
+        lookback = self.config.lookback_days
+        recent = max(1, int(recent_days)) if recent_days is not None else self.config.recent_days
+        effective_lookback = min(lookback, max(5, len(df) - recent - 1))
+
+        if band_percent is None:
+            prev_close_all = pd.to_numeric(df["Close"], errors="coerce").shift(1).replace(0, np.nan)
+            high_all = pd.to_numeric(df["High"], errors="coerce")
+            high_pct_all = ((high_all - prev_close_all) / prev_close_all).replace([np.inf, -np.inf], np.nan)
+            p99 = high_pct_all.dropna().quantile(0.99)
+            if pd.isna(p99) or p99 <= 0.03:
+                band_percent = 0.02
+            elif p99 <= 0.075:
+                band_percent = 0.05
+            elif p99 <= 0.15:
+                band_percent = 0.10
+            else:
+                band_percent = 0.20
+        elif band_percent > 1.0:
+            band_percent /= 100.0
+
+        close = pd.to_numeric(df["Close"], errors="coerce").ffill().bfill().fillna(1e-4)
+        high = pd.to_numeric(df["High"], errors="coerce").ffill().bfill().fillna(1e-4)
+        prev_close = close.shift(1).replace(0, np.nan)
+        high_pct = (high - prev_close) / prev_close
+
+        daily_bands = None
+        if "Band" in df.columns:
+            b_series = pd.to_numeric(df["Band"], errors="coerce")
+            if b_series.notna().sum() >= recent:
+                daily_bands = b_series
+        elif "UpperCircuitLimit" in df.columns and "PrevClose" in df.columns:
+            u_series = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
+            p_series = pd.to_numeric(df["PrevClose"], errors="coerce")
+            valid = (p_series > 0) & (u_series > 0)
+            if valid.sum() >= recent:
+                daily_bands = pd.Series(np.nan, index=df.index, dtype=float)
+                daily_bands.loc[valid] = (u_series[valid] - p_series[valid]) / p_series[valid]
+
+        if daily_bands is not None:
+            daily_bands = daily_bands.fillna(float(band_percent))
+            is_band_hit = (high_pct >= 0.90 * daily_bands).fillna(False)
+            last_valid_band = daily_bands.dropna()
+            resolved_band = float(last_valid_band.iloc[-1]) if not last_valid_band.empty else float(band_percent)
+        else:
+            is_band_hit = (high_pct >= 0.90 * band_percent).fillna(False)
+            resolved_band = float(band_percent)
+
+        rolling_180_high_prev = high.shift(1).rolling(effective_lookback, min_periods=min(15, effective_lookback)).max()
+        is_new_high = (high > rolling_180_high_prev).fillna(False)
+        return is_band_hit, is_new_high, resolved_band
+
     def calculate_core_metrics(
         self, ticker: str, df: pd.DataFrame, band_percent: Optional[float] = None,
-        dilution_multiplier: float = 1.0
+        dilution_multiplier: float = 1.0, recent_days: Optional[int] = None
     ) -> MarketMetricsResult:
         """
         Calculates all 5 Core Surveillance Metrics for a single stock:
@@ -348,7 +409,7 @@ class SurveillanceEngine:
         A score exceeding threshold (default 60.0) flags the stock for the compliance watchlist.
         """
         lookback = self.config.lookback_days
-        recent = self.config.recent_days
+        recent = max(1, int(recent_days)) if recent_days is not None else self.config.recent_days
         min_required = recent + 5
 
         if "Close" not in df.columns:
@@ -362,23 +423,9 @@ class SurveillanceEngine:
         # Allow flexible lookback when exact 180 calendar/trading day archive is passed (e.g. 179 trading days)
         effective_lookback = min(lookback, max(5, len(df) - recent - 1))
 
-        # If price band is not provided, estimate it from historical high moves (2%, 5%, 10%, or 20%)
-        if band_percent is None:
-            prev_close_all = df["Close"].shift(1)
-            high_pct_all = (df["High"] - prev_close_all) / prev_close_all
-            p99 = high_pct_all.dropna().quantile(0.99)
-            
-            if p99 <= 0.03:
-                band_percent = 0.02
-            elif p99 <= 0.075:
-                band_percent = 0.05
-            elif p99 <= 0.15:
-                band_percent = 0.10
-            else:
-                band_percent = 0.20
-        else:
-            if band_percent > 1.0:
-                band_percent /= 100.0
+        is_band_hit_series, is_new_high_series, _ = self.compute_daily_event_flags(
+            df, band_percent=band_percent, recent_days=recent
+        )
 
         close = pd.to_numeric(df["Close"], errors="coerce").ffill().bfill().fillna(1e-4)
         volume = pd.to_numeric(df["Volume"], errors="coerce").fillna(0.0).clip(lower=0.0)
@@ -457,33 +504,12 @@ class SurveillanceEngine:
 
         # --- 4. Price Band Persistence (Upper Circuit Hits) ---
         # Counts days where the stock rose by at least 90% of its daily circuit band
-        prev_close = close.shift(1).replace(0, np.nan).fillna(1e-4)
-        high_pct = (high - prev_close) / prev_close
-
-        # Priority 1: Use empirical daily regulatory circuit bands if present in DataFrame
-        daily_bands = None
-        if "Band" in df.columns:
-            b_series = pd.to_numeric(df["Band"], errors="coerce")
-            if b_series.notna().sum() >= recent:
-                daily_bands = b_series
-        elif "UpperCircuitLimit" in df.columns and "PrevClose" in df.columns:
-            u_series = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
-            p_series = pd.to_numeric(df["PrevClose"], errors="coerce")
-            valid = (p_series > 0) & (u_series > 0)
-            if valid.sum() >= recent:
-                daily_bands = (u_series - p_series) / p_series
-
-        if daily_bands is not None:
-            band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * daily_bands.iloc[-recent:]).sum())
-        else:
-            band_hit_days = int((high_pct.iloc[-recent:] >= 0.90 * band_percent).sum())
+        band_hit_days = int(is_band_hit_series.iloc[-recent:].sum())
         band_score = self.score_band_persistence(band_hit_days)
 
         # --- 5. 180-Day New High Breakout ---
         # Counts days where today's high strictly broke past the previous 180-day ceiling (PVASF 2.5)
-        rolling_180_high_prev = high.shift(1).rolling(effective_lookback, min_periods=min(15, effective_lookback)).max()
-        is_new_high = high > rolling_180_high_prev
-        new_high_days = int(is_new_high.iloc[-recent:].sum())
+        new_high_days = int(is_new_high_series.iloc[-recent:].sum())
         new_high_score = self.score_new_high(new_high_days)
 
         # --- Final Weighted Score (0.0 to 100.0) ---

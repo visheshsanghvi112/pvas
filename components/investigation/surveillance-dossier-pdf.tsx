@@ -49,7 +49,7 @@ const COMPANY_NAMES: Record<string, [string, string]> = {
 
 // ── PVASF Scoring Calculations ──
 function getScoreZone(score: number, threshold: number = 60): { label: string; badgeClass: string; bgClass: string } {
-  const normScore = score <= 25 ? score * 4 : score;
+  const normScore = Number.isFinite(score) ? score : 0;
   const mediumCutoff = Math.max(10, Math.round(threshold * 0.6));
   if (normScore >= threshold) {
     return {
@@ -74,7 +74,7 @@ function getScoreZone(score: number, threshold: number = 60): { label: string; b
 
 function rawScoreForPriceRise(pct: number): number {
   if (pct > 150) return 5;
-  if (pct >= 76) return 3;
+  if (pct > 75) return 3;
   if (pct >= 15) return 1;
   return 0;
 }
@@ -535,8 +535,8 @@ export function SurveillanceDossierPdf({
                 <div className="text-lg font-mono font-bold text-slate-900">
                   ₹{summary?.latest_close ? summary.latest_close.toFixed(2) : "N/A"}
                 </div>
-                <div className={cn("text-xs font-semibold font-mono", (summary?.price_change_pct || 0) >= 0 ? "text-rose-600" : "text-emerald-600")}>
-                  {(summary?.price_change_pct || 0) >= 0 ? "+" : ""}{summary?.price_change_pct?.toFixed(2)}% (15D Analysis Window)
+                <div className={cn("text-xs font-semibold font-mono", (summary?.price_change_pct ?? 0) >= 0 ? "text-rose-600" : "text-emerald-600")}>
+                  {summary?.price_change_pct != null ? `${summary.price_change_pct >= 0 ? "+" : ""}${summary.price_change_pct.toFixed(2)}%` : "—"} (6M Close-to-Close)
                 </div>
               </div>
             </div>
@@ -562,7 +562,7 @@ export function SurveillanceDossierPdf({
                     <Layers className="w-3.5 h-3.5 text-indigo-600" />
                     Quantitative Scoring Matrix
                   </span>
-                  <span className="text-[10px] text-slate-400 font-mono">Weight: 20% each</span>
+                  <span className="text-[10px] text-slate-400 font-mono">Calibrated Weights</span>
                 </div>
 
                 <table className="w-full text-xs text-left">
@@ -633,7 +633,7 @@ export function SurveillanceDossierPdf({
                 Executive Forensic Summary & Anomaly Triggers
               </div>
               <p className="leading-relaxed text-[11px]">
-                {company} has exhibited significant abnormal trading concentration over the 15-day analysis window ending {selectedDate}.
+                {company} has exhibited significant abnormal trading concentration over the {windowDays}-day analysis window ending {selectedDate}.
                 The scrip registered a price rise of <strong>{metrics.price_rise_pct.toFixed(2)}%</strong> against market movements,
                 accompanied by a return deviation of <strong>{metrics.price_z.toFixed(2)}σ</strong> and volume deviation of <strong>{metrics.volume_z.toFixed(2)}σ</strong> above its 180-day baseline.
                 Upper circuit threshold was hit on <strong>{metrics.band_hit_days} sessions</strong> with <strong>{metrics.new_high_days} sessions</strong> printing new 180-day price highs.
@@ -660,12 +660,12 @@ export function SurveillanceDossierPdf({
             {/* 3-Pillar Statistical Surveillance Deck */}
             <div className="grid grid-cols-3 gap-3 mb-3 shrink-0">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                <span className="text-[10px] font-semibold text-slate-500 block">180D Baseline Price vs Window</span>
+                <span className="text-[10px] font-semibold text-slate-500 block">180D Price Path (T-180 → Current)</span>
                 <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
                   ₹{summary?.start_price ? summary.start_price.toFixed(2) : "N/A"} → ₹{summary?.latest_close ? summary.latest_close.toFixed(2) : "N/A"}
                 </div>
                 <div className="text-[10.5px] font-semibold text-rose-600 font-mono">
-                  +{metrics.price_rise_pct.toFixed(2)}% Net Gain
+                  {(summary?.price_change_pct ?? 0) >= 0 ? "+" : ""}{(summary?.price_change_pct ?? 0).toFixed(2)}% C-C · Peak: {metrics.price_rise_pct >= 0 ? "+" : ""}{metrics.price_rise_pct.toFixed(2)}%
                 </div>
               </div>
 
@@ -680,12 +680,12 @@ export function SurveillanceDossierPdf({
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                <span className="text-[10px] font-semibold text-slate-500 block">15-Day Avg Traded Volume</span>
+                <span className="text-[10px] font-semibold text-slate-500 block">{windowDays}-Day Avg Traded Volume</span>
                 <div className="text-base font-bold font-mono text-slate-900 mt-0.5">
-                  {metrics.volume_z.toFixed(2)} σ
+                  {summary?.avg_15d_volume ? `${summary.avg_15d_volume.toLocaleString()} sh/day` : "N/A"}
                 </div>
-                <div className="text-[10.5px] text-slate-600 truncate">
-                  Avg: {summary?.avg_15d_volume ? summary.avg_15d_volume.toLocaleString() : "N/A"} sh/day
+                <div className="text-[10.5px] text-slate-600 truncate font-mono">
+                  Volume Z-Score: {metrics.volume_z.toFixed(2)} σ
                 </div>
               </div>
             </div>
@@ -714,7 +714,7 @@ export function SurveillanceDossierPdf({
                 <span className="text-xs font-bold text-slate-800">
                   Daily Trading Activity & Price-Volume Ledger
                 </span>
-                <span className="text-[10px] text-slate-500">Last {windowHistory.length} Sessions Listed Chronologically</span>
+                <span className="text-[10px] text-slate-500">Last {windowHistory.length} Sessions (Latest First)</span>
               </div>
 
               <div className="overflow-x-auto">
@@ -787,7 +787,7 @@ export function SurveillanceDossierPdf({
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                    <span className="text-[10px] font-semibold text-slate-500 block">Avg Trading PANs (15D)</span>
+                    <span className="text-[10px] font-semibold text-slate-500 block">Avg Trading PANs ({windowDays}D)</span>
                     <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{avg_pans_15d != null ? avg_pans_15d : "—"}</div>
                     <div className="text-[10px] text-slate-500">Active / Day</div>
                   </div>
@@ -813,7 +813,7 @@ export function SurveillanceDossierPdf({
                 <span className="text-xs font-bold text-slate-800">
                   Capital Distribution by Shareholder Category
                 </span>
-                <span className="text-[10px] text-slate-500">SEBI Reg 31 Disclosures</span>
+                <span className="text-[10px] text-slate-500">Statutory Shareholding Disclosures</span>
               </div>
 
               {(() => {
@@ -824,7 +824,7 @@ export function SurveillanceDossierPdf({
                 if (!hasData) {
                   return (
                     <div className="p-4 text-center text-xs text-slate-500">
-                      Shareholding pattern data not available for this scrip. Data will be populated when SEBI Reg 31 filings are ingested.
+                      Shareholding pattern data not available for this scrip. Data will be populated when statutory filings are ingested.
                     </div>
                   );
                 }
@@ -922,7 +922,7 @@ export function SurveillanceDossierPdf({
 
 
           {/* ═══════════════════════════════════════════════════════════════════
-              PAGE 4: REGULATORY DISCLOSURES & CORPORATE ACTIONS
+              PAGE 4: CORPORATE ANNOUNCEMENTS & ACTIONS
              ═══════════════════════════════════════════════════════════════════ */}
           <div className="dossier-page bg-white p-6 md:p-7 text-slate-900 flex flex-col shadow-2xl mb-8 border border-slate-200 rounded-sm w-full min-h-[297mm] box-border">
             <PageHeader
@@ -931,102 +931,139 @@ export function SurveillanceDossierPdf({
               symbol={symbol}
               company={company}
               selectedDate={selectedDate}
-              title="Corporate Disclosures & Material Filings"
+              title="Corporate Announcements & Corporate Actions"
             />
 
-            {/* Corporate Actions Summary Banner (Clean 3-Column Layout without Text Wrapping) */}
+            {/* Corporate Events Summary Banner */}
             <div className="grid grid-cols-3 gap-3 mb-3 shrink-0">
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                <span className="text-[10px] font-semibold text-slate-500 block">Total Disclosures</span>
+                <span className="text-[10px] font-semibold text-slate-500 block">Corporate Announcements</span>
+                <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{(detail.announcements || []).length}</div>
+                <div className="text-[10px] text-slate-500">15-day surveillance window</div>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
+                <span className="text-[10px] font-semibold text-slate-500 block">Corporate Actions</span>
                 <div className="text-base font-bold font-mono text-slate-900 mt-0.5">{corpActions.length}</div>
-                <div className="text-[10px] text-slate-500">Recorded within window</div>
+                <div className="text-[10px] text-slate-500">Historical & active capital events</div>
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                <span className="text-[10px] font-semibold text-slate-500 block">Sentiment Breakdown</span>
-                <div className="grid grid-cols-3 gap-1.5 mt-1 text-center font-mono text-[11px]">
-                  <div className="py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold">
-                    {corpActions.filter((c) => c.sentiment === "Positive").length} Pos
-                  </div>
-                  <div className="py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200 font-bold">
-                    {corpActions.filter((c) => c.sentiment === "Neutral" || !c.sentiment).length} Neu
-                  </div>
-                  <div className="py-0.5 rounded bg-rose-50 text-rose-800 border border-rose-200 font-bold">
-                    {corpActions.filter((c) => c.sentiment === "Negative").length} Neg
-                  </div>
-                </div>
-                <div className="text-[9.5px] text-slate-400 mt-0.5">NLP Sentiment Scoring</div>
-              </div>
-
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5">
-                <span className="text-[10px] font-semibold text-slate-500 block">Material Impact Filings</span>
+                <span className="text-[10px] font-semibold text-slate-500 block">Dilution-Impacting Actions</span>
                 <div className="text-base font-bold font-mono text-indigo-700 mt-0.5">
-                  {corpActions.filter((c) => c.price_impact || c.action_type === "Board Meeting" || c.action_type === "Financial Results").length}
+                  {corpActions.filter((c: any) => Math.abs(Number(c.dilution_factor || 1) - 1) > 1e-6).length}
                 </div>
-                <div className="text-[10px] text-slate-500">Price correlation flags</div>
+                <div className="text-[10px] text-slate-500">Split / bonus adjustments active</div>
               </div>
             </div>
 
-            {/* Corporate Actions Detailed Register Table */}
+            {/* Table 1: Corporate Announcements */}
             <div className="border border-slate-200 rounded-lg overflow-hidden mb-3">
               <div className="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800">
-                  Corporate Disclosures Register
+                  1. Corporate Announcements (15-Day Surveillance Window)
                 </span>
-                <span className="text-[10px] text-slate-500">Exchange Feed Extraction</span>
+                <span className="text-[10px] text-slate-500">Disclosures & Material Filings</span>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs text-left">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
-                      <th className="py-1.5 px-3">Filing Date</th>
+                      <th className="py-1.5 px-3">Date</th>
                       <th className="py-1.5 px-3">Category</th>
-                      <th className="py-1.5 px-3">Headline / Disclosure Synopsis</th>
-                      <th className="py-1.5 px-3 text-center">Sentiment</th>
-                      <th className="py-1.5 px-3 text-center">Price Impact</th>
+                      <th className="py-1.5 px-3">Subject / Material Disclosure</th>
+                      <th className="py-1.5 px-3 text-center">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-[10.5px]">
-                    {corpActions.length > 0 ? (
-                      corpActions.map((ca: any, idx: number) => (
+                    {(detail.announcements || []).length > 0 ? (
+                      (detail.announcements || []).slice(0, 5).map((ann: any, idx: number) => (
                         <tr key={idx} className="hover:bg-slate-50">
-                          <td className="py-1.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">{ca.action_date || ca.date}</td>
+                          <td className="py-1.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">{ann.date || "—"}</td>
                           <td className="py-1.5 px-3 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200 text-[10px] font-semibold">
-                              {ca.action_type || ca.type || "Filing"}
+                              {ann.category || "GENERAL"}
                             </span>
                           </td>
                           <td className="py-1.5 px-3 font-medium text-slate-800 leading-snug">
-                            {ca.description || ca.headline || "Material disclosure submitted to exchange."}
+                            {ann.title || "—"}
                           </td>
                           <td className="py-1.5 px-3 text-center whitespace-nowrap">
-                            <span className={cn(
-                              "px-2 py-0.5 rounded text-[10px] font-semibold border",
-                              ca.sentiment === "Positive"
-                                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                : ca.sentiment === "Negative"
-                                ? "bg-rose-50 text-rose-800 border-rose-200"
-                                : "bg-slate-50 text-slate-700 border-slate-200"
-                            )}>
-                              {ca.sentiment || "Neutral"}
+                            <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 text-[9.5px] font-semibold">
+                              {ann.status || "Verified"}
                             </span>
-                          </td>
-                          <td className="py-1.5 px-3 text-center font-mono text-[10px] whitespace-nowrap">
-                            {ca.price_impact ? (
-                              <span className="text-rose-700 font-bold bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                                {ca.price_impact}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400">—</span>
-                            )}
                           </td>
                         </tr>
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-slate-500 text-xs">
-                          No corporate action announcements recorded in the observation window.
+                        <td colSpan={4} className="py-3 text-center text-slate-500 text-xs">
+                          No corporate announcements filed during the 15-day surveillance window.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Table 2: Corporate Actions Detailed Register */}
+            <div className="border border-slate-200 rounded-lg overflow-hidden mb-3">
+              <div className="bg-slate-100 px-3 py-1.5 border-b border-slate-200 flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800">
+                  2. Corporate Actions & Dilution Multipliers
+                </span>
+                <span className="text-[10px] text-slate-500">Capital Restructuring & Dilution</span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-600">
+                      <th className="py-1.5 px-3">Record Date</th>
+                      <th className="py-1.5 px-3">Ex-Date</th>
+                      <th className="py-1.5 px-3">Category</th>
+                      <th className="py-1.5 px-3">Details / Purpose</th>
+                      <th className="py-1.5 px-3 text-center">Ratio / Value</th>
+                      <th className="py-1.5 px-3 text-center">Dilution Factor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-[10.5px]">
+                    {corpActions.length > 0 ? (
+                      corpActions.slice(0, 5).map((ca: any, idx: number) => {
+                        const dilVal = Number(ca.dilution_factor || 1.0);
+                        const isDil = Math.abs(dilVal - 1.0) > 1e-6;
+                        return (
+                          <tr key={ca.id ?? idx} className="hover:bg-slate-50">
+                            <td className="py-1.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">{ca.record_date || "—"}</td>
+                            <td className="py-1.5 px-3 font-mono text-slate-700 whitespace-nowrap">{ca.ex_date || "—"}</td>
+                            <td className="py-1.5 px-3 whitespace-nowrap">
+                              <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-800 border border-purple-200 text-[10px] font-semibold">
+                                {ca.category || "GENERAL"}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-3 font-medium text-slate-800 leading-snug">
+                              {ca.purpose || "—"}
+                            </td>
+                            <td className="py-1.5 px-3 text-center font-mono text-[10px] whitespace-nowrap text-slate-700">
+                              {ca.ratio_value || ca.bonus_ratio || "—"}
+                            </td>
+                            <td className="py-1.5 px-3 text-center font-mono text-[10px] whitespace-nowrap">
+                              <span className={cn(
+                                "px-1.5 py-0.5 rounded font-bold border",
+                                isDil ? "text-amber-800 bg-amber-50 border-amber-200" : "text-slate-600 bg-slate-50 border-slate-200"
+                              )}>
+                                {dilVal.toFixed(2)}x
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    ) : (
+                      <tr>
+                        <td colSpan={6} className="py-3 text-center text-slate-500 text-xs">
+                          No corporate actions or capital adjustments recorded for this scrip.
                         </td>
                       </tr>
                     )}
@@ -1038,7 +1075,7 @@ export function SurveillanceDossierPdf({
             <div className="bg-slate-50 border border-slate-200 rounded-lg p-2.5 text-xs text-slate-700 mb-2 shrink-0">
               <span className="font-bold text-slate-900 block mb-0.5 text-[11px]">Surveillance Cross-Reference Note:</span>
               <p className="text-[10.5px] leading-relaxed">
-                Corporate disclosures cross-referenced against price and volume surge timings to verify potential insider trading or pre-announcement volume spikes. Filings are timestamped to verify synchronization with order execution clusters.
+                Corporate announcements and actions are cross-referenced against price and volume surge timings to verify potential insider trading or pre-announcement trading activity. Filings are timestamped to verify synchronization with order execution clusters.
               </p>
             </div>
 
@@ -1176,9 +1213,9 @@ export function SurveillanceDossierPdf({
                     Status: <span className="text-rose-700 font-mono font-bold">{detail.status || "Active Surveillance"}</span>
                   </div>
                   <div className="text-[10.5px] text-slate-600 mt-0.5">
-                    Investigating Officer: <strong className="text-slate-900">{currentUser?.username || "Vishesh (Surveillance Admin)"}</strong>
+                    Investigating Officer: <strong className="text-slate-900">{currentUser?.username || "Surveillance Officer"}</strong>
                   </div>
-                  <div className="text-[9.5px] text-slate-500">Role: {currentUser?.role || "Principal Surveillance Officer"}</div>
+                  <div className="text-[9.5px] text-slate-500">Role: {currentUser?.role || "Surveillance Analyst"}</div>
                 </div>
 
                 <div>

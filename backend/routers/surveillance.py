@@ -91,17 +91,19 @@ def get_scrip_participants(
 @router.get("/scrip/{scrip_id}/shareholding-breakdown")
 def get_scrip_shareholding_breakdown(
     scrip_id: str,
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
     current_user: SysUser = Depends(get_current_user)
 ):
-    return service.get_scrip_shareholding_breakdown(scrip_id.upper())
+    return service.get_scrip_shareholding_breakdown(scrip_id.upper(), as_of_date=as_of_date)
 
 
 @router.get("/scrip/{scrip_id}/corporate-actions")
 def get_scrip_corporate_actions(
     scrip_id: str,
+    as_of_date: Optional[str] = Query(None, description="Observation Date YYYY-MM-DD"),
     current_user: SysUser = Depends(get_current_user)
 ):
-    return service.get_scrip_corporate_actions(scrip_id.upper())
+    return service.get_scrip_corporate_actions(scrip_id.upper(), as_of_date=as_of_date)
 
 
 @router.get("/scrip/{scrip_id}/export-excel")
@@ -124,25 +126,31 @@ def export_scrip_excel(
         except Exception:
             participants = None
         try:
-            sh_breakdown = service.get_scrip_shareholding_breakdown(sym)
+            sh_breakdown = service.get_scrip_shareholding_breakdown(sym, as_of_date=as_of_date)
         except Exception:
             sh_breakdown = None
         try:
-            corp_actions = service.get_scrip_corporate_actions(sym)
+            corp_actions = service.get_scrip_corporate_actions(sym, as_of_date=as_of_date)
         except Exception:
             corp_actions = []
+
+        resolved_date = (
+            (detail.get("history") or [{}])[-1].get("date")
+            or as_of_date
+            or ""
+        )
 
         excel_buf = build_surveillance_dossier_excel(
             detail=detail,
             participants=participants,
             sh_breakdown=sh_breakdown,
             corp_actions=corp_actions,
-            selected_date=as_of_date or "",
+            selected_date=resolved_date,
             window_days=window_days,
             exchange=exchange
         )
 
-        filename = f"PVASF_Surveillance_{sym}_{as_of_date or 'EOD'}.xlsx"
+        filename = f"PVASF_Surveillance_{sym}_{resolved_date or 'EOD'}.xlsx"
         return StreamingResponse(
             excel_buf,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

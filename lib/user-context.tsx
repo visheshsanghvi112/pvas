@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { fetchWithAuth, ensureAuthToken, isTokenExpired, setAuthCookie, clearAuthCookie } from "@/lib/api";
+import { fetchWithAuth, ensureAuthToken, isTokenExpired, setAuthCookie, clearAuthCookie, getBaseHost } from "@/lib/api";
 
 export type UserRole = "Admin" | "Analyst" | "Viewer";
 
@@ -29,6 +29,8 @@ export interface AuditLogItem {
 interface UserContextType {
   currentUser: UserProfile;
   authToken: string | null;
+  authReady: boolean;
+  isAuthenticated: boolean;
   isAdmin: boolean;
   canEditSettings: boolean;
   isLoginModalOpen: boolean;
@@ -56,14 +58,14 @@ const defaultGuestUser: UserProfile = {
   is_active: false,
 };
 
-const BASE_HOST = (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL)
-  ? process.env.NEXT_PUBLIC_API_URL
-  : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8005");
+const BASE_HOST = typeof window !== "undefined" ? "" : getBaseHost();
 const AUTH_API = `${BASE_HOST}/api/v1/auth`;
 
 const UserContext = createContext<UserContextType>({
   currentUser: defaultGuestUser,
   authToken: null,
+  authReady: false,
+  isAuthenticated: false,
   isAdmin: false,
   canEditSettings: false,
   isLoginModalOpen: false,
@@ -84,6 +86,7 @@ const UserContext = createContext<UserContextType>({
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [currentUser, setCurrentUser] = useState<UserProfile>(defaultGuestUser);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState<boolean>(false);
   const [usersList, setUsersList] = useState<UserProfile[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
 
@@ -93,6 +96,9 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("pvasf_logged_out", "true");
     clearAuthCookie();
     setCurrentUser(defaultGuestUser);
+    setUsersList([]);
+    setAuditLogs([]);
+    setAuthReady(true);
   }, []);
 
   const fetchMe = useCallback(async (token: string | null) => {
@@ -101,13 +107,18 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       activeTok = await ensureAuthToken();
     }
     if (!activeTok) {
+      setAuthToken(null);
       setCurrentUser(defaultGuestUser);
+      setUsersList([]);
+      setAuditLogs([]);
+      setAuthReady(true);
       return;
     }
     try {
       const res = await fetchWithAuth(`${AUTH_API}/me`);
       if (res.ok) {
         const data = await res.json();
+        setAuthToken(activeTok);
         setCurrentUser({
           id: data.id,
           username: data.username,
@@ -117,11 +128,22 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           department: data.department,
           is_active: data.is_active,
         });
+        if (data.role !== "Admin") {
+          setUsersList([]);
+        }
+        if (data.role !== "Admin" && data.role !== "Analyst") {
+          setAuditLogs([]);
+        }
       } else {
+        setAuthToken(null);
         setCurrentUser(defaultGuestUser);
+        setUsersList([]);
+        setAuditLogs([]);
       }
     } catch (e) {
       console.error("Failed to fetch current user profile", e);
+    } finally {
+      setAuthReady(true);
     }
   }, []);
 
@@ -183,8 +205,17 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
           is_active: true,
         };
         setCurrentUser(userObj);
-        refreshUsers(token);
-        refreshAuditLogs(token);
+        setAuthReady(true);
+        if (userObj.role === "Admin") {
+          refreshUsers(token);
+        } else {
+          setUsersList([]);
+        }
+        if (userObj.role === "Admin" || userObj.role === "Analyst") {
+          refreshAuditLogs(token);
+        } else {
+          setAuditLogs([]);
+        }
         return true;
       }
     } catch (e) {
@@ -206,8 +237,12 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
         if (tok) {
           setAuthToken(tok);
           fetchMe(tok);
+        } else {
+          setAuthReady(true);
         }
       });
+    } else {
+      setAuthReady(true);
     }
   }, [fetchMe]);
 
@@ -279,6 +314,7 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
   const openLoginModal = () => setIsLoginModalOpen(true);
   const closeLoginModal = () => setIsLoginModalOpen(false);
 
+  const isAuthenticated = Boolean(currentUser.id && currentUser.id > 0);
   const isAdmin = currentUser.role === "Admin";
   const canEditSettings = currentUser.role === "Admin";
 
@@ -287,6 +323,8 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
       value={{
         currentUser,
         authToken,
+        authReady,
+        isAuthenticated,
         isAdmin,
         canEditSettings,
         isLoginModalOpen,

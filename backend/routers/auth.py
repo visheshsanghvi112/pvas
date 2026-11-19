@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.db.database import get_db
 from backend.db.models import SysUser
-from backend.security import get_current_user, require_admin
+from backend.security import get_current_user, require_admin, require_analyst
 from backend.services.auth_service import AuthService
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Security & Auth"])
@@ -200,11 +200,11 @@ def toggle_user_active(
     return user
 
 
-@router.get("/audit-logs", summary="Get security & access audit logs")
+@router.get("/audit-logs", summary="Get security & access audit logs (Admin & Analyst only)")
 def get_audit_logs(
     limit: int = 100,
     svc: AuthService = Depends(_get_service),
-    current_user: SysUser = Depends(get_current_user)
+    current_user: SysUser = Depends(require_analyst)
 ):
     logs = svc.get_audit_logs(limit)
     return [

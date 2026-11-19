@@ -37,8 +37,11 @@ export interface PricePoint {
   low: number;
   close: number;
   volume: number;
-  ma20?: number;
-  ma50?: number;
+  delivery_pct?: number | null;
+  ma20?: number | null;
+  ma50?: number | null;
+  is_band_hit?: boolean;
+  is_new_high?: boolean;
 }
 
 export interface ShareholderStats {
@@ -117,6 +120,7 @@ export interface LtpContributor {
   participant: string;
   name?: string;
   contribution: number;
+  scrip_movement_contribution_pct?: number | null;
   net_val?: number;
   pos_val?: number;
   neg_val?: number;
@@ -125,6 +129,10 @@ export interface LtpContributor {
 
 export interface ParticipantAudit {
   ticker: string;
+  scrip_15d_price_change?: number;
+  total_market_pos_ltp?: number;
+  total_market_neg_ltp?: number;
+  total_trades_count?: number;
   ltp_contributors: LtpContributor[];
   pos_ltp_contributors?: LtpContributor[];
   neg_ltp_contributors?: LtpContributor[];
@@ -662,16 +670,20 @@ export async function uploadEodFile(file: File) {
   }
 }
 
-export async function fetchShareholdingBreakdown(scripId: string) {
+export async function fetchShareholdingBreakdown(scripId: string, asOfDate?: string) {
   const cleanId = scripId.toUpperCase();
-  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`, { cache: "no-store" });
+  const url = createApiUrl(`${API_BASE}/scrip/${cleanId}/shareholding-breakdown`);
+  if (asOfDate) url.searchParams.set("as_of_date", asOfDate);
+  const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
   if (!res.ok) return { symbol: cleanId, quarterly_history: [], promoter_group: [] };
   return await res.json();
 }
 
-export async function fetchCorporateActions(scripId: string) {
+export async function fetchCorporateActions(scripId: string, asOfDate?: string) {
   const cleanId = scripId.toUpperCase();
-  const res = await fetchWithAuth(`${API_BASE}/scrip/${cleanId}/corporate-actions`, { cache: "no-store" });
+  const url = createApiUrl(`${API_BASE}/scrip/${cleanId}/corporate-actions`);
+  if (asOfDate) url.searchParams.set("as_of_date", asOfDate);
+  const res = await fetchWithAuth(url.toString(), { cache: "no-store" });
   if (!res.ok) return [];
   return await res.json();
 }

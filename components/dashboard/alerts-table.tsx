@@ -441,7 +441,7 @@ export function AlertsTable({
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider select-none flex items-center gap-1">
                 Alphabet:
-                <InfoTooltip text="Filters scrips allocated to surveillance officers by alphabet range per PVASF §2 & §5." />
+                <InfoTooltip text="Filters the watchlist by the starting letter of the stock symbol." />
               </span>
               <div className="inline-flex items-center p-0.5 bg-slate-200/70 rounded-lg border border-slate-300/60 shadow-2xs">
                 {[
@@ -505,15 +505,21 @@ export function AlertsTable({
                 active={filterNewHighs}
                 onClick={() => setFilterNewHighs(!filterNewHighs)}
                 label="180D Highs ≥ 1"
-                info="Filters for stocks that broke past their previous 6-month record high at least once in the past 15 days."
+                info={`Filters for stocks that broke past their previous 6-month record high at least once in the past ${windowDays} days.`}
               />
             </div>
           </div>
 
-          {/* Right indicator: Scrip count */}
-          <div className="text-[11px] font-medium text-slate-500 select-none">
-            Showing <strong className="text-slate-800 font-bold">{filtered.length}</strong> of{" "}
-            <strong className="text-slate-800 font-bold">{scrips.length}</strong> scrips
+          {/* Right indicator: Period window + Scrip count */}
+          <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-medium text-slate-500 select-none">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 border border-amber-200/90 px-2.5 py-0.5 text-[11px] font-semibold text-amber-800">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+              Scrips evaluated for {windowDays}-day period window
+            </span>
+            <span>
+              Showing <strong className="text-slate-800 font-bold">{filtered.length}</strong> of{" "}
+              <strong className="text-slate-800 font-bold">{scrips.length}</strong> scrips
+            </span>
           </div>
         </div>
       </div>
@@ -530,7 +536,7 @@ export function AlertsTable({
               >
                 <span className="inline-flex items-center gap-1.5">
                   Scrip
-                  <InfoTooltip text="Scrip ticker symbol, registered company name, and ISIN code." />
+                  <InfoTooltip text={`Scrip ticker symbol, registered company name, and ISIN code. Metrics reflect the ${windowDays}-day surveillance period.`} />
                   <SortIcon field="symbol" current={sortField} order={sortOrder} />
                 </span>
               </th>
@@ -538,7 +544,7 @@ export function AlertsTable({
               <ThSort
                 field="score"
                 label="PVASF Score"
-                info={`Composite surveillance risk score (0–100) combining price rally, momentum, volume burst, circuit hits, and new 6-month highs. Scores ${effThreshold} and above are shortlisted as High Risk.`}
+                info="Overall risk score from 0 to 100 combining price rise, price speed, trading volume, circuit hits, and new highs."
                 width="15%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -547,7 +553,7 @@ export function AlertsTable({
               <ThSort
                 field="price_rise_pct"
                 label="Price Rise %"
-                info="Highest price reached in the past 15 days compared to where the stock stood 6 months ago, adjusted for splits or bonus shares."
+                info={`Highest price reached in the past ${windowDays} days compared to where the stock stood 6 months ago, adjusted for splits or bonus shares.`}
                 width="13%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -556,7 +562,7 @@ export function AlertsTable({
               <ThSort
                 field="price_z"
                 label="Price Z"
-                info="Measures how unusual the stock's recent price climb is compared to its normal 6-month fluctuations. Values above 1.65 indicate an abnormal spike."
+                info="Measures whether the stock's recent 15-day average daily return is statistically abnormal compared to its 6-month rolling benchmark. Z ≥ 3.09 indicates extreme momentum."
                 width="12%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -565,7 +571,7 @@ export function AlertsTable({
               <ThSort
                 field="volume_z"
                 label="Volume Z"
-                info="Measures how unusual the stock's recent trading volume is compared to its normal 6-month turnover. Values above 1.65 indicate a heavy volume surge."
+                info="Measures whether the stock's recent 15-day average volume is statistically abnormal compared to its 6-month rolling benchmark. Z ≥ 3.09 indicates severe volume expansion."
                 width="12%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -574,7 +580,7 @@ export function AlertsTable({
               <ThSort
                 field="band_hit_days"
                 label="Circuit Hits"
-                info="Number of days in the past 15 sessions where the stock hit or came within 90% of its daily upper circuit limit."
+                info={`Number of days in the past ${windowDays} sessions where the stock hit or came close to its daily upper price limit.`}
                 width="9%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -583,7 +589,7 @@ export function AlertsTable({
               <ThSort
                 field="new_high_days"
                 label="180D Highs"
-                info="Number of days in the past 15 sessions where the stock broke past its previous 6-month record to set a fresh high."
+                info={`Number of days in the past ${windowDays} sessions where the stock broke past its previous 6-month record to set a fresh high.`}
                 width="9%"
                 sortField={sortField}
                 sortOrder={sortOrder}
@@ -611,16 +617,27 @@ export function AlertsTable({
               <tr>
                 <td colSpan={8} className="px-6 py-16 text-center bg-white border-b border-slate-200">
                   <AlertCircle className="h-8 w-8 text-slate-300 mx-auto mb-2" />
-                  <div className="text-slate-700 font-bold text-sm">
-                    {asOfDate && (new Date(asOfDate).getDay() === 0 || new Date(asOfDate).getDay() === 6)
-                      ? "Weekend Selected (Market Closed)"
-                      : "No scrips match filters"}
-                  </div>
-                  <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
-                    {asOfDate && (new Date(asOfDate).getDay() === 0 || new Date(asOfDate).getDay() === 6)
-                      ? "Selected observation date falls on a weekend non-trading session. Use the date picker above to inspect a preceding trading session."
-                      : "Try resetting the search keyword or risk filters"}
-                  </p>
+                  {(() => {
+                    const isWeekend = (() => {
+                      if (!asOfDate) return false;
+                      const [y, m, d] = asOfDate.split("-").map(Number);
+                      if (!y || !m || !d) return false;
+                      const day = new Date(y, m - 1, d).getDay();
+                      return day === 0 || day === 6;
+                    })();
+                    return (
+                      <>
+                        <div className="text-slate-700 font-bold text-sm">
+                          {isWeekend ? "Weekend Selected (Market Closed)" : "No scrips match filters"}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto">
+                          {isWeekend
+                            ? "Selected observation date falls on a weekend non-trading session. Use the date picker above to inspect a preceding trading session."
+                            : "Try resetting the search keyword or risk filters"}
+                        </p>
+                      </>
+                    );
+                  })()}
                   {hasActiveFilters && (
                     <button
                       type="button"
@@ -750,7 +767,8 @@ export function AlertsTable({
         <div className="flex items-center gap-3">
           <span>
             Showing <strong className="text-slate-900 font-bold">{total > 0 ? startIdx + 1 : 0}–{endIdx}</strong> of{" "}
-            <strong className="text-slate-900 font-bold">{total}</strong>
+            <strong className="text-slate-900 font-bold">{total}</strong>{" "}
+            <span className="text-slate-500">({windowDays}-day period window)</span>
           </span>
           <span className="text-slate-300">|</span>
           <span className="flex items-center gap-1.5">

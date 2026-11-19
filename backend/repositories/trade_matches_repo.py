@@ -10,12 +10,17 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional, List, Tuple
 from decimal import Decimal
+import zlib
 
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from backend.db.models import CounterpartyTradePair, DailyMarketEod
 from backend.schemas.trade_matches import TradeMatchesFilter, TradeMatchRecord
+
+
+def _pan_token(pan: Optional[str]) -> int:
+    return zlib.crc32((pan or "").encode("utf-8")) % 1000000
 
 
 class TradeMatchesRepository:
@@ -30,9 +35,9 @@ class TradeMatchesRepository:
         is_wash = 1 if row.is_same_broker_wash else 0
         tmst = datetime.combine(row.trade_date, datetime.min.time())
 
-        # Generate deterministic token numbers from PAN hashes
-        b_tok = abs(hash(row.buyer_pan)) % 1000000
-        s_tok = abs(hash(row.seller_pan)) % 1000000
+        # Deterministic token numbers from PANs across restarts/workers
+        b_tok = _pan_token(row.buyer_pan)
+        s_tok = _pan_token(row.seller_pan)
 
         return TradeMatchRecord(
             trade_date=row.trade_date,
@@ -60,6 +65,10 @@ class TradeMatchesRepository:
         page: int = 1,
         page_size: int = 50,
     ) -> Tuple[List[TradeMatchRecord], int]:
+        # CounterpartyTradePair records represent NSE executions until multi-venue columns are added
+        if filters.exchange and filters.exchange.upper() not in ("ALL", "NSE"):
+            return [], 0
+
         q = self._db.query(CounterpartyTradePair)
 
         if filters.symbol:
@@ -147,9 +156,11 @@ class TradeMatchesRepository:
         date_from: Optional[date] = None,
         date_to: Optional[date] = None,
     ) -> List[dict[str, Any]]:
+        algo_case = func.sum(case((CounterpartyTradePair.algo_execution_flag == 1, 1), else_=0))
         q = self._db.query(
             CounterpartyTradePair.symbol.label("symbol"),
             func.count().label("total"),
+            algo_case.label("algo_total"),
         )
         if date_from:
             q = q.filter(CounterpartyTradePair.trade_date >= date_from)
@@ -157,19 +168,23 @@ class TradeMatchesRepository:
             q = q.filter(CounterpartyTradePair.trade_date <= date_to)
 
         rows = q.group_by(CounterpartyTradePair.symbol).all()
-        return [
-            {
+        results: List[dict[str, Any]] = []
+        for r in rows:
+            total = int(r.total or 0)
+            algo_count = int(r.algo_total or 0)
+            manual_count = max(0, total - algo_count)
+            algo_pct = round((algo_count / total) * 100.0, 2) if total > 0 else 0.0
+            results.append({
                 "symbol": r.symbol,
-                "algo_count": 0,
-                "manual_count": int(r.total or 0),
+                "algo_count": algo_count,
+                "manual_count": manual_count,
                 "dma_count": 0,
-                "total_count": int(r.total or 1),
-                "algo_pct": 0.0,
+                "total_count": total,
+                "algo_pct": algo_pct,
                 "dma_pct": 0.0,
                 "spoof_ratio": 1.0,
-            }
-            for r in rows
-        ]
+            })
+        return results
 
     def get_participant_trades(
         self,
@@ -188,7 +203,7 @@ class TradeMatchesRepository:
         rows = q.order_by(CounterpartyTradePair.trade_date.desc()).all()
         matched = [
             r for r in rows
-            if (abs(hash(r.buyer_pan)) % 1000000 == clnt_token or abs(hash(r.seller_pan)) % 1000000 == clnt_token)
+            if (_pan_token(r.buyer_pan) == clnt_token or _pan_token(r.seller_pan) == clnt_token)
         ]
         total = len(matched)
         offset = (page - 1) * page_size

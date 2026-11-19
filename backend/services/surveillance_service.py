@@ -16,6 +16,7 @@ if ROOT_DIR not in sys.path:
 
 CONFIG_PATH = os.path.join(ROOT_DIR, "backend", "db", "model_config.json")
 CACHE_DIR = os.path.join(ROOT_DIR, "backend", "data", ".cache_summaries")
+CACHE_VERSION = "v2"
 
 from pv_alert_surveillance import (
     SurveillanceConfig,
@@ -162,11 +163,7 @@ class EODSurveillanceService:
 
             df = pd.read_sql(q.statement, db.bind)
             if not df.empty and len(df) > 10:
-                upper = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
-                prev_c = pd.to_numeric(df["PrevClose"], errors="coerce")
-                valid = (prev_c > 0) & (upper > 0)
-                df["Band"] = 0.05
-                df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
+                df = self._assign_empirical_band(df)
                 cleaned = clean_historical_data(df)
                 if not cleaned.empty and "Date" in cleaned.columns:
                     cleaned["DateStr"] = cleaned["Date"].astype(str).str[:10]
@@ -177,6 +174,26 @@ class EODSurveillanceService:
             if db:
                 db.close()
         return None
+
+    @staticmethod
+    def _parse_cutoff_date(as_of_date: Optional[str]):
+        """Parses YYYY-MM-DD observation date string into a datetime.date object, or returns None."""
+        if not as_of_date:
+            return None
+        try:
+            return datetime.strptime(str(as_of_date)[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _assign_empirical_band(df: pd.DataFrame) -> pd.DataFrame:
+        """Computes daily regulatory Band from UpperCircuitLimit/PrevClose; leaves missing values as NaN so quantile estimation applies."""
+        upper = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
+        prev_c = pd.to_numeric(df["PrevClose"], errors="coerce")
+        valid = (prev_c > 0) & (upper > 0)
+        df["Band"] = np.nan
+        df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
+        return df
 
     def _load_single_ticker_eod(self, ticker: str) -> Optional[pd.DataFrame]:
         """Loads EOD OHLCV data for a specific ticker directly from daily_market_eod using indexed symbol."""
@@ -204,11 +221,7 @@ class EODSurveillanceService:
 
             df = pd.read_sql(q.statement, db.bind)
             if not df.empty:
-                upper = pd.to_numeric(df["UpperCircuitLimit"], errors="coerce")
-                prev_c = pd.to_numeric(df["PrevClose"], errors="coerce")
-                valid = (prev_c > 0) & (upper > 0)
-                df["Band"] = 0.05
-                df.loc[valid, "Band"] = (upper[valid] - prev_c[valid]) / prev_c[valid]
+                df = self._assign_empirical_band(df)
                 cleaned = clean_historical_data(df)
                 if not cleaned.empty and "Date" in cleaned.columns:
                     cleaned["DateStr"] = cleaned["Date"].astype(str).str[:10]
@@ -220,15 +233,26 @@ class EODSurveillanceService:
                 db.close()
         return None
 
-    def _load_all_dilution_factors(self) -> Dict[str, float]:
-        """Loads all active dilution factors from database."""
+    def _load_all_dilution_factors(self, as_of_date: Optional[str] = None) -> Dict[str, float]:
+        """Loads active dilution factors from database, scoped by observation date when provided."""
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import PriceDilutionFactor
             db = SessionLocal()
             try:
-                recs = db.query(PriceDilutionFactor).all()
-                return {r.symbol: float(r.split_multiplier or 1.0) for r in recs if r.split_multiplier is not None}
+                q = db.query(PriceDilutionFactor)
+                cutoff = self._parse_cutoff_date(as_of_date)
+                if cutoff is not None:
+                    q = q.filter(
+                        PriceDilutionFactor.valid_from_date <= cutoff,
+                        PriceDilutionFactor.valid_thru_date >= cutoff,
+                    )
+                recs = q.order_by(PriceDilutionFactor.valid_from_date.desc()).all()
+                factors: Dict[str, float] = {}
+                for r in recs:
+                    if r.split_multiplier is not None and r.symbol not in factors:
+                        factors[r.symbol] = float(r.split_multiplier)
+                return factors
             finally:
                 db.close()
         except Exception:
@@ -242,8 +266,9 @@ class EODSurveillanceService:
             db = SessionLocal()
             try:
                 q = db.query(PriceDilutionFactor).filter(PriceDilutionFactor.symbol == ticker)
-                if as_of_date:
-                    q = q.filter(PriceDilutionFactor.valid_from_date <= as_of_date, PriceDilutionFactor.valid_thru_date >= as_of_date)
+                cutoff = self._parse_cutoff_date(as_of_date)
+                if cutoff is not None:
+                    q = q.filter(PriceDilutionFactor.valid_from_date <= cutoff, PriceDilutionFactor.valid_thru_date >= cutoff)
                 rec = q.order_by(PriceDilutionFactor.valid_from_date.desc()).first()
                 if rec and rec.split_multiplier is not None:
                     return float(rec.split_multiplier)
@@ -329,6 +354,20 @@ class EODSurveillanceService:
 
 
 
+    def _invalidate_caches(self, clear_dates: bool = False) -> None:
+        """Clears in-memory and persistent disk summary caches (and optionally trading date cache)."""
+        if hasattr(self, "_summary_cache"):
+            self._summary_cache.clear()
+        if clear_dates:
+            self._cached_trading_dates = None
+        try:
+            if os.path.isdir(CACHE_DIR):
+                for fname in os.listdir(CACHE_DIR):
+                    if fname.endswith(".json"):
+                        os.remove(os.path.join(CACHE_DIR, fname))
+        except Exception as e:
+            print(f"[surveillance_service] Warning: Failed to clear disk cache: {e}")
+
     def update_weights(self, weights: Dict[str, float], threshold: Optional[float] = None) -> SurveillanceConfig:
         """Dynamically updates scoring weights w1..w5 and risk score threshold, persisting to disk."""
         for k, v in weights.items():
@@ -338,7 +377,7 @@ class EODSurveillanceService:
             self.config.threshold = float(threshold)
         self._save_persisted_config()
         self.engine = SurveillanceEngine(self.config)
-        self._summary_cache.clear()
+        self._invalidate_caches(clear_dates=False)
         return self.config
 
     def get_available_trading_dates(self) -> List[str]:
@@ -392,6 +431,46 @@ class EODSurveillanceService:
         scrips = self.get_scrips_summary(as_of_date=as_of_date, window_days=window_days, exchange=exchange)
         return [s for s in scrips if s["watchlist"]]
 
+    def _resolve_observation_date(self, as_of_date: Optional[str]) -> Optional[str]:
+        """Resolves and clamps/snaps an observation date consistently across list and detail endpoints."""
+        avail = self.get_available_trading_dates()
+        resolved_date = as_of_date
+        if resolved_date:
+            try:
+                datetime.strptime(resolved_date, "%Y-%m-%d")
+                if avail:
+                    if resolved_date >= avail[0]:
+                        return avail[0]
+                    if resolved_date <= avail[-1]:
+                        return avail[-1]
+                    return next((d for d in avail if d <= resolved_date), avail[0])
+                while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
+                    dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
+                    resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
+                return resolved_date
+            except (ValueError, TypeError):
+                return avail[0] if avail else None
+        return avail[0] if avail else None
+
+    @staticmethod
+    def _select_prior_quarter(
+        ordered_quarters: List[str],
+        filing_dates: Dict[str, Any],
+        cutoff_date: Optional[Any] = None,
+    ) -> Optional[str]:
+        """Selects the prior quarter closest to T-180 days from cutoff or latest filing."""
+        if len(ordered_quarters) <= 1:
+            return None
+        anchor = cutoff_date if cutoff_date is not None else filing_dates.get(ordered_quarters[0])
+        candidates = ordered_quarters[1:]
+        if anchor is None:
+            return candidates[0]
+        target_180 = anchor - timedelta(days=180)
+        dated = [(q, filing_dates[q]) for q in candidates if filing_dates.get(q) is not None]
+        if not dated:
+            return candidates[0]
+        return min(dated, key=lambda item: abs((item[1] - target_180).days))[0]
+
     def _risk_and_status(self, score: float) -> tuple[str, str]:
         thresh = self.config.threshold
         if score >= thresh:
@@ -412,30 +491,13 @@ class EODSurveillanceService:
         df_source = self.current_df
 
         # Resolve observation date upfront to enable unified caching across None / "" / exact dates
-        avail = self.get_available_trading_dates()
-        resolved_date = as_of_date
-        if resolved_date:
-            try:
-                datetime.strptime(resolved_date, "%Y-%m-%d")
-                if avail:
-                    if resolved_date >= avail[0]:
-                        resolved_date = avail[0]
-                    elif resolved_date <= avail[-1]:
-                        resolved_date = avail[-1]
-                    else:
-                        resolved_date = next((d for d in avail if d <= resolved_date), avail[0])
-                else:
-                    while not self.calendar.is_market_open(resolved_date) and resolved_date > "2020-01-01":
-                        dt_obj = datetime.strptime(resolved_date, "%Y-%m-%d")
-                        resolved_date = (dt_obj - timedelta(days=1)).strftime("%Y-%m-%d")
-            except (ValueError, TypeError):
-                resolved_date = avail[0] if avail else None
-        else:
-            resolved_date = avail[0] if avail else None
+        resolved_date = self._resolve_observation_date(as_of_date)
+
+        eff_window = max(1, int(window_days or self.config.recent_days))
 
         # Check in-memory summary cache for instant sub-millisecond repeat responses
         weights_tuple = tuple(sorted(self.config.weights.items()))
-        cache_key = f"{resolved_date}_{window_days}_{exchange}_{self.config.threshold}_{weights_tuple}"
+        cache_key = f"{CACHE_VERSION}_{resolved_date}_{eff_window}_{exchange}_{self.config.threshold}_{weights_tuple}"
         if hasattr(self, "_summary_cache") and cache_key in self._summary_cache:
             return self._summary_cache[cache_key]
 
@@ -463,20 +525,24 @@ class EODSurveillanceService:
         # Pre-group by ticker once into a dictionary for O(1) instant access (10x faster)
         # Note: df_source is pre-sorted by (symbol, trade_date) from SQLite load, so df_raw is strictly chronological
         grouped_tickers = dict(tuple(df_source.groupby("Ticker", sort=False)))
-        dilutions = self._load_all_dilution_factors()
+        dilutions = self._load_all_dilution_factors(resolved_date)
+        min_required = eff_window + 5
         results = []
 
         for ticker, df_raw in grouped_tickers.items():
-            if len(df_raw) < 30:
+            if len(df_raw) < min_required:
                 continue
                 
             try:
                 dilution_mult = dilutions.get(ticker, 1.0)
-                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_raw, dilution_multiplier=dilution_mult)
+                metrics: MarketMetricsResult = self.engine.calculate_core_metrics(
+                    ticker, df_raw, dilution_multiplier=dilution_mult, recent_days=eff_window
+                )
                 t180_idx = max(0, len(df_raw) - min(181, len(df_raw)))
                 start_p = float(df_raw["Close"].iloc[t180_idx])
+                safe_start_p = start_p * dilution_mult if start_p > 0 else 0.0
                 end_p = float(df_raw["Close"].iloc[-1])
-                change_pct = float(((end_p - start_p) / start_p) * 100)
+                change_pct = float(((end_p - safe_start_p) / safe_start_p) * 100) if safe_start_p > 0 else 0.0
                 
                 company_name = str(df_raw["CompanyName"].iloc[-1]) if "CompanyName" in df_raw.columns and pd.notna(df_raw["CompanyName"].iloc[-1]) and str(df_raw["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
                 isin_code = str(df_raw["ISIN"].iloc[-1]) if "ISIN" in df_raw.columns and pd.notna(df_raw["ISIN"].iloc[-1]) and str(df_raw["ISIN"].iloc[-1]).strip() != "" else "—"
@@ -564,25 +630,33 @@ class EODSurveillanceService:
         if df_t.empty:
             raise ValueError(f"Scrip {ticker} not found in current EOD dataset")
             
+        eff_window = max(1, int(window_days or self.config.recent_days))
+        effective_date = None
         if as_of_date:
-            try:
-                datetime.strptime(as_of_date, "%Y-%m-%d")
-                target_date = as_of_date
-            except (ValueError, TypeError):
-                avail = self.get_available_trading_dates()
-                target_date = avail[0] if avail else as_of_date
+            target_date = self._resolve_observation_date(as_of_date) or as_of_date
 
             df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if isinstance(d, (datetime, pd.Timestamp)) else str(d)[:10])
             df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= target_date]).sort_values(by="Date").reset_index(drop=True)
             if df_t.empty:
                 raise ValueError(f"No price data for {ticker} on or before {target_date}")
+            effective_date = target_date
+        else:
+            last_d: Any = df_t["Date"].iloc[-1]
+            effective_date = last_d.strftime("%Y-%m-%d") if isinstance(last_d, (datetime, pd.Timestamp)) or hasattr(last_d, "strftime") else str(last_d)[:10]
 
-        dilution_mult = self._get_dilution_multiplier(ticker, as_of_date)
-        metrics: MarketMetricsResult = self.engine.calculate_core_metrics(ticker, df_t, dilution_multiplier=dilution_mult)
+        dilution_mult = self._get_dilution_multiplier(ticker, effective_date)
+        metrics: MarketMetricsResult = self.engine.calculate_core_metrics(
+            ticker, df_t, dilution_multiplier=dilution_mult, recent_days=eff_window
+        )
         
-        # Pre-compute MA20 and MA50 across the full historical dataset for complete chart coverage
+        # Pre-compute MA20, MA50, and canonical daily event flags across full historical dataset
         df_t["MA20"] = df_t["Close"].rolling(20).mean().round(2)
         df_t["MA50"] = df_t["Close"].rolling(50).mean().round(2)
+        is_band_hit_s, is_new_high_s, resolved_band = self.engine.compute_daily_event_flags(
+            df_t, recent_days=eff_window
+        )
+        df_t["IsBandHit"] = is_band_hit_s
+        df_t["IsNewHigh"] = is_new_high_s
 
         history = []
         # Include 181 trading days so item 0 is the exact T-180 baseline price
@@ -600,14 +674,21 @@ class EODSurveillanceService:
                 "volume": vol_val,
                 "delivery_pct": deliv_pct,
                 "ma20": float(row["MA20"]) if bool(pd.notna(row["MA20"])) else None,
-                "ma50": float(row["MA50"]) if bool(pd.notna(row["MA50"])) else None
+                "ma50": float(row["MA50"]) if bool(pd.notna(row["MA50"])) else None,
+                "is_band_hit": bool(row["IsBandHit"]),
+                "is_new_high": bool(row["IsNewHigh"]),
             })
             
         risk, status = self._risk_and_status(metrics.final_score)
-        price_band_val = float(df_t["Band"].iloc[-1]) if "Band" in df_t.columns and pd.notna(df_t["Band"].iloc[-1]) else 0.05
+        price_band_val = float(resolved_band)
 
         company_val = str(df_t["CompanyName"].iloc[-1]) if "CompanyName" in df_t.columns and pd.notna(df_t["CompanyName"].iloc[-1]) and str(df_t["CompanyName"].iloc[-1]).strip() != "" else f"{ticker} Ltd"
         isin_val = str(df_t["ISIN"].iloc[-1]) if "ISIN" in df_t.columns and pd.notna(df_t["ISIN"].iloc[-1]) and str(df_t["ISIN"].iloc[-1]).strip() != "" else "—"
+
+        start_raw = float(df_t["Close"].iloc[max(0, len(df_t) - 181)])
+        safe_start_p = start_raw * dilution_mult if start_raw > 0 else 0.0
+        latest_close_val = float(df_t["Close"].iloc[-1])
+        price_change_val = ((latest_close_val - safe_start_p) / safe_start_p) * 100 if safe_start_p > 0 else 0.0
 
         return {
             "ticker": ticker,
@@ -632,22 +713,17 @@ class EODSurveillanceService:
             ],
             "history": history,
             "summary": {
-                "start_price": round(float(df_t["Close"].iloc[max(0, len(df_t) - 181)]), 2),
-                "latest_close": round(float(df_t["Close"].iloc[-1]), 2),
-                "price_change_pct": round(
-                    float(
-                        (df_t["Close"].iloc[-1] - df_t["Close"].iloc[max(0, len(df_t) - 181)])
-                        / df_t["Close"].iloc[max(0, len(df_t) - 181)]
-                        * 100
-                    ), 2
-                ),
-                "avg_15d_volume": int(df_t["Volume"].tail(15).mean())
+                "start_price": round(safe_start_p, 2),
+                "latest_close": round(latest_close_val, 2),
+                "price_change_pct": round(float(price_change_val), 2),
+                "avg_15d_volume": int(df_t["Volume"].tail(eff_window).mean())
             },
-            "shareholders": self._calculate_shareholder_stats(ticker, df_t),
-            "announcements": self._get_announcements(ticker)
+            "shareholders": self._calculate_shareholder_stats(ticker, df_t, as_of_date=effective_date, window_days=eff_window),
+            "announcements": self._get_announcements(ticker, as_of_date=effective_date),
+            "corporate_actions": self.get_scrip_corporate_actions(ticker, as_of_date=effective_date)
         }
 
-    def _calculate_shareholder_stats(self, ticker: str, df_t: pd.DataFrame) -> Dict[str, Any]:
+    def _calculate_shareholder_stats(self, ticker: str, df_t: pd.DataFrame, as_of_date: Optional[str] = None, window_days: int = 15) -> Dict[str, Any]:
         """Calculates dynamic participant demographics & shareholding statistics directly from Database."""
         unique_pans_holding_t = None
         unique_pans_holding_180 = None
@@ -657,6 +733,7 @@ class EODSurveillanceService:
         promoter_pct = None
         public_pct = None
         has_live_feed = False
+        cutoff = self._parse_cutoff_date(as_of_date)
 
         db = None
         try:
@@ -665,13 +742,11 @@ class EODSurveillanceService:
             from backend.db.models import ShareholdingSummary, ParticipantDailyTrade
             db = SessionLocal()
 
-            # Query shareholding filings sorted by filing_date desc
-            sh_records = (
-                db.query(ShareholdingSummary)
-                .filter(ShareholdingSummary.symbol == ticker)
-                .order_by(ShareholdingSummary.filing_date.desc())
-                .all()
-            )
+            # Query shareholding filings sorted by filing_date desc, bounded by observation date
+            sh_q = db.query(ShareholdingSummary).filter(ShareholdingSummary.symbol == ticker)
+            if cutoff is not None:
+                sh_q = sh_q.filter(ShareholdingSummary.filing_date <= cutoff)
+            sh_records = sh_q.order_by(ShareholdingSummary.filing_date.desc()).all()
 
             if sh_records:
                 has_live_feed = True
@@ -700,28 +775,35 @@ class EODSurveillanceService:
                 pans_t_sum = sum(r.unique_holding_pans or 0 for r in latest_records)
                 unique_pans_holding_t = pans_t_sum if pans_t_sum > 0 else None
 
-                # Baseline filing (~180 days prior, i.e. prior quarter)
-                if len(quarters_ordered) > 1:
-                    prior_q = quarters_ordered[-1]
+                # Baseline filing (~180 days prior)
+                quarter_dates = {
+                    q: recs[0].filing_date
+                    for q, recs in quarter_map.items()
+                    if recs and recs[0].filing_date is not None
+                }
+                prior_q = self._select_prior_quarter(quarters_ordered, quarter_dates, cutoff)
+                if prior_q:
                     prior_records = quarter_map[prior_q]
                     pans_180_sum = sum(r.unique_holding_pans or 0 for r in prior_records)
                     unique_pans_holding_180 = pans_180_sum if pans_180_sum > 0 else None
                 else:
                     unique_pans_holding_180 = None
 
-            # Calculate real average daily trading PANs directly from participant_daily_trades
+            # Calculate real average daily trading PANs directly from participant_daily_trades (bounded by cutoff)
+            td_q = db.query(ParticipantDailyTrade.trade_date).filter(ParticipantDailyTrade.symbol == ticker)
+            if cutoff is not None:
+                td_q = td_q.filter(ParticipantDailyTrade.trade_date <= cutoff)
             trade_dates_records = (
-                db.query(ParticipantDailyTrade.trade_date)
-                .filter(ParticipantDailyTrade.symbol == ticker)
-                .group_by(ParticipantDailyTrade.trade_date)
+                td_q.group_by(ParticipantDailyTrade.trade_date)
                 .order_by(ParticipantDailyTrade.trade_date.desc())
                 .all()
             )
             distinct_trade_dates = [r[0] for r in trade_dates_records] if trade_dates_records else []
+            eff_win = max(1, int(window_days or self.config.recent_days))
 
             if distinct_trade_dates:
-                # 15D investigation window dates (up to latest 15 distinct trade sessions)
-                window_15_dates = distinct_trade_dates[:15]
+                # Investigation window dates (up to latest N distinct trade sessions)
+                window_15_dates = distinct_trade_dates[:eff_win]
                 subq_15 = (
                     db.query(
                         ParticipantDailyTrade.trade_date,
@@ -738,9 +820,9 @@ class EODSurveillanceService:
                 if res_15 is not None:
                     avg_trading_pans_15d = round(float(res_15), 1)
 
-                # 180D historical baseline requires trade sessions outside/prior to the 15D alert window.
-                # If only the 15D alert window was ingested (<= 15 sessions), no historical baseline exists in participant feed.
-                baseline_dates = distinct_trade_dates[15:180]
+                # 180D historical baseline requires trade sessions outside/prior to the investigation window.
+                # If only the investigation window was ingested (<= eff_win sessions), no historical baseline exists.
+                baseline_dates = distinct_trade_dates[eff_win:180]
                 if baseline_dates:
                     subq_180 = (
                         db.query(
@@ -789,17 +871,18 @@ class EODSurveillanceService:
             "has_live_feed": has_live_feed
         }
 
-    def _get_announcements(self, ticker: str) -> List[Dict[str, Any]]:
-        """Retrieves official corporate announcements from Database for the given ticker."""
+    def _get_announcements(self, ticker: str, as_of_date: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Retrieves official corporate announcements from Database for the given ticker, bounded by observation date."""
         db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import CorporateEventsFeed
             db = SessionLocal()
-            ann_list = db.query(CorporateEventsFeed)\
-                         .filter(CorporateEventsFeed.symbol == ticker)\
-                         .order_by(CorporateEventsFeed.announcement_date.desc())\
-                         .all()
+            q = db.query(CorporateEventsFeed).filter(CorporateEventsFeed.symbol == ticker)
+            cutoff = self._parse_cutoff_date(as_of_date)
+            if cutoff is not None:
+                q = q.filter(CorporateEventsFeed.announcement_date <= cutoff)
+            ann_list = q.order_by(CorporateEventsFeed.announcement_date.desc()).all()
             if ann_list:
                 return [
                     {
@@ -820,6 +903,7 @@ class EODSurveillanceService:
 
     def get_scrip_participants(self, ticker: str, as_of_date: Optional[str] = None, window_days: int = 15) -> Dict[str, Any]:
         """Serves participant-level analytical breakdown per Section 4 of PVASF_CORE_SPEC."""
+        eff_window = max(1, int(window_days or self.config.recent_days))
         if hasattr(self, "current_df") and self.current_df is not None and not self.current_df.empty and ticker in self.current_df["Ticker"].values:
             df_t = cast(pd.DataFrame, self.current_df[self.current_df["Ticker"] == ticker]).sort_values(by="Date").reset_index(drop=True)
         else:
@@ -828,13 +912,18 @@ class EODSurveillanceService:
                 df_t = df_single.sort_values(by="Date").reset_index(drop=True)
             else:
                 df_t = pd.DataFrame()
-        if as_of_date:
+        target_date = None
+        if not df_t.empty:
             df_t["DateStr"] = df_t["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
-            df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= as_of_date]).sort_values(by="Date").reset_index(drop=True)
+            if as_of_date:
+                target_date = self._resolve_observation_date(as_of_date) or as_of_date
+                df_t = cast(pd.DataFrame, df_t[df_t["DateStr"] <= target_date]).sort_values(by="Date").reset_index(drop=True)
+        elif as_of_date:
+            target_date = self._resolve_observation_date(as_of_date) or as_of_date
 
         final_close = float(df_t["Close"].iloc[-1]) if not df_t.empty else 100.0
         if not df_t.empty:
-            total_vol = float(df_t["Volume"].tail(window_days).sum())
+            total_vol = float(df_t["Volume"].tail(eff_window).sum())
         elif hasattr(self, "current_trades_df") and self.current_trades_df is not None and not self.current_trades_df.empty:
             t_sub = self.current_trades_df[self.current_trades_df["Ticker"] == ticker] if "Ticker" in self.current_trades_df.columns else pd.DataFrame()
             total_vol = float(t_sub["BuyVolume"].sum()) if not t_sub.empty and "BuyVolume" in t_sub.columns else 0.0
@@ -842,31 +931,31 @@ class EODSurveillanceService:
             total_vol = 0.0
         
         # Actual window Net Stock Price Movement (Close_T - Close_{T-window_days}) per PVASF_CORE_SPEC 4.1
-        if len(df_t) >= (window_days + 1):
-            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-(window_days + 1)]))
+        if len(df_t) >= (eff_window + 1):
+            scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[-(eff_window + 1)]))
         elif len(df_t) >= 2:
             scrip_15d_price_change = abs(float(df_t["Close"].iloc[-1]) - float(df_t["Close"].iloc[0]))
         else:
             scrip_15d_price_change = 1.0
         scrip_15d_price_change = max(scrip_15d_price_change, 1e-4)
 
-        trades_slice = self.current_trades_df
-        if as_of_date and not trades_slice.empty and "Date" in trades_slice.columns:
+        window_dates = list(df_t["DateStr"].tail(eff_window)) if (not df_t.empty and "DateStr" in df_t.columns) else []
+
+        trades_slice = self.current_trades_df if getattr(self, "current_trades_df", None) is not None else pd.DataFrame()
+        if not trades_slice.empty and "Date" in trades_slice.columns:
             trades_date_strs = trades_slice["Date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
-            if not df_t.empty and "DateStr" in df_t.columns:
-                window_dates = list(df_t["DateStr"].tail(window_days))
+            if window_dates:
                 trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs.isin(window_dates)])
-            else:
-                trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs <= as_of_date])
+            elif target_date:
+                trades_slice = cast(pd.DataFrame, trades_slice[trades_date_strs <= target_date])
 
         pairs_slice = getattr(self, "current_pairs_df", None)
-        if pairs_slice is not None and not pairs_slice.empty and as_of_date and "trade_date" in pairs_slice.columns:
+        if pairs_slice is not None and not pairs_slice.empty and "trade_date" in pairs_slice.columns:
             pair_date_strs = pairs_slice["trade_date"].apply(lambda d: d.strftime("%Y-%m-%d") if hasattr(d, "strftime") else str(d)[:10])
-            if not df_t.empty and "DateStr" in df_t.columns:
-                window_dates = list(df_t["DateStr"].tail(window_days))
+            if window_dates:
                 pairs_slice = cast(pd.DataFrame, pairs_slice[pair_date_strs.isin(window_dates)])
-            else:
-                pairs_slice = cast(pd.DataFrame, pairs_slice[pair_date_strs <= as_of_date])
+            elif target_date:
+                pairs_slice = cast(pd.DataFrame, pairs_slice[pair_date_strs <= target_date])
 
         part_res: ParticipantAuditResult = self.engine.analyze_participants(
             ticker, trades_slice, final_close, total_vol, pairs_df=pairs_slice
@@ -932,6 +1021,10 @@ class EODSurveillanceService:
 
         return {
             "ticker": ticker,
+            "scrip_15d_price_change": round(float(scrip_15d_price_change), 2),
+            "total_market_pos_ltp": round(float(tot_pos_ltp), 2),
+            "total_market_neg_ltp": round(float(tot_neg_ltp), 2),
+            "total_trades_count": int(len(ticker_trades)) if not ticker_trades.empty else 0,
             "ltp_contributors": [
                 {
                     "participant": row["PAN"],
@@ -1040,7 +1133,11 @@ class EODSurveillanceService:
                 return {"error": "Unsupported file format. Please upload CSV or Excel EOD files."}
                 
             clean_df = clean_historical_data(df)
+            if not clean_df.empty and "Date" in clean_df.columns:
+                clean_df["DateStr"] = clean_df["Date"].astype(str).str[:10]
             self.current_df = clean_df
+            self._ticker_set = set(clean_df["Ticker"].unique()) if not clean_df.empty else set()
+            self._invalidate_caches(clear_dates=True)
             scrips = self.get_scrips_summary()
             
             return {
@@ -1053,25 +1150,19 @@ class EODSurveillanceService:
         except Exception as e:
             return {"error": f"Failed to ingest EOD file: {str(e)}"}
 
-    def get_scrip_shareholding_breakdown(self, ticker: str) -> Dict[str, Any]:
+    def get_scrip_shareholding_breakdown(self, ticker: str, as_of_date: Optional[str] = None) -> Dict[str, Any]:
         """Queries quarter-by-quarter shareholding summaries and large shareholder registries."""
         db = None
         try:
             from backend.db.database import SessionLocal
             from backend.db.models import ShareholdingSummary, LargeShareholdersRegistry
             db = SessionLocal()
-            
-            main_records = (
-                db.query(ShareholdingSummary)
-                .filter(ShareholdingSummary.symbol == ticker)
-                .order_by(ShareholdingSummary.filing_date.desc())
-                .all()
-            )
-            prom_records = (
-                db.query(LargeShareholdersRegistry)
-                .filter(LargeShareholdersRegistry.symbol == ticker)
-                .all()
-            )
+            cutoff = self._parse_cutoff_date(as_of_date)
+
+            sh_q = db.query(ShareholdingSummary).filter(ShareholdingSummary.symbol == ticker)
+            if cutoff is not None:
+                sh_q = sh_q.filter(ShareholdingSummary.filing_date <= cutoff)
+            main_records = sh_q.order_by(ShareholdingSummary.filing_date.desc()).all()
 
             quarters = {}
             for r in main_records:
@@ -1086,10 +1177,26 @@ class EODSurveillanceService:
                     }
                 cat = (r.category_type or "").upper()
                 if "PROMOTER" in cat:
-                    quarters[q]["promoter_pct"] = float(r.holding_percentage or 0.0)
-                    quarters[q]["pledged_pct"] = float(r.pledged_shares_percentage or 0.0)
+                    quarters[q]["promoter_pct"] = round(quarters[q]["promoter_pct"] + float(r.holding_percentage or 0.0), 2)
+                    quarters[q]["pledged_pct"] = round(quarters[q]["pledged_pct"] + float(r.pledged_shares_percentage or 0.0), 2)
                 elif "PUBLIC" in cat or "FLOAT" in cat:
-                    quarters[q]["public_pct"] = float(r.holding_percentage or 0.0)
+                    quarters[q]["public_pct"] = round(quarters[q]["public_pct"] + float(r.holding_percentage or 0.0), 2)
+
+            # Preserve chronological filing_date.desc() order rather than sorting quarter strings alphabetically
+            quarter_keys = list(quarters.keys())
+            quarter_dates = {
+                r.quarter_code: r.filing_date
+                for r in main_records
+                if r.filing_date is not None and r.quarter_code in quarters
+            }
+            latest_q = quarter_keys[0] if quarter_keys else None
+            prior_q = self._select_prior_quarter(quarter_keys, quarter_dates, cutoff)
+
+            prom_q = db.query(LargeShareholdersRegistry).filter(LargeShareholdersRegistry.symbol == ticker)
+            if latest_q:
+                prom_records = prom_q.filter(LargeShareholdersRegistry.quarter_code == latest_q).all()
+            else:
+                prom_records = []
 
             promoters = [
                 {
@@ -1102,10 +1209,6 @@ class EODSurveillanceService:
                 for p in prom_records
                 if "PROMOTER" in (p.holder_category or "").upper()
             ]
-
-            quarter_keys = sorted(quarters.keys(), reverse=True)
-            latest_q = quarter_keys[0] if quarter_keys else None
-            prior_q = quarter_keys[-1] if len(quarter_keys) > 1 else None
 
             prom_latest = [r for r in main_records if r.quarter_code == latest_q and "PROMOTER" in (r.category_type or "").upper()] if latest_q else []
             prom_prior = [r for r in main_records if r.quarter_code == prior_q and "PROMOTER" in (r.category_type or "").upper()] if prior_q else []
@@ -1169,24 +1272,26 @@ class EODSurveillanceService:
             if db:
                 db.close()
 
-    def get_scrip_corporate_actions(self, ticker: str) -> List[Dict[str, Any]]:
+    def get_scrip_corporate_actions(self, ticker: str, as_of_date: Optional[str] = None) -> List[Dict[str, Any]]:
         """Queries corporate actions & dilution factors from corporate_events_feed and price_dilution_factors."""
         db = None
         try:
             from backend.db.database import SessionLocal
-            from backend.db.models import CorporateEventsFeed, PriceDilutionFactor
+            from backend.db.models import CorporateEventsFeed
             db = SessionLocal()
-            
-            actions = (
-                db.query(CorporateEventsFeed)
-                .filter(CorporateEventsFeed.symbol == ticker)
-                .order_by(CorporateEventsFeed.announcement_date.desc())
-                .all()
-            )
-            dilutions = {
-                d.symbol: float(d.split_multiplier or 1.0)
-                for d in db.query(PriceDilutionFactor).filter(PriceDilutionFactor.symbol == ticker).all()
-            }
+            cutoff = self._parse_cutoff_date(as_of_date)
+
+            from sqlalchemy import func
+            ACTION_CATEGORIES = ["BONUS", "SPLIT", "DIVIDEND", "RIGHTS", "BUYBACK", "CAPITAL_REDUCTION"]
+
+            q = db.query(CorporateEventsFeed).filter(CorporateEventsFeed.symbol == ticker)
+            # Filter strictly for corporate capital actions (excluding informational disclosures like board meetings)
+            q = q.filter(func.upper(CorporateEventsFeed.action_category).in_(ACTION_CATEGORIES))
+            if cutoff is not None:
+                q = q.filter(CorporateEventsFeed.announcement_date <= cutoff)
+            actions = q.order_by(CorporateEventsFeed.announcement_date.desc()).all()
+
+            fallback_dil = self._get_dilution_multiplier(ticker, as_of_date)
 
             res = []
             for a in actions:
@@ -1195,7 +1300,7 @@ class EODSurveillanceService:
                 ex_date = str(a.ex_date) if a.ex_date else "—"
                 rec_date = str(a.record_date) if a.record_date else str(a.announcement_date)
                 ratio_val = a.ratio_or_value or "—"
-                dil_factor = float(a.dilution_factor or dilutions.get(a.symbol, 1.0))
+                dil_factor = float(a.dilution_factor or fallback_dil)
 
                 res.append({
                     "id": a.event_id,

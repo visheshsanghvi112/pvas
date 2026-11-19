@@ -1,12 +1,12 @@
 export const metricHelp = {
   compositeScore:
-    "Overall risk score from 0 to 100 combining all 5 anomaly checks. Stocks scoring 15 or higher are flagged for review.",
+    "Overall risk score from 0 to 100 combining all 5 anomaly checks.",
   priceRise:
     "How much the stock's highest price in the last 15 days grew compared to its price 6 months ago.",
   priceZ:
-    "Checks if recent daily price gains are abnormally faster than 95% of the stock's normal 6-month behavior.",
+    "Checks if the stock's recent 15-day average daily return is statistically abnormal compared to its historical 6-month rolling benchmark.",
   volumeZ:
-    "Checks if recent trading volume is an abnormal spike compared to typical 6-month daily activity.",
+    "Checks if the stock's recent 15-day average volume is statistically abnormal compared to its historical 6-month rolling benchmark.",
   bandPersistence:
     "Counts how many days in the last 15 days the stock touched or neared its upper circuit limit.",
   highBreakout:

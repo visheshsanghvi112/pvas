@@ -80,6 +80,7 @@ class TradeMatchesFilter(BaseModel):
     buyer_client_token:  Optional[int]  = Field(None, description="Filter by buying client token")
     seller_client_token: Optional[int]  = Field(None, description="Filter by selling client token")
     series:              Optional[str]  = Field(None, description="Series e.g. EQ")
+    exchange:            Optional[str]  = Field(None, description="Exchange scope: ALL, NSE, or BSE")
     sort_by:             str            = Field("trade_timestamp", description="Column to sort by")
     sort_dir:            Literal["asc", "desc"] = Field("desc", description="Sort direction")
 

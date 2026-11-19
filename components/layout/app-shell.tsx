@@ -34,7 +34,7 @@ const nav = [
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { currentUser, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useUser();
+  const { currentUser, authReady, isAuthenticated, logout, isLoginModalOpen, openLoginModal, closeLoginModal } = useUser();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<ScripSummary[]>([]);
@@ -132,6 +132,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   const loadAlerts = useCallback(async () => {
+    if (!isAuthenticated) {
+      setAlerts([]);
+      return;
+    }
     try {
       const scrips = await fetchWatchlist();
       setAlerts(buildAlerts(scrips));
@@ -139,14 +143,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       console.warn("[PVASF] Notification load failed:", err);
       // Do not clear existing alerts on transient network errors
     }
-  }, [buildAlerts]);
+  }, [buildAlerts, isAuthenticated]);
 
-  // Load on mount, then poll every 5 min
+  // Load on mount (when authenticated), then poll every 5 min
   useEffect(() => {
+    if (!authReady) return;
     loadAlerts();
+    if (!isAuthenticated) return;
     const interval = setInterval(loadAlerts, ALERT_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [loadAlerts]);
+  }, [authReady, isAuthenticated, loadAlerts]);
 
   const unreadCount = alerts.filter((a) => !a.read).length;
 
@@ -193,7 +199,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   // Debounced search for quick header lookup
   useEffect(() => {
-    if (!searchQuery.trim()) {
+    if (!isAuthenticated || !searchQuery.trim()) {
       setSearchResults([]);
       setSearchOpen(false);
       return;
@@ -208,7 +214,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
     }, 200);
     return () => clearTimeout(timer);
-  }, [searchQuery]);
+  }, [isAuthenticated, searchQuery]);
 
   const handleSelectSymbol = (symbol: string) => {
     setSearchOpen(false);
@@ -295,12 +301,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="font-mono text-xs font-bold text-slate-900">
                           {scrip.latest_close != null ? `₹${Number(scrip.latest_close).toFixed(2)}` : "—"}
                         </div>
-                        <span className={cn(
-                          "text-[9.5px] font-extrabold uppercase px-1.5 py-0.2 rounded border font-sans inline-block mt-0.5",
-                          (scrip.risk_score ?? scrip.score ?? 0) >= 60
-                            ? "bg-rose-50 text-rose-700 border-rose-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        )}>
+                        <span className={(() => {
+                          const scoreVal = scrip.risk_score ?? scrip.score ?? 0;
+                          const cutoff = scrip.threshold ?? 60;
+                          const mediumCutoff = Math.max(10, Math.round(cutoff * 0.6));
+                          return cn(
+                            "text-[9.5px] font-extrabold uppercase px-1.5 py-0.2 rounded border font-sans inline-block mt-0.5",
+                            scoreVal >= cutoff
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : scoreVal >= mediumCutoff
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          );
+                        })()}>
                           Score {Math.round(scrip.risk_score ?? scrip.score ?? 0)}
                         </span>
                       </div>
@@ -531,7 +544,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* ── Main Content ── */}
       <main className="flex-1 overflow-auto bg-slate-50">
-        {children}
+        {authReady && !isAuthenticated ? (
+          <div className="h-full flex items-center justify-center p-6">
+            <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 shadow-sm p-7 text-center space-y-4">
+              <div className="w-12 h-12 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center mx-auto text-slate-600">
+                <User className="w-6 h-6" />
+              </div>
+              <div className="space-y-1.5">
+                <h2 className="text-base font-extrabold text-slate-900">Session Signed Out</h2>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Surveillance endpoints require an authenticated session. Sign in as an Admin, Analyst, or Read-Only Guest to continue.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openLoginModal}
+                className="w-full h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-colors shadow-xs cursor-pointer inline-flex items-center justify-center gap-2"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign In / Switch User
+              </button>
+            </div>
+          </div>
+        ) : (
+          children
+        )}
       </main>
 
       {/* ── Global Login & Account Switcher Modal ── */}
@@ -541,7 +578,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 }
 
 function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const { login, logout } = useUser();
+  const { login } = useUser();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -605,11 +642,6 @@ function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
     }
   };
 
-  const handleSwitchToGuest = () => {
-    logout();
-    onClose();
-  };
-
   return (
     <div
       onClick={(e) => {
@@ -666,24 +698,24 @@ function LoginModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
 
               <button
                 type="button"
-                onClick={() => handleQuickSwitch("guest_viewer", "guest123")}
-                className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-all group cursor-pointer shadow-2xs"
+                onClick={() => handleQuickSwitch("analyst_surv", "analyst123")}
+                className="p-3 rounded-2xl border border-teal-200 bg-teal-50/60 hover:bg-teal-100/70 text-left transition-all group cursor-pointer shadow-2xs"
               >
-                <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between">
-                  <span>Audit User</span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">Viewer</span>
+                <div className="text-xs font-extrabold text-teal-900 flex items-center justify-between">
+                  <span>S. Officer</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-teal-600 text-white">Analyst</span>
                 </div>
-                <div className="text-[11px] text-slate-500 font-medium mt-0.5">Internal Audit</div>
+                <div className="text-[11px] text-teal-700/80 font-medium mt-0.5">Trade Investigations</div>
               </button>
 
               <button
                 type="button"
-                onClick={handleSwitchToGuest}
+                onClick={() => handleQuickSwitch("guest_viewer", "guest123")}
                 className="p-3 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-left transition-all group cursor-pointer shadow-2xs"
               >
                 <div className="text-xs font-extrabold text-slate-900 flex items-center justify-between">
                   <span>Guest User</span>
-                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-600">Guest</span>
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">Viewer</span>
                 </div>
                 <div className="text-[11px] text-slate-500 font-medium mt-0.5">Read Only</div>
               </button>

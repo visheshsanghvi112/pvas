@@ -7,9 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { fetchWithAuth } from "@/lib/api";
+import { fetchWithAuth, getBaseHost } from "@/lib/api";
 
-const BASE_HOST = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL : (typeof window !== "undefined" ? "" : "http://127.0.0.1:8005");
+const BASE_HOST = typeof window !== "undefined" ? "" : getBaseHost();
 
 interface AuditLogItem {
   id: number;
@@ -28,6 +28,7 @@ function HistoryPageContent() {
 
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [accessDenied, setAccessDenied] = useState(false);
   const [searchTerm, setSearchTerm] = useState(querySearch || "");
   const [actionFilter, setActionFilter] = useState("All");
   const [currentPage, setCurrentPage] = useState(1);
@@ -50,11 +51,15 @@ function HistoryPageContent() {
 
   async function fetchAuditLogs() {
     setLoading(true);
+    setAccessDenied(false);
     try {
       const res = await fetchWithAuth(`${BASE_HOST}/api/v1/auth/audit-logs?limit=200`);
       if (res.ok) {
         const logs = await res.json();
         setAuditLogs(logs);
+      } else if (res.status === 401 || res.status === 403) {
+        setAccessDenied(true);
+        setAuditLogs([]);
       }
     } catch (e) {
       console.error("Failed to load audit logs", e);
@@ -179,6 +184,12 @@ function HistoryPageContent() {
                       <tr>
                         <td colSpan={7} className="px-5 py-8 text-center text-slate-400 font-sans">
                           Loading security audit logs...
+                        </td>
+                      </tr>
+                    ) : accessDenied ? (
+                      <tr>
+                        <td colSpan={7} className="px-5 py-8 text-center text-amber-700 font-sans font-semibold bg-amber-50/60">
+                          Access restricted: security audit logs are available only to Analyst and Admin accounts.
                         </td>
                       </tr>
                     ) : paginatedLogs.length === 0 ? (

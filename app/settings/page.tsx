@@ -30,7 +30,7 @@ const scoreRows = [
   ["Price Z", ["< 1.645", "≥ 1.645", "≥ 2.33", "≥ 3.09"], "priceZ" as const],
   ["Volume Z", ["< 1.645", "≥ 1.645", "≥ 2.33", "≥ 3.09"], "volumeZ" as const],
   ["Band Hits", ["0 - 2 days", "3 - 5 days", "6 - 9 days", "≥ 10 days"], "bandPersistence" as const],
-  ["180D Highs", ["0 days", "1 - 5 days", "5 - 9 days", "≥ 10 days"], "highBreakout" as const]
+  ["180D Highs", ["0 days", "1 - 4 days", "5 - 9 days", "≥ 10 days"], "highBreakout" as const]
 ] as const;
 
 const SETTING_TABS = ["Model Configuration", "User Management"] as const;
@@ -110,10 +110,14 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    refreshUsers();
-    refreshAuditLogs();
+    if (isAdmin) {
+      refreshUsers();
+    }
+    if (isAdmin || currentUser.role === "Analyst") {
+      refreshAuditLogs();
+    }
     loadWeights();
-  }, [refreshUsers, refreshAuditLogs, loadWeights]);
+  }, [isAdmin, currentUser.role, refreshUsers, refreshAuditLogs, loadWeights]);
 
   // Handle Create User Modal ESC key & Body scroll lock
   useEffect(() => {
@@ -405,7 +409,7 @@ export default function SettingsPage() {
                     <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
                       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                          <span>Price Rise ($w_1$)</span>
+                          <span>Price Rise (w1)</span>
                           <span className="text-blue-600 font-mono text-sm">{wPriceRise}%</span>
                         </div>
                         <input
@@ -423,7 +427,7 @@ export default function SettingsPage() {
 
                       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                          <span>Price Z-Score ($w_2$)</span>
+                          <span>Price Z-Score (w2)</span>
                           <span className="text-blue-600 font-mono text-sm">{wPriceZ}%</span>
                         </div>
                         <input
@@ -441,7 +445,7 @@ export default function SettingsPage() {
 
                       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                          <span>Volume Z-Score ($w_3$)</span>
+                          <span>Volume Z-Score (w3)</span>
                           <span className="text-blue-600 font-mono text-sm">{wVolumeZ}%</span>
                         </div>
                         <input
@@ -459,7 +463,7 @@ export default function SettingsPage() {
 
                       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                          <span>Band Persistence ($w_4$)</span>
+                          <span>Band Persistence (w4)</span>
                           <span className="text-blue-600 font-mono text-sm">{wBand}%</span>
                         </div>
                         <input
@@ -477,7 +481,7 @@ export default function SettingsPage() {
 
                       <div className="p-3.5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs space-y-2.5">
                         <div className="flex justify-between items-center text-xs font-bold text-slate-900">
-                          <span>180D New High ($w_5$)</span>
+                          <span>180D New High (w5)</span>
                           <span className="text-blue-600 font-mono text-sm">{wHigh}%</span>
                         </div>
                         <input
@@ -582,10 +586,15 @@ export default function SettingsPage() {
                   </CardTitle>
                 </div>
                 <span className="text-xs text-slate-400 font-medium">
-                  {usersList.length} Active Accounts
+                  {isAdmin ? `${usersList.filter((u) => u.is_active !== false).length} Active / ${usersList.length} Total` : "Restricted"}
                 </span>
               </CardHeader>
               <CardContent className="p-0 overflow-x-auto">
+                {!isAdmin ? (
+                  <div className="px-6 py-10 text-center text-xs text-slate-500">
+                    User directory and role management require <strong>Admin</strong> privileges.
+                  </div>
+                ) : (
                 <table className="w-full text-left border-collapse">
                   <thead className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500">
                     <tr>
@@ -652,6 +661,7 @@ export default function SettingsPage() {
                     ))}
                   </tbody>
                 </table>
+                )}
               </CardContent>
             </Card>
           )}

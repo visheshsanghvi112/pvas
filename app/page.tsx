@@ -65,6 +65,8 @@ function DashboardContent() {
             router.replace(`${pathname}?${newParams.toString()}`, { scroll: false });
           }
         }
+      } else {
+        setLoading(false);
       }
     }
     loadDates();
@@ -193,17 +195,11 @@ function DashboardContent() {
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
 
           {/* Custom Trading Date Picker */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider select-none inline-flex items-center gap-1">
-              Observation Date:
-              <InfoTooltip text="The trading day being analyzed. Recent activity leading up to this date is compared against 6 months of historical data." />
-            </span>
-            <TradingDatePicker
-              availableDates={availableDates}
-              selectedDate={selectedDate}
-              onDateChange={(d) => snapToTradingDate(d)}
-            />
-          </div>
+          <TradingDatePicker
+            availableDates={availableDates}
+            selectedDate={selectedDate}
+            onDateChange={(d) => snapToTradingDate(d)}
+          />
 
           {/* Day shift navigation buttons */}
           <div className="flex items-center rounded-xl border border-slate-300/80 bg-white overflow-hidden text-xs font-semibold text-slate-700 divide-x divide-slate-200 shadow-2xs">
@@ -227,7 +223,22 @@ function DashboardContent() {
             </button>
           </div>
 
-          {/* Spacer pushes window badge right */}
+          {/* 15D analysis window readout */}
+          <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] text-amber-900 font-semibold select-none">
+            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span className="font-mono">
+              {fmtShort(windowStartDate)}&nbsp;→&nbsp;{fmtShort(selectedDate)}
+            </span>
+            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-300/70 rounded px-1.5 py-px inline-flex items-center gap-1">
+              {windowDays}D Analysis Window
+              <InfoTooltip
+                text={`The recent ${windowDays} trading days being analyzed against the stock's 6-month history.`}
+                align="right"
+              />
+            </span>
+          </div>
+
+          {/* Spacer pushes cutoff badge right */}
           <div className="flex-1" />
 
           {/* Active Watchlist Cutoff Threshold Badge */}
@@ -238,24 +249,9 @@ function DashboardContent() {
               <strong className="font-mono text-blue-950 font-bold">Score ≥ {threshold}</strong>
             </span>
             <InfoTooltip
-              text={`Calibrated triage threshold. Only scrips with a weighted composite PVASF risk score ≥ ${threshold} are shortlisted on this watchlist.`}
+              text="Minimum risk score required for a stock to be flagged as high risk on the watchlist."
               align="right"
             />
-          </div>
-
-          {/* 15D analysis window readout */}
-          <div className="flex items-center gap-2 bg-amber-50/80 border border-amber-200 rounded-lg px-3 py-1.5 text-[12px] text-amber-900 font-semibold select-none">
-            <Clock className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-            <span className="font-mono">
-              {fmtShort(windowStartDate)}&nbsp;→&nbsp;{fmtShort(selectedDate)}
-            </span>
-            <span className="text-[11px] font-bold text-amber-700 bg-amber-100 border border-amber-300/70 rounded px-1.5 py-px inline-flex items-center gap-1">
-              15D Analysis Window
-              <InfoTooltip
-                text="Recent 15 trading days being examined and compared against the 6-month historical baseline."
-                align="right"
-              />
-            </span>
           </div>
         </div>
       </div>

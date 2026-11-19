@@ -64,6 +64,7 @@ export function AnomalyEventMatrixChart({
   history = [],
   metrics,
   bandPercent = 0.05,
+  windowDays = 15,
   isExpanded: _isExpanded = false
 }: {
   history?: PricePoint[];
@@ -73,11 +74,13 @@ export function AnomalyEventMatrixChart({
     [key: string]: any;
   };
   bandPercent?: number;
+  windowDays?: number;
   isExpanded?: boolean;
 }) {
   if (!history || history.length === 0)
     return <div className="text-slate-500 text-xs p-4">No daily event data available.</div>;
 
+  const effWindow = Math.max(1, windowDays);
   const bandThresholdFraction = 0.90 * (bandPercent > 1 ? bandPercent / 100 : bandPercent);
 
   const historyDays = history.length;
@@ -101,15 +104,15 @@ export function AnomalyEventMatrixChart({
     };
   });
 
-  const last15 = dayRecords.slice(-15);
-  const total180Hits = metrics?.new_high_days ?? last15.filter((d) => d.hit180High).length;
-  const totalBandHits = metrics?.band_hit_days ?? last15.filter((d) => d.hitPriceBand).length;
+  const lastWindow = dayRecords.slice(-effWindow);
+  const total180Hits = metrics?.new_high_days ?? lastWindow.filter((d) => d.hit180High).length;
+  const totalBandHits = metrics?.band_hit_days ?? lastWindow.filter((d) => d.hitPriceBand).length;
   const displayBandPct = bandPercent > 1 ? bandPercent : Math.round(bandPercent * 100);
 
   const peakStatLabel = isFull180 ? "Hit 180-day high" : "Hit record high";
   const peakStatSub = isFull180
-    ? "Days in past 15 where the scrip's intraday high exceeded its prior 180-day peak"
-    : "Days in past 15 where the scrip's intraday high exceeded its prior baseline peak";
+    ? `Days in past ${effWindow} where the scrip's intraday high exceeded its prior 180-day peak`
+    : `Days in past ${effWindow} where the scrip's intraday high exceeded its prior baseline peak`;
 
   const Stat = ({
     count, label, sub, color, score, scoreTooltip
@@ -148,7 +151,7 @@ export function AnomalyEventMatrixChart({
         </div>
         <div className="flex items-baseline gap-2">
           <span className={cn("text-2xl font-bold font-mono", colorMap.num)}>{count}</span>
-          <span className="text-xs font-medium text-slate-500">/ 15 days</span>
+          <span className="text-xs font-medium text-slate-500">/ {effWindow} days</span>
         </div>
         <div className="text-xs text-slate-500 leading-normal flex items-center justify-between">
           <span>{sub}</span>
@@ -166,15 +169,15 @@ export function AnomalyEventMatrixChart({
         sub={peakStatSub}
         color="rose"
         score={metrics?.new_high_score}
-        scoreTooltip="Score based on new highs: 0 days (0 pts), 1–4 days (1 pt), 5–9 days (3 pts), 10 or more days (5 pts)."
+        scoreTooltip={`Counts how often the stock broke past its 6-month peak in the past ${effWindow} days. More breakout days add to the risk score.`}
       />
       <Stat
         count={totalBandHits}
         label="Hit ≥90% of price band"
-        sub={`Days in past 15 where the scrip moved ≥90% of its ${displayBandPct}% daily exchange price band`}
+        sub={`Days in past ${effWindow} where the scrip moved ≥90% of its ${displayBandPct}% daily exchange price band`}
         color="amber"
         score={metrics?.band_score}
-        scoreTooltip="Score based on circuit hits: 0–2 days (0 pts), 3–5 days (1 pt), 6–9 days (3 pts), 10 or more days (5 pts)."
+        scoreTooltip={`Counts how often the stock reached or neared its daily upper price limit in the past ${effWindow} days. Repeated hits increase the risk score.`}
       />
     </div>
   );
@@ -188,6 +191,7 @@ export function AnomalyEventMatrixChart({
 export function ParameterRadarChart({
   metrics,
   weights,
+  threshold = 60,
 }: {
   metrics?: {
     price_rise_pct?: number;
@@ -204,6 +208,7 @@ export function ParameterRadarChart({
     band_persistence?: number;
     new_high?: number;
   };
+  threshold?: number;
 }) {
   const [highlightedItem, setHighlightedItem] =
     useState<HighlightItemIdentifier<'radar'> | null>(null);
@@ -362,8 +367,10 @@ export function ParameterRadarChart({
             const compositeScore = metrics.final_score != null && isFinite(Number(metrics.final_score))
               ? Number(metrics.final_score)
               : Math.round((sPrice + sPriceZ + sVolZ + sBand + sHigh) * 4.0);
-            const isHigh = compositeScore >= 60;
-            const isMed = compositeScore >= 30 && compositeScore < 60;
+            const highThresh = threshold ?? 60;
+            const medThresh = Math.max(10, Math.round(highThresh * 0.6));
+            const isHigh = compositeScore >= highThresh;
+            const isMed = compositeScore >= medThresh && compositeScore < highThresh;
             const riskText = isHigh ? "High Risk" : isMed ? "Medium Risk" : "Normal";
             const topDrivers = [
               sPrice >= 3 ? `Price (+${sPrice}/5)` : null,
@@ -529,7 +536,7 @@ const CustomScreenerTooltip = ({ active, payload, label }: any) => {
 };
 
 /** Interactive Chart & Metrics Guide Popover */
-export function ChartGuideButton() {
+export function ChartGuideButton({ windowDays = 15 }: { windowDays?: number }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -595,37 +602,37 @@ export function ChartGuideButton() {
             <div className="flex items-start gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#0284c7] mt-1 shrink-0" />
               <div>
-                <strong className="text-sky-300">20 DMA:</strong> 20-Day Moving Average — Short-term 1-month average price baseline.
+                <strong className="text-sky-300">20 DMA:</strong> 20-Day Moving Average — Short-term average price trend.
               </div>
             </div>
             <div className="flex items-start gap-1.5">
               <span className="w-2 h-2 rounded-full bg-[#d97706] mt-1 shrink-0" />
               <div>
-                <strong className="text-amber-300">50 DMA:</strong> 50-Day Moving Average — Medium-term 2.5-month trend baseline.
+                <strong className="text-amber-300">50 DMA:</strong> 50-Day Moving Average — Medium-term average price trend.
               </div>
             </div>
             <div className="flex items-start gap-1.5">
               <span className="px-1 py-0.2 rounded bg-amber-950 text-amber-300 border border-amber-800 text-[10px] font-bold shrink-0 mt-0.5">Upper Circuit</span>
               <div>
-                Triggered when price rises &ge;90% of the daily exchange upper circuit limit (feeds Metric 4).
+                Triggered when the price rises close to its daily exchange upper limit.
               </div>
             </div>
             <div className="flex items-start gap-1.5">
               <span className="font-bold text-slate-300 shrink-0">O / H / L:</span>
               <div>
-                Open, High, and Low intraday prices for that session.
+                Open, High, and Low prices recorded during that trading day.
               </div>
             </div>
             <div className="flex items-start gap-1.5">
               <span className="font-bold text-blue-300 shrink-0">Vol (D: %):</span>
               <div>
-                <strong>Total Volume</strong> traded and <strong>Deliverable Volume %</strong> (shares transferred to demat accounts vs intraday).
+                <strong>Total Volume</strong> traded and <strong>Deliverable Volume %</strong> (shares held beyond intraday).
               </div>
             </div>
             <div className="flex items-start gap-1.5 pt-1 border-t border-slate-800">
               <span className="w-2 h-2 rounded-full bg-[#f59e0b] mt-1 shrink-0" />
               <div>
-                <strong className="text-amber-300">15D Analysis Window:</strong> Amber shaded region highlighting the 15-day analysis horizon compared against the 180-day baseline.
+                <strong className="text-amber-300">{windowDays}D Analysis Window:</strong> Shaded region highlighting the recent {windowDays} trading days compared against the 6-month history.
               </div>
             </div>
           </div>
@@ -638,13 +645,18 @@ export function ChartGuideButton() {
 export function CombinedMarketChart({
   history = [],
   metrics,
+  windowDays = 15,
+  threshold = 60,
   isExpanded = false
 }: {
   history?: PricePoint[];
   metrics?: any;
+  windowDays?: number;
+  threshold?: number;
   isExpanded?: boolean;
 }) {
-  // Surveillance Timeframes: "15D" | "1M" | "3M" | "6M" | "Max" (default "6M" / 180D Baseline)
+  const effWindow = Math.max(1, windowDays);
+  // Surveillance Timeframes: "15D" (Active Window) | "1M" | "3M" | "6M" | "Max" (default "6M" / 180D Baseline)
   const [timeframe, setTimeframe] = useState<"15D" | "1M" | "3M" | "6M" | "Max">("6M");
 
   // Visual Chart Controls: Price, 20 DMA, 50 DMA, Volume, and 15D Surveillance Window (all ON by default as per PVASF §5.1.1)
@@ -700,8 +712,15 @@ export function CombinedMarketChart({
       })) : 0;
 
       const isBreakout = idx > 0 && high > priorHigh;
-      const isGenuine180High = isBreakout && lookbackDays >= 170;
-      const isEarlyPeak = isBreakout && lookbackDays < 170;
+      const backendBandHit = (pt as any).is_band_hit;
+      const backendNewHigh = (pt as any).is_new_high;
+      const in15DWindow = idx >= Math.max(0, arr.length - effWindow);
+      const is180High = typeof backendNewHigh === "boolean"
+        ? (in15DWindow && backendNewHigh)
+        : (in15DWindow && isBreakout && lookbackDays >= 170);
+      const isEarlyPeak = typeof backendNewHigh === "boolean"
+        ? false
+        : (in15DWindow && isBreakout && lookbackDays < 170);
 
       // Real Deliverable Volume % if available in market feed
       const deliveryPct = (pt as any).delivery_pct != null && isFinite(Number((pt as any).delivery_pct))
@@ -717,24 +736,25 @@ export function CombinedMarketChart({
         volume,
         deliveryPct,
         dailyReturn,
-        is180High: idx >= Math.max(0, arr.length - 15) && isGenuine180High,
-        isNewHigh: idx >= Math.max(0, arr.length - 15) && isEarlyPeak,
+        isBandHit: typeof backendBandHit === "boolean" ? backendBandHit : false,
+        is180High,
+        isNewHigh: isEarlyPeak,
         lookbackDays,
         dma20: dma20 != null && isFinite(Number(dma20)) ? Number(Number(dma20).toFixed(2)) : undefined,
         dma50: dma50 != null && isFinite(Number(dma50)) ? Number(Number(dma50).toFixed(2)) : undefined,
       };
     });
-  }, [history]);
+  }, [history, effWindow]);
 
   // Sliced data according to surveillance timeframe
   const displayData = useMemo(() => {
     if (processedData.length === 0) return [];
-    if (timeframe === "15D") return processedData.slice(-15);
+    if (timeframe === "15D") return processedData.slice(-effWindow);
     if (timeframe === "1M") return processedData.slice(-22);
     if (timeframe === "3M") return processedData.slice(-65);
     if (timeframe === "6M") return processedData.slice(-180);
     return processedData;
-  }, [processedData, timeframe]);
+  }, [processedData, timeframe, effWindow]);
 
   // Latest active data point for fallback when not hovering
   const latestPoint = displayData.length > 0 ? displayData[displayData.length - 1] : null;
@@ -779,8 +799,8 @@ export function CombinedMarketChart({
     return Math.max(100, Math.ceil(Math.max(...vols) * 3.4));
   }, [displayData]);
 
-  // 15-Day Surveillance Window Coordinates
-  const win15Start = displayData.length >= 15 ? displayData[displayData.length - 15].date : displayData[0]?.date;
+  // Active Surveillance Window Coordinates
+  const win15Start = displayData.length >= effWindow ? displayData[displayData.length - effWindow].date : displayData[0]?.date;
   const win15End = displayData.length > 0 ? displayData[displayData.length - 1].date : "";
 
   const formatDateTick = (d: string) => {
@@ -799,7 +819,7 @@ export function CombinedMarketChart({
     return String(d);
   };
 
-  const hasAnomaly = (metrics?.final_score ?? metrics?.risk_score ?? metrics?.score ?? 0) >= 60.0 || metrics?.risk === "High";
+  const hasAnomaly = (metrics?.final_score ?? metrics?.risk_score ?? metrics?.score ?? 0) >= threshold || metrics?.risk === "High";
 
   if (!history || history.length === 0) {
     return (
@@ -830,19 +850,19 @@ export function CombinedMarketChart({
                   : "text-slate-600 hover:text-slate-900 hover:bg-white/50"
               )}
             >
-              {tf === "15D" ? "15D (Window)" : tf === "6M" ? "6M (180D Baseline)" : tf}
+              {tf === "15D" ? `${effWindow}D (Window)` : tf === "6M" ? "6M (180D Baseline)" : tf}
             </button>
           ))}
         </div>
 
-        {/* Right: 15D Surveillance Window Toggle & Anomaly Alert */}
+        {/* Right: Active Surveillance Window Toggle & Anomaly Alert */}
         <div className="flex items-center gap-2 flex-wrap">
           {hasAnomaly && timeframe !== "15D" && (
             <button
               type="button"
               onClick={() => setTimeframe("15D")}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 transition-all cursor-pointer shadow-2xs"
-              title="Click to zoom into the 15-day manipulation window"
+              title={`Click to zoom into the ${effWindow}-day manipulation window`}
             >
               <Zap className="w-3.5 h-3.5 text-rose-600" />
               <span>Pump Anomaly Detected</span>
@@ -858,12 +878,12 @@ export function CombinedMarketChart({
                 ? "bg-amber-50 border-amber-300 text-amber-900 hover:bg-amber-100"
                 : "bg-white border-slate-200 text-slate-500 hover:bg-slate-50"
             )}
-            title="Toggle 15-Day Surveillance Window Highlight"
+            title={`Toggle ${effWindow}-Day Surveillance Window Highlight`}
           >
             <span className={cn("w-2 h-2 rounded-full", show15DWindow ? "bg-amber-600" : "bg-slate-300")} />
-            <span>15D Window</span>
+            <span>{effWindow}D Window</span>
           </button>
-          <ChartGuideButton />
+          <ChartGuideButton windowDays={effWindow} />
         </div>
       </div>
 
@@ -1173,7 +1193,7 @@ export function CombinedMarketChart({
           )}>
             {show15DWindow && <Check className="w-3 h-3 stroke-[3]" />}
           </span>
-          <span>15D Analysis Window</span>
+          <span>{effWindow}D Analysis Window</span>
         </label>
       </div>
     </div>
@@ -1188,10 +1208,18 @@ export function CombinedMarketChart({
 export function SurveillanceStatisticalDeck({
   history = [],
   metrics,
+  summary,
   weights,
+  windowDays = 15,
 }: {
   history?: PricePoint[];
   metrics?: any;
+  summary?: {
+    start_price?: number;
+    latest_close?: number;
+    price_change_pct?: number;
+    avg_15d_volume?: number;
+  };
   weights?: {
     price_rise?: number;
     price_z?: number;
@@ -1199,19 +1227,29 @@ export function SurveillanceStatisticalDeck({
     band_persistence?: number;
     new_high?: number;
   };
+  windowDays?: number;
 }) {
   if (!history || history.length === 0) return null;
 
-  // 1. Price Growth Metrics (PVASF 2.1)
-  const startPrice = Number(history[0]?.close) || 1;
-  const currentPrice = Number(history[history.length - 1]?.close) || startPrice;
-  const netGainPct = startPrice > 0 ? Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10 : 0;
+  const effWindow = Math.max(1, windowDays);
+
+  // 1. Price Growth Metrics (PVASF 2.1 — prefer backend split/bonus-adjusted start_price when available)
+  const rawStartPrice = Number(history[0]?.close) || 1;
+  const startPrice = (summary?.start_price != null && isFinite(Number(summary.start_price)) && Number(summary.start_price) > 0)
+    ? Number(summary.start_price)
+    : rawStartPrice;
+  const currentPrice = (summary?.latest_close != null && isFinite(Number(summary.latest_close)) && Number(summary.latest_close) > 0)
+    ? Number(summary.latest_close)
+    : (Number(history[history.length - 1]?.close) || startPrice);
+  const netGainPct = (summary?.price_change_pct != null && isFinite(Number(summary.price_change_pct)))
+    ? Math.round(Number(summary.price_change_pct) * 10) / 10
+    : (startPrice > 0 ? Math.round(((currentPrice - startPrice) / startPrice) * 1000) / 10 : 0);
   const priceRisePct = metrics?.price_rise_pct ?? (metrics?.["Price Rise %"] ?? netGainPct);
   const highVals = history.map((h) => Number(h.high) || Number(h.close) || 0).filter(v => v > 0);
   const max180High = highVals.length > 0 ? Math.max(...highVals) : currentPrice;
-  const last15HighVals = history.slice(-15).map((h) => Number(h.high) || Number(h.close) || 0).filter(v => v > 0);
+  const last15HighVals = history.slice(-effWindow).map((h) => Number(h.high) || Number(h.close) || 0).filter(v => v > 0);
   const max15High = last15HighVals.length > 0 ? Math.max(...last15HighVals) : currentPrice;
-  const isHighRiskGain = priceRisePct >= 75.0;
+  const isHighRiskGain = priceRisePct > 75.0;
   const priceRiseScore = metrics?.price_rise_score ?? (metrics?.["Price Rise Score"] ?? (priceRisePct > 150 ? 5 : priceRisePct > 75 ? 3 : priceRisePct >= 15 ? 1 : 0));
 
   // 2. Price Return & Momentum Z-Score Metrics (PVASF 2.2)
@@ -1222,24 +1260,15 @@ export function SurveillanceStatisticalDeck({
     return prev > 0 ? ((curr - prev) / prev) * 100 : 0;
   });
   const validReturns = returns.filter((r) => typeof r === "number" && isFinite(r));
-  const rolling15Returns = computeMA(validReturns, 15);
+  const rolling15Returns = computeMA(validReturns, effWindow);
 
-  // Authoritative rolling 15-day return distribution baseline from backend metrics
+  // Authoritative rolling return distribution baseline from backend metrics
   const mean180Return = metrics?.price_mean != null && isFinite(Number(metrics.price_mean))
     ? Number(metrics.price_mean)
     : (validReturns.length > 0 ? validReturns.reduce((a, b) => a + b, 0) / validReturns.length : 0);
   const stdDevReturn = metrics?.price_std != null && Number(metrics.price_std) > 0 && isFinite(Number(metrics.price_std))
     ? Number(metrics.price_std)
     : (validReturns.length > 0 ? Math.sqrt(validReturns.reduce((a, b) => a + Math.pow(b - mean180Return, 2), 0) / validReturns.length) || 1 : 1);
-  const zAlertReturn = metrics?.price_threshold_95 != null && isFinite(Number(metrics.price_threshold_95))
-    ? Number(metrics.price_threshold_95)
-    : Math.round((mean180Return + 1.645 * stdDevReturn) * 100) / 100;
-  const zCriticalReturn = metrics?.price_threshold_99 != null && isFinite(Number(metrics.price_threshold_99))
-    ? Number(metrics.price_threshold_99)
-    : Math.round((mean180Return + 2.33 * stdDevReturn) * 100) / 100;
-  const zExtremeReturn = metrics?.price_threshold_999 != null && isFinite(Number(metrics.price_threshold_999))
-    ? Number(metrics.price_threshold_999)
-    : Math.round((mean180Return + 3.09 * stdDevReturn) * 100) / 100;
 
   const enrichedReturns = history.map((h, i) => {
     const dailyRet = validReturns[i] ?? 0;
@@ -1247,11 +1276,8 @@ export function SurveillanceStatisticalDeck({
     const zScore = stdDevReturn > 0 ? Math.round(((ma15 - mean180Return) / stdDevReturn) * 100) / 100 : 0;
     return { ...h, dailyReturn: dailyRet, rolling15dReturn: ma15, zScore };
   });
-  const last15Returns = enrichedReturns.slice(-15);
+  const last15Returns = enrichedReturns.slice(-effWindow);
   const latest15MeanReturn = last15Returns.length > 0 ? last15Returns.reduce((a, b) => a + b.dailyReturn, 0) / last15Returns.length : 0;
-  const returnSurgeMultiple = mean180Return > 0 && isFinite(mean180Return)
-    ? Math.round((latest15MeanReturn / mean180Return) * 10) / 10
-    : (latest15MeanReturn > 0 ? 5.0 : 1.0);
   const abnormalMoveDays = last15Returns.filter((d) => d.zScore >= 1.645).length;
   const criticalMoveDays = last15Returns.filter((d) => d.zScore >= 2.33).length;
   const priceZVal = metrics?.price_z != null && isFinite(Number(metrics.price_z))
@@ -1262,24 +1288,15 @@ export function SurveillanceStatisticalDeck({
   // 3. Volume & Liquidity Burst Metrics (PVASF 2.3)
   const volumes = history.map((h) => Number(h.volume) || 0);
   const validVolumes = volumes.filter((v) => typeof v === "number" && isFinite(v));
-  const rolling15Vol = computeMA(validVolumes, 15);
+  const rolling15Vol = computeMA(validVolumes, effWindow);
 
-  // Authoritative rolling 15-day volume distribution baseline from backend metrics
+  // Authoritative rolling volume distribution baseline from backend metrics
   const meanVol180 = metrics?.volume_mean != null && isFinite(Number(metrics.volume_mean))
     ? Number(metrics.volume_mean)
     : (validVolumes.length > 0 ? validVolumes.reduce((a, b) => a + b, 0) / validVolumes.length : 0);
   const stdDevVol = metrics?.volume_std != null && Number(metrics.volume_std) > 0 && isFinite(Number(metrics.volume_std))
     ? Number(metrics.volume_std)
     : (validVolumes.length > 0 ? Math.sqrt(validVolumes.reduce((a, b) => a + Math.pow(b - meanVol180, 2), 0) / validVolumes.length) || 1 : 1);
-  const zVolAlert = metrics?.volume_threshold_95 != null && isFinite(Number(metrics.volume_threshold_95))
-    ? Number(metrics.volume_threshold_95)
-    : Math.round(meanVol180 + 1.645 * stdDevVol);
-  const zVolCritical = metrics?.volume_threshold_99 != null && isFinite(Number(metrics.volume_threshold_99))
-    ? Number(metrics.volume_threshold_99)
-    : Math.round(meanVol180 + 2.33 * stdDevVol);
-  const zVolExtreme = metrics?.volume_threshold_999 != null && isFinite(Number(metrics.volume_threshold_999))
-    ? Number(metrics.volume_threshold_999)
-    : Math.round(meanVol180 + 3.09 * stdDevVol);
 
   const enrichedVol = history.map((h, i) => {
     const vol = validVolumes[i] ?? 0;
@@ -1288,9 +1305,8 @@ export function SurveillanceStatisticalDeck({
     const surgeRatio = ma15 > 0 ? Math.round((vol / ma15) * 10) / 10 : 1;
     return { ...h, volume: vol, rolling15d: ma15, surgeRatio, zScore };
   });
-  const last15Vol = enrichedVol.slice(-15);
+  const last15Vol = enrichedVol.slice(-effWindow);
   const latest15Vol = last15Vol.length > 0 ? last15Vol.reduce((a, b) => a + b.volume, 0) / last15Vol.length : 0;
-  const volSurgeMultiple = meanVol180 > 0 && isFinite(meanVol180) ? Math.round((latest15Vol / meanVol180) * 10) / 10 : 1.0;
   const volSpikeDays = last15Vol.filter((d) => d.surgeRatio >= 1.5).length;
   const volumeZVal = metrics?.volume_z != null && isFinite(Number(metrics.volume_z))
     ? Number(metrics.volume_z)
@@ -1301,11 +1317,11 @@ export function SurveillanceStatisticalDeck({
   const isFull180 = historyDays >= 170;
   const baselineLabel = isFull180 ? "Closing Price (T-180)" : "Baseline Closing Price";
   const baselineTooltip = isFull180
-    ? "The closing price 180 trading days (~6 months) ago, used as the baseline for Price Rise calculation against historical baseline."
-    : `Earliest available closing price in current dataset (${historyDays} sessions ago on ${history[0]?.date}). Lookback is adjusted to available depth.`;
+    ? "The stock's closing price 6 months ago, used as the starting reference point."
+    : "The earliest closing price available in this stock's history, used as the starting reference point.";
   const obsSubtitle = isFull180
-    ? "Observation: 15-Day High vs T-180 Baseline"
-    : "Observation: 15-Day High vs Historical Baseline";
+    ? `Observation: ${effWindow}-Day High vs T-180 Baseline`
+    : `Observation: ${effWindow}-Day High vs Historical Baseline`;
 
   return (
     <div className="space-y-4">
@@ -1316,7 +1332,7 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-blue-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Rise
-              <InfoTooltip text={`Compares price growth over the last 15 days against the baseline price from 6 months ago (accounts for ${weights?.price_rise ?? 20}% of total risk score).`} />
+              <InfoTooltip text={`Compares the stock's recent ${effWindow}-day price peak against where it stood 6 months ago.`} />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
               {weights?.price_rise ?? 20}% of Score
@@ -1339,7 +1355,7 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Current Closing Price
-              <InfoTooltip text={`Latest closing price on observation day T, showing total percentage change from T-${historyDays} baseline.`} />
+              <InfoTooltip text="The stock's closing price on the selected date and its overall change from the starting reference price." />
             </span>
             <div className="flex items-baseline gap-2 mt-1">
               <span className="font-extrabold font-mono text-blue-700 text-base">
@@ -1347,7 +1363,7 @@ export function SurveillanceStatisticalDeck({
               </span>
               <span className={cn(
                 "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
-                netGainPct >= 75 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                netGainPct > 75 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
               )}>
                 {netGainPct >= 0 ? "+" : ""}{netGainPct}% C-C
               </span>
@@ -1355,8 +1371,8 @@ export function SurveillanceStatisticalDeck({
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              15-Day Peak High
-              <InfoTooltip text={`Highest intraday price reached during the 15-day observation window, used as numerator in the PVASF §2.1 Price Rise formula. ${isFull180 ? "180-day" : `${historyDays}-day`} overall high is ₹${max180High.toFixed(2)}.`} />
+              {effWindow}-Day Peak High
+              <InfoTooltip text={`The highest price the stock reached during the recent ${effWindow}-day period.`} />
             </span>
             <span className="font-extrabold font-mono text-rose-700 text-base mt-1 block">
               ₹{max15High.toFixed(2)}
@@ -1374,7 +1390,7 @@ export function SurveillanceStatisticalDeck({
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
               Price Rise Severity & Score
-              <InfoTooltip text={`PVASF §2.1 formula: (15-Day Peak High ₹${max15High.toFixed(2)} − Baseline Close ₹${startPrice.toFixed(2)}) / Baseline Close ₹${startPrice.toFixed(2)} × 100 = ${priceRisePct >= 0 ? "+" : ""}${Number(priceRisePct).toFixed(2)}%. Scoring: <15% (0 pts), 15–75% (1 pt), 76–150% (3 pts), >150% (5 pts).`} />
+              <InfoTooltip text={`Percentage gain from the 6-month starting price to the ${effWindow}-day peak. Larger gains contribute more to the risk score.`} />
             </span>
             <div className="flex items-center gap-2 mt-1">
               <span className={cn("font-extrabold font-mono text-base", isHighRiskGain ? "text-rose-700" : "text-slate-900")}>
@@ -1398,7 +1414,7 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-indigo-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Price Z-Score
-              <InfoTooltip text={`Measures how unusually fast the stock's price moved over the last 15 days compared to normal 6-month fluctuations (accounts for ${weights?.price_z ?? 20}% of total risk score).`} />
+              <InfoTooltip text="Measures whether the stock's recent 15-day average daily return is statistically abnormal compared to its historical rolling benchmark." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200">
               {weights?.price_z ?? 20}% of Score
@@ -1407,69 +1423,69 @@ export function SurveillanceStatisticalDeck({
               "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
               priceZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
             )}>
-              Z = {priceZVal.toFixed(2)}σ (Score {priceZScore}/5)
+              Z = {priceZVal >= 0 ? "+" : ""}{priceZVal.toFixed(2)}σ (Score {priceZScore}/5)
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Close-to-Close (C-C) Price Movement
+            Close-to-Close (C-C) Momentum vs {isFull180 ? "6-Month" : `${historyDays}d`} Baseline
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Historical Baseline (μ, σ)
-              <InfoTooltip text={`Average daily return (μ = ${mean180Return.toFixed(2)}%) and standard deviation (σ = ${stdDevReturn.toFixed(2)}%) across rolling 15-day windows over the past 6 months.`} />
+              Recent 15-Day Average
+              <InfoTooltip text={`Average daily close-to-close return across the recent ${effWindow} trading sessions.`} />
+            </span>
+            <span className="font-extrabold font-mono text-indigo-700 text-base mt-1 block">
+              {latest15MeanReturn >= 0 ? "+" : ""}{latest15MeanReturn.toFixed(2)}% / day
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+              Active Evaluation Window
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Rolling 15-Day Average
+              <InfoTooltip text={`Historical mean (μ) of all ${effWindow}-day rolling return windows across the baseline period.`} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
-              μ = {mean180Return.toFixed(2)}% <span className="text-xs font-normal text-slate-500 font-mono">(σ = {stdDevReturn.toFixed(2)}%)</span>
+              {mean180Return >= 0 ? "+" : ""}{mean180Return.toFixed(2)}% / day
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              Historical Mean (μ)
             </span>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Current 15-Day Average (X̄)
-              <InfoTooltip text="Average daily percentage price change over the most recent 15 trading days." />
+              Rolling 15-Day Std Dev
+              <InfoTooltip text={`Historical standard deviation (σ) across ${effWindow}-day rolling return windows, representing the stock's normal variance for a 15-day period.`} />
             </span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="font-extrabold font-mono text-indigo-700 text-base">
-                {latest15MeanReturn >= 0 ? "+" : ""}{latest15MeanReturn.toFixed(2)}%/d
-              </span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 font-sans">
-                {returnSurgeMultiple}x μ
-              </span>
-            </div>
+            <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
+              ±{stdDevReturn.toFixed(2)}%
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              Standard Deviation (σ)
+            </span>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Statistical Thresholds
-              <InfoTooltip text="Abnormal move scoring: top 5% of moves (1 pt), top 1% (3 pts), and top 0.1% extreme moves (5 pts)." />
+              Price Momentum Z-Score
+              <InfoTooltip text={`Statistical divergence from historical ${effWindow}-day behavior. Values ≥ 3.09 indicate a 99.9th percentile anomaly.`} />
             </span>
-            <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px] font-bold">
-              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="95th Percentile (Z ≥ 1.645, Score 1/5)">
-                ≥{zAlertReturn}% (95th)
+            <div className="flex items-center gap-2 mt-1">
+              <span className={cn("font-extrabold font-mono text-base", priceZScore >= 3 ? "text-rose-700" : "text-slate-900")}>
+                {priceZVal >= 0 ? "+" : ""}{priceZVal.toFixed(2)}σ
               </span>
-              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" title="99th Percentile (Z ≥ 2.33, Score 3/5)">
-                ≥{zCriticalReturn}% (99th)
-              </span>
-              <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="99.9th Percentile (Z ≥ 3.09, Score 5/5)">
-                ≥{zExtremeReturn}% (99.9th)
+              <span className={cn(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded border font-sans",
+                priceZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-indigo-50 text-indigo-700 border-indigo-200"
+              )}>
+                Score {priceZScore}/5
               </span>
             </div>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
-            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Outlier Days (Z ≥ 1.645σ)
-              <InfoTooltip text="Number of days in the 15-day window where the daily price move spiked into the top 5% of historical moves." />
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5 truncate">
+              {criticalMoveDays > 0 ? `${criticalMoveDays} Critical Spike Session${criticalMoveDays > 1 ? "s" : ""}` : abnormalMoveDays > 0 ? `${abnormalMoveDays} Spike Session${abnormalMoveDays > 1 ? "s" : ""}` : "Within Normal Range"}
             </span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="font-extrabold font-mono text-slate-900 text-base">
-                {abnormalMoveDays} / 15 days
-              </span>
-              {criticalMoveDays > 0 && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200 font-sans">
-                  {criticalMoveDays} Critical
-                </span>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -1481,7 +1497,7 @@ export function SurveillanceStatisticalDeck({
             <div className="w-2.5 h-2.5 rounded-full bg-cyan-600" />
             <span className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
               Volume Z-Score
-              <InfoTooltip text={`Measures how unusually high the trading volume was over the last 15 days compared to normal 6-month trading (accounts for ${weights?.volume_z ?? 20}% of total risk score).`} />
+              <InfoTooltip text="Measures whether the stock's recent 15-day average daily volume is statistically abnormal compared to its historical rolling benchmark." />
             </span>
             <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-700 border border-cyan-200">
               {weights?.volume_z ?? 20}% of Score
@@ -1490,61 +1506,68 @@ export function SurveillanceStatisticalDeck({
               "text-[10px] font-bold px-1.5 py-0.5 rounded border font-mono",
               volumeZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-cyan-50 text-cyan-700 border-cyan-200"
             )}>
-              Z = {volumeZVal.toFixed(2)}σ (Score {volumeZScore}/5)
+              Z = {volumeZVal >= 0 ? "+" : ""}{volumeZVal.toFixed(2)}σ (Score {volumeZScore}/5)
             </span>
           </div>
           <span className="text-xs font-semibold text-slate-500">
-            Sustained 15-Day Traded Volume Analysis
+            Sustained {effWindow}-Day Volume vs {isFull180 ? "6-Month" : `${historyDays}d`} Baseline
           </span>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Historical Baseline (μ, σ)
-              <InfoTooltip text={`Average daily volume (μ = ${formatVolumeNum(meanVol180)}) and standard deviation (σ = ${formatVolumeNum(stdDevVol)}) across rolling 15-day windows over the past 6 months.`} />
+              Recent 15-Day Volume
+              <InfoTooltip text={`Average daily shares traded across the recent ${effWindow} trading sessions.`} />
+            </span>
+            <span className="font-extrabold font-mono text-cyan-700 text-base mt-1 block">
+              {formatVolumeNum(latest15Vol)} / day
+            </span>
+            <span className="text-[10px] text-slate-400 font-medium block mt-0.5">
+              Active Evaluation Window
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Rolling 15-Day Volume
+              <InfoTooltip text={`Historical mean (μ) of all ${effWindow}-day rolling volume windows across the baseline period.`} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
-              μ = {formatVolumeNum(meanVol180)} <span className="text-xs font-normal text-slate-500 font-mono">(σ = {formatVolumeNum(stdDevVol)})</span>
+              {formatVolumeNum(meanVol180)} / day
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              Historical Mean (μ)
             </span>
           </div>
           <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
             <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Current 15-Day Average (X̄)
-              <InfoTooltip text="Average daily shares traded over the most recent 15 trading days." />
-            </span>
-            <div className="flex items-baseline gap-2 mt-1">
-              <span className="font-extrabold font-mono text-blue-700 text-base">
-                {formatVolumeNum(latest15Vol)} / day
-              </span>
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 font-sans">
-                {volSurgeMultiple}x μ
-              </span>
-            </div>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
-            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Statistical Thresholds
-              <InfoTooltip text="Volume surge scoring: top 5% of volume days (1 pt), top 1% (3 pts), and top 0.1% extreme spikes (5 pts)." />
-            </span>
-            <div className="flex items-center gap-1.5 flex-wrap mt-1 font-mono text-[11px] font-bold">
-              <span className="text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" title="95th Percentile (Z ≥ 1.645, Score 1/5)">
-                ≥{formatVolumeNum(zVolAlert)} (95th)
-              </span>
-              <span className="text-rose-700 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200" title="99th Percentile (Z ≥ 2.33, Score 3/5)">
-                ≥{formatVolumeNum(zVolCritical)} (99th)
-              </span>
-              <span className="text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-200" title="99.9th Percentile (Z ≥ 3.09, Score 5/5)">
-                ≥{formatVolumeNum(zVolExtreme)} (99.9th)
-              </span>
-            </div>
-          </div>
-          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
-            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
-              Volume Surge Days
-              <InfoTooltip text="Number of days in the 15-day window where trading volume spiked at least 1.5 times above recent average volume." />
+              Rolling 15-Day Std Dev
+              <InfoTooltip text={`Historical standard deviation (σ) across ${effWindow}-day rolling volume windows, representing the stock's normal volume variance for a 15-day period.`} />
             </span>
             <span className="font-extrabold font-mono text-slate-900 text-base mt-1 block">
-              {volSpikeDays} / 15 days <span className="text-xs text-slate-500 font-normal">(≥1.5x surge)</span>
+              ±{formatVolumeNum(stdDevVol)}
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5">
+              Standard Deviation (σ)
+            </span>
+          </div>
+          <div className="bg-slate-50/80 border border-slate-200/70 rounded-xl p-3">
+            <span className="text-[11px] text-slate-500 font-semibold flex items-center gap-1">
+              Volume Surge Z-Score
+              <InfoTooltip text={`Statistical divergence from historical ${effWindow}-day volume. Values ≥ 3.09 indicate a 99.9th percentile volume expansion.`} />
+            </span>
+            <div className="flex items-center gap-2 mt-1">
+              <span className={cn("font-extrabold font-mono text-base", volumeZScore >= 3 ? "text-rose-700" : "text-slate-900")}>
+                {volumeZVal >= 0 ? "+" : ""}{volumeZVal.toFixed(2)}σ
+              </span>
+              <span className={cn(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded border font-sans",
+                volumeZScore >= 3 ? "bg-rose-50 text-rose-700 border-rose-200" : "bg-cyan-50 text-cyan-700 border-cyan-200"
+              )}>
+                Score {volumeZScore}/5
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-500 font-medium block mt-0.5 truncate">
+              {volSpikeDays > 0 ? `${volSpikeDays} of ${effWindow} Surge Sessions` : "Normal Activity Levels"}
             </span>
           </div>
         </div>

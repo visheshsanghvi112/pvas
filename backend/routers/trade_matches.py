@@ -59,6 +59,7 @@ def list_trades(
     buyer_client_token:  Optional[int]  = Query(None),
     seller_client_token: Optional[int]  = Query(None),
     series:              Optional[str]  = Query(None, description="Series e.g. EQ"),
+    exchange:            Optional[str]  = Query(None, description="Exchange scope e.g. ALL, NSE, BSE"),
     sort_by:             str            = Query("trade_timestamp"),
     sort_dir:            Literal["asc", "desc"] = Query("desc"),
     page:                int            = Query(1, ge=1),
@@ -71,7 +72,7 @@ def list_trades(
         account_type=account_type, wash_flag=wash_flag, algo_flag=algo_flag,
         buyer_broker_id=buyer_broker_id, seller_broker_id=seller_broker_id,
         buyer_client_token=buyer_client_token, seller_client_token=seller_client_token,
-        series=series, sort_by=sort_by, sort_dir=sort_dir,
+        series=series, exchange=exchange, sort_by=sort_by, sort_dir=sort_dir,
     )
     result = svc.list_trades(filters, page, page_size)
     return {

@@ -19,7 +19,6 @@ export function InfoTooltip({
   title = "Explanation",
 }: InfoTooltipProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isPinned, setIsPinned] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [coords, setCoords] = useState<{
     top: number;
@@ -30,15 +29,9 @@ export function InfoTooltip({
 
   const triggerRef = useRef<HTMLButtonElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
-  const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setMounted(true);
-    return () => {
-      if (closeTimerRef.current) {
-        clearTimeout(closeTimerRef.current);
-      }
-    };
   }, []);
 
   const calculatePosition = useCallback(() => {
@@ -63,51 +56,19 @@ export function InfoTooltip({
     });
   }, []);
 
-  const handleMouseEnter = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    calculatePosition();
-    setIsOpen(true);
-  };
-
-  const handleMouseLeave = () => {
-    if (isPinned) return; // Stay open if user explicitly clicked to pin
-    closeTimerRef.current = setTimeout(() => {
-      setIsOpen(false);
-    }, 200);
-  };
-
-  const handleTooltipMouseEnter = () => {
-    if (closeTimerRef.current) {
-      clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-  };
-
-  const handleTooltipMouseLeave = () => {
-    if (isPinned) return;
-    closeTimerRef.current = setTimeout(() => {
-      setIsOpen(false);
-    }, 200);
-  };
-
   const toggleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
-    if (isOpen && isPinned) {
-      setIsPinned(false);
+    if (isOpen) {
       setIsOpen(false);
     } else {
       calculatePosition();
       setIsOpen(true);
-      setIsPinned(true);
     }
   };
 
-  // Close handlers
+  // Close handlers on outside click, Escape key, scroll or resize
   useEffect(() => {
     if (!isOpen) return;
 
@@ -122,14 +83,12 @@ export function InfoTooltip({
         !tooltipRef.current.contains(target)
       ) {
         setIsOpen(false);
-        setIsPinned(false);
       }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setIsOpen(false);
-        setIsPinned(false);
       }
     };
 
@@ -138,7 +97,6 @@ export function InfoTooltip({
         return;
       }
       setIsOpen(false);
-      setIsPinned(false);
     };
 
     const onScroll = (e: Event) => handleScrollOrResize(e);
@@ -159,11 +117,7 @@ export function InfoTooltip({
 
   return (
     <>
-      <span
-        className={cn("inline-flex items-center align-middle ml-1", className)}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-      >
+      <span className={cn("inline-flex items-center align-middle ml-1", className)}>
         <button
           ref={triggerRef}
           type="button"
@@ -175,7 +129,7 @@ export function InfoTooltip({
               : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           )}
           aria-label="Toggle explanation"
-          title="Click or hover for explanation"
+          title="Click for explanation"
         >
           <Info className="w-3.5 h-3.5 shrink-0" />
         </button>
@@ -187,8 +141,6 @@ export function InfoTooltip({
         createPortal(
           <div
             ref={tooltipRef}
-            onMouseEnter={handleTooltipMouseEnter}
-            onMouseLeave={handleTooltipMouseLeave}
             onClick={(e) => e.stopPropagation()}
             style={{
               position: "fixed",
@@ -210,7 +162,6 @@ export function InfoTooltip({
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsOpen(false);
-                  setIsPinned(false);
                 }}
                 className="text-slate-400 hover:text-white p-0.5 rounded transition-colors cursor-pointer"
                 aria-label="Close"
